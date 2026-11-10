@@ -13,18 +13,32 @@ async function authCall(path, body) {
   if (!r.ok) throw new Error(d.detail || "Error");
   return d;
 }
-// El panel es una app aparte: solo se abre con "Ver mi panel" y al
-// abrirse oculta el creador; al cerrarse vuelve el creador.
+// El panel es la app: al abrirse toma TODA la pantalla (body.panel-open
+// oculta el header oscuro y todo el <main> con display:none !important —
+// el atributo hidden solo NO bastaba, porque header{display:flex} y
+// main{display:grid} lo anulaban). Al cerrarse vuelve la landing.
 function openPanel() {
   $("panel").hidden = false;
+  document.body.classList.add("panel-open");
   document.querySelector("main").hidden = true;
   document.querySelector("header").hidden = true;
   window.scrollTo(0, 0);
 }
 function closePanel() {
   $("panel").hidden = true;
+  document.body.classList.remove("panel-open");
   document.querySelector("main").hidden = false;
   document.querySelector("header").hidden = false;
+}
+function updateTopBar() {
+  const u = state.user;
+  if (!u) return;
+  // Barra superior: nombre real + insignia. El ADMIN siempre es "Admin"
+  // (roja), aunque su campo plan sea "free"; un usuario normal sin plan
+  // ve "Sin plan", y con plan ve el nombre de su plan.
+  $("panelUserName").textContent = u.name || "";
+  $("panelUserPlan").textContent = u.is_admin ? "Admin" : (u.plan && u.plan !== "free" ? u.plan : "Sin plan");
+  $("panelUserPlan").classList.toggle("admin", !!u.is_admin);
 }
 function doLogout() {
   localStorage.removeItem("clipper_token");
@@ -34,15 +48,11 @@ function showUser(user) {
   state.user = user;
   $("authLoggedOut").hidden = !!user;
   $("authLoggedIn").hidden = !user;
-  // El panel empieza cerrado; se abre con "Ver mi panel".
-  closePanel();
   if (user) {
     $("authUserName").textContent = user.name;
     $("authUserEmail").textContent = user.email;
     $("authUserPlan").textContent = user.is_admin ? "Admin" : user.plan;
-    $("panelUserName").textContent = user.name;
-    $("panelUserPlan").textContent = user.is_admin ? "Admin" : (user.plan === "free" ? "Sin plan" : user.plan);
-    $("panelUserPlan").classList.toggle("admin", !!user.is_admin);
+    updateTopBar();
     $("panelWelcome").textContent = `Hola, ${user.name} — tus clips, tus aprobaciones y tu cuenta, todo en un solo lugar.`;
     $("tabAdmin").hidden = !user.is_admin;
     // La configuración guardada del usuario manda en el creador.
@@ -50,6 +60,12 @@ function showUser(user) {
     $("frameEnabled").checked = user.frame_enabled !== false;
     updatePreview();
     loadPanel();
+    // Al entrar, el panel SE ABRE SOLO: el panel es la app, la landing
+    // es solo la puerta.
+    openPanel();
+  } else {
+    // Sin sesión: se cierra el panel y vuelve la landing.
+    closePanel();
   }
 }
 async function refreshMe() {
@@ -335,9 +351,11 @@ $("btnPanelInfo").onclick = async () => {
   $("btnPanelUse").hidden = false;
 };
 $("btnPanelUse").onclick = () => {
+  // El creador ya vive dentro del panel (sección Crear Clip): solo pasa
+  // el link al paso 1 y lo analiza ahí mismo, sin salir del panel.
   $("url").value = $("panelUrl").value.trim();
-  document.querySelector("main").scrollIntoView({ behavior: "smooth" });
   $("btnInfo").click();
+  $("url").scrollIntoView({ behavior: "smooth", block: "center" });
 };
 
 // ---------- Panel: Mi Cuenta ----------

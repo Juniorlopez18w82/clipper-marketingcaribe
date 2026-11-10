@@ -1,4 +1,4 @@
-"""MarketingCaribe Clipper — FastAPI backend.
+"""ClipViral — FastAPI backend.
 
 No YouTube API key: yt-dlp reads the pasted link directly.
 Endpoints:
@@ -67,7 +67,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="MarketingCaribe Clipper", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="ClipViral", version="1.4.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -271,7 +271,7 @@ def _run_render_job(job_id: str, req: RenderRequest):
 # ---------------------------------------------------------------- routes
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "MarketingCaribe Clipper", "version": "1.4.0",
+    return {"ok": True, "service": "ClipViral", "version": "1.4.0",
             "warp": os.environ.get("WARP_STATUS", "not_configured"),
             "proxy": bool(os.environ.get("YTDLP_PROXY")),
             "db": db_backend(), "auth": True}

@@ -955,6 +955,28 @@ def api_download(filename: str):
     return FileResponse(path, media_type="video/mp4", filename=path.name)
 
 
+@app.get("/api/jobs/{job_id}/source")
+def api_job_source(job_id: str):
+    """Serve the downloaded section file of a clips job, so the browser can
+    show real video thumbnails per candidate and play the selected clip in
+    the live preview. FileResponse supports Range requests, which is what
+    <video> needs to seek (and for the #t= fragment to pick a frame).
+    Same public-in-v1 posture as /api/download."""
+    safe_id = Path(job_id).name
+    path = None
+    job = jobs.get(safe_id)
+    if job and (job.get("result") or {}).get("source_file"):
+        path = SOURCES_DIR / Path(job["result"]["source_file"]).name
+    if path is None or not path.exists():
+        # The in-memory job record may be gone (restart wipes jobs), but
+        # the section file on disk survives — resolve it by job id.
+        files = sorted(SOURCES_DIR.glob(f"{safe_id}.*"))
+        path = files[0] if files else None
+    if path is None or not path.exists():
+        raise HTTPException(404, "Video no encontrado")
+    return FileResponse(path, media_type="video/mp4", filename=path.name)
+
+
 # Minimal frontend (same origin, no extra server).
 _frontend = BASE_DIR / "frontend"
 if _frontend.exists():

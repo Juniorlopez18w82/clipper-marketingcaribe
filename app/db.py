@@ -70,7 +70,47 @@ def init_db() -> None:
     at boot (e.g. wrong DATABASE_URL), log a warning and let the app
     start — auth endpoints will surface the real error.
     """
-    from . import auth, billing, clips_db  # noqa: F401 — registers models
+def _ensure_user_pref_columns() -> None:
+    """Add the clip-preference columns to an existing users table.
+
+    create_all() only creates missing TABLES, never new columns — the
+    live Render Postgres already has a users table from v1.4.0, so the
+    new columns must be added with ALTER TABLE on boot.
+    """
+    from sqlalchemy import inspect
+
+    cols = {
+        "max_clips": "INTEGER DEFAULT 5",
+        "min_clip_secs": "FLOAT DEFAULT 20.0",
+        "max_clip_secs": "FLOAT DEFAULT 45.0",
+        "quality": "VARCHAR(10) DEFAULT '1080p'",
+        "subtitles_enabled": "BOOLEAN DEFAULT TRUE" if IS_POSTGRES else "BOOLEAN DEFAULT 1",
+        "template": "VARCHAR(80) DEFAULT 'Gancho grande'",
+    }
+    try:
+        existing = {c["name"] for c in inspect(engine).get_columns("users")}
+        missing = [k for k in cols if k not in existing]
+        if not missing:
+            return
+        with engine.begin() as conn:
+            for name in missing:
+                conn.exec_driver_sql(
+                    f'ALTER TABLE users ADD COLUMN "{name}" {cols[name]}')
+        logger.info("Migrated users table: added %s", ", ".join(missing))
+    except Exception as e:  # noqa: BLE001 — migration is best-effort
+        logger.warning("User columns migration failed: %s", e)
+
+
+def init_db() -> None:
+    """Create tables if they do not exist. Safe to call on every boot.
+
+    Importing auth and clips_db registers the User and Clip models on
+    Base. After creating tables, seed the two demo users if the users
+    table is empty (see auth.seed_users). If the database is unreachable
+    at boot (e.g. wrong DATABASE_URL), log a warning and let the app
+    start — auth endpoints will surface the real error.
+    """
+    from . import auth, billing, clips_db, settings  # noqa: F401 — registers models
 
     try:
         Base.metadata.create_all(bind=engine)
@@ -78,9 +118,11 @@ def init_db() -> None:
     except Exception as e:  # noqa: BLE001 — DB may not exist yet
         logger.warning("DB init failed (%s): %s", db_backend(), e)
         return
+    _ensure_user_pref_columns()
     try:
         db = SessionLocal()
         try:
+            settings.seed_settings(db)
             auth.seed_users(db)
             billing.seed_billing(db)
         finally:

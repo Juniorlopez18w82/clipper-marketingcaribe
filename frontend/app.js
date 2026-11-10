@@ -1,7 +1,8 @@
 // ClipViral — frontend (same origin, talks to /api/*)
 const $ = (id) => document.getElementById(id);
 const state = { clipsJob: null, transcript: null, selected: null, words: null,
-  user: null, uploadedFile: null, busy: false };
+  user: null, uploadedFile: null, busy: false, pvClip: null };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[m]));
 const FRIENDLY_ERROR = "El servidor está despertando o se está actualizando, espera un minuto e inténtalo de nuevo";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -602,7 +603,11 @@ function setJobProgress(p) {
 // terminar un render; se esconde de nuevo al empezar otro trabajo o al
 // cambiar el link / subir otro archivo.
 function showPreview() { $("previewCard").hidden = false; }
-function hidePreview() { $("previewCard").hidden = true; }
+function hidePreview() {
+  $("previewCard").hidden = true;
+  const pv = $("pvVideo");
+  if (pv) pv.pause();
+}
 function clipsStepFromProgress(p) {
   if (p < 30) return 0;
   if (p < 70) return 1;
@@ -622,6 +627,7 @@ function resetCreateFlow() {
   state.transcript = null;
   state.selected = null;
   state.words = null;
+  state.pvClip = null;
   $("candidatesCard").hidden = true;
   $("step3Card").hidden = true;
   $("resultCard").hidden = true;
@@ -707,7 +713,11 @@ $("btnClips").onclick = async () => {
     job.result.candidates.forEach((c, i) => {
       const div = document.createElement("div");
       div.className = "clip";
-      div.innerHTML = `<b>Clip ${i + 1} · ${c.abs_start}s – ${c.abs_end}s (${c.duration}s)</b> · ⭐ ${c.score}<br><small>${c.text.slice(0, 160)}…</small>`;
+      // Miniatura real: el video de la sección, en el primer fotograma de
+      // este clip (#t= con el inicio relativo a la sección).
+      div.innerHTML = `<video muted playsinline preload="metadata" src="/api/jobs/${job.id}/source#t=${c.start.toFixed(1)}"></video>`
+        + `<div class="clip-body"><div class="clip-meta">Clip ${i + 1} · ${c.abs_start}s – ${c.abs_end}s (${c.duration}s) <span class="clip-score">⭐ ${c.score}</span></div>`
+        + `<small class="clip-text">${esc(c.text.slice(0, 160))}…</small></div>`;
       div.onclick = () => selectClip(c, div);
       box.appendChild(div);
     });
@@ -735,6 +745,70 @@ function clipWords(absStart, absEnd) {
   return out;
 }
 
+// ---------- Vista previa en vivo con video real ----------
+// Agrupa las palabras como el render (3 a la vez, corte en pausas > 0.8 s).
+function wordGroups(words) {
+  const groups = [];
+  let cur = [];
+  for (const w of words || []) {
+    if (!String(w.w).trim()) continue;
+    if (cur.length && w.s - cur[cur.length - 1].e > 0.8) { groups.push(cur); cur = []; }
+    cur.push(w);
+    if (cur.length >= 3) { groups.push(cur); cur = []; }
+  }
+  if (cur.length) groups.push(cur);
+  return groups;
+}
+
+// Subtítulos karaoke del momento actual de la vista previa: 3 palabras,
+// la que suena va en amarillo (igual que el clip exportado).
+function updatePreviewSubs(t) {
+  const el = $("pvSubs");
+  if (!state.words || !state.words.length) return;
+  const groups = wordGroups(state.words);
+  let g = groups.find((gr) => t >= gr[0].s && t <= gr[gr.length - 1].e + 0.15);
+  if (!g) g = groups[0];
+  if (!g) return;
+  el.innerHTML = g.map((w) => {
+    const txt = w.w.trim().toUpperCase();
+    return (t >= w.s && t < w.e) ? `<span>${esc(txt)}</span>` : esc(txt);
+  }).join(" ");
+}
+
+// Reproduce el trozo del clip elegido en la vista previa 9:16 (sin sonido).
+function playPreviewClip(c) {
+  const pv = $("pvVideo");
+  if (!pv || !state.clipsJob) return;
+  const src = `/api/jobs/${state.clipsJob.id}/source`;
+  state.pvClip = { start: c.start, end: c.end };
+  const startAt = () => {
+    // Si el usuario ya eligió otro clip mientras cargaban los metadatos,
+    // este arranque queda obsoleto.
+    if (!state.pvClip || state.pvClip.start !== c.start) return;
+    try { pv.currentTime = Math.max(0, c.start + 0.01); } catch (e) { /* aún sin metadatos */ }
+    pv.play().catch(() => {});
+  };
+  if (pv.dataset.src !== src) {
+    pv.dataset.src = src;
+    pv.src = src;
+    pv.addEventListener("loadedmetadata", startAt, { once: true });
+    pv.load();
+  } else {
+    startAt();
+  }
+}
+$("pvVideo").addEventListener("timeupdate", () => {
+  const pv = $("pvVideo");
+  if (!state.pvClip) return;
+  const dur = state.pvClip.end - state.pvClip.start;
+  const t = pv.currentTime - state.pvClip.start;
+  if (t >= dur) { // fin del clip: vuelve al inicio (bucle del trozo)
+    try { pv.currentTime = state.pvClip.start + 0.01; } catch (e) {}
+    return;
+  }
+  if (t >= 0) updatePreviewSubs(t);
+});
+
 function selectClip(c, el) {
   document.querySelectorAll(".clip").forEach((x) => x.classList.remove("sel"));
   if (el) el.classList.add("sel");
@@ -744,8 +818,11 @@ function selectClip(c, el) {
   $("clipEnd").value = c.abs_end;
   $("subText").value = c.text;
   $("pvSubs").innerHTML = state.words.slice(0, 3).map((w, i) => i === 1 ? `<span>${w.w.trim().toUpperCase()}</span>` : w.w.trim().toUpperCase()).join(" ") || "SUBTÍTULOS";
-  // Ya hay un clip que ver: aparece la vista previa (encima de Configuración).
+  // Ya hay un clip que ver: aparece la vista previa (encima de Configuración)
+  // y empieza a reproducir el trozo elegido, con marco, marca y subtítulos.
   showPreview();
+  playPreviewClip(c);
+  updatePreview();
   // El paso 3 (subtítulos + render) solo aparece DESPUÉS de elegir un clip.
   $("step3Card").hidden = false;
   $("resultCard").hidden = true;

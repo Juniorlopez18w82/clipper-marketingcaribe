@@ -5,26 +5,71 @@ Proven 2026-11-10 on https://www.youtube.com/watch?v=lvPIofmDIGk
 straight from the pasted link, and --download-sections cuts a time range
 without downloading the whole video. That video has NO automatic captions,
 so transcription is always done locally (see transcribe.py).
+
+YouTube bot check (2026-11-10, Render): datacenter IPs get
+"Sign in to confirm you're not a bot" on the default web player client.
+Fix: try player clients in order — android, tv_embedded, web — because
+YouTube checks each client differently; android/tv usually pass where web
+is blocked. Verified locally 2026-11-10: default + android + tv_embedded
+all read the Bulin video, ios was blocked. If ALL clients are blocked,
+the only remaining fix is a YouTube cookies file (see _cookies_file):
+put cookies.txt in data/ or set YTDLP_COOKIES_FILE, exported from a
+browser logged into YouTube.
 """
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import yt_dlp
 
-from .config import SOURCES_DIR
+from .config import BASE_DIR, SOURCES_DIR
+
+# Order matters: android first — it bypasses the web bot check most often.
+PLAYER_CLIENTS = ["android", "tv_embedded", "web"]
 
 
-def video_info(url: str) -> dict:
-    """Metadata only — no download."""
-    ydl_opts = {
+def _cookies_file() -> str | None:
+    """Optional YouTube cookies file, only if the user placed one there."""
+    env = os.environ.get("YTDLP_COOKIES_FILE")
+    if env and Path(env).exists():
+        return env
+    local = BASE_DIR / "data" / "cookies.txt"
+    return str(local) if local.exists() else None
+
+
+def _ydl_opts(client: str) -> dict:
+    opts: dict = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": True,
+        "extractor_args": {"youtube": {"player_client": [client]}},
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    cookies = _cookies_file()
+    if cookies:
+        opts["cookiefile"] = cookies
+    return opts
+
+
+def _is_bot_block(err: str) -> bool:
+    return "not a bot" in err or "Sign in to confirm" in err
+
+
+def video_info(url: str) -> dict:
+    """Metadata only — no download. Tries player clients in order."""
+    last_err = ""
+    for client in PLAYER_CLIENTS:
+        try:
+            with yt_dlp.YoutubeDL(_ydl_opts(client)) as ydl:
+                info = ydl.extract_info(url, download=False)
+            break
+        except Exception as e:  # noqa: BLE001 — try the next player client
+            last_err = str(e)
+            continue
+    else:
+        raise RuntimeError(last_err or "YouTube bloqueó la lectura del video")
     return {
         "id": info.get("id"),
         "title": info.get("title"),
@@ -76,6 +121,9 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
     OCCASIONALLY truncates the audio stream (one run gave 13.5 s of audio
     in a 70 s file, the re-run gave the full 70 s). So we verify the audio
     duration after download and retry up to 3 times.
+
+    Bot check: tries each player client in order (android, tv_embedded,
+    web), because YouTube blocks the web client on datacenter IPs.
     """
     if end <= start:
         raise ValueError("end must be greater than start")
@@ -84,32 +132,42 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
     out_tmpl = str(SOURCES_DIR / f"{job_id}.%(ext)s")
     section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
     last_err = ""
-    for attempt in range(1, 4):
-        for old in SOURCES_DIR.glob(f"{job_id}.*"):
-            old.unlink()
-        cmd = [
-            "python3", "-m", "yt_dlp", "--no-warnings",
-            "--download-sections", section,
-            "-f", "bv[height<=720]+ba/b[height<=720]",
-            "-o", out_tmpl,
-            url,
-        ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if proc.returncode != 0:
-            last_err = proc.stderr[-2000:]
-            continue
-        files = sorted(SOURCES_DIR.glob(f"{job_id}.*"))
-        if not files:
-            last_err = "yt-dlp finished but produced no file"
-            continue
-        v_dur, a_dur = _stream_durations(files[0])
-        # Audio must cover (nearly) the whole section; video is ~10 s long
-        # because of keyframes, so compare audio against the requested length.
-        if a_dur >= (end - start) * 0.8:
-            return files[0]
-        last_err = (f"attempt {attempt}: audio truncated "
-                    f"({a_dur:.1f}s for a {end - start:.0f}s section), retrying")
-    raise RuntimeError(f"yt-dlp failed after 3 attempts: {last_err}")
+    attempt = 0
+    for client in PLAYER_CLIENTS:
+        for _ in range(2):
+            attempt += 1
+            for old in SOURCES_DIR.glob(f"{job_id}.*"):
+                old.unlink()
+            cmd = [
+                sys.executable, "-m", "yt_dlp", "--no-warnings",
+                "--extractor-args", f"youtube:player_client={client}",
+                "--download-sections", section,
+                "-f", "bv[height<=720]+ba/b[height<=720]",
+                "-o", out_tmpl,
+                url,
+            ]
+            cookies = _cookies_file()
+            if cookies:
+                cmd[3:3] = ["--cookies", cookies]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if proc.returncode != 0:
+                last_err = proc.stderr[-2000:]
+                # Bot block: no point retrying this client, try the next one.
+                if _is_bot_block(last_err):
+                    break
+                continue
+            files = sorted(SOURCES_DIR.glob(f"{job_id}.*"))
+            if not files:
+                last_err = "yt-dlp finished but produced no file"
+                continue
+            v_dur, a_dur = _stream_durations(files[0])
+            # Audio must cover (nearly) the whole section; video is ~10 s long
+            # because of keyframes, so compare audio against the requested length.
+            if a_dur >= (end - start) * 0.8:
+                return files[0]
+            last_err = (f"attempt {attempt}: audio truncated "
+                        f"({a_dur:.1f}s for a {end - start:.0f}s section), retrying")
+    raise RuntimeError(f"yt-dlp failed after {attempt} attempts: {last_err}")
 
 
 def probe(path: Path) -> dict:

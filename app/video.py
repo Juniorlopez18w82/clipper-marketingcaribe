@@ -15,6 +15,18 @@ all read the Bulin video, ios was blocked. If ALL clients are blocked,
 the only remaining fix is a YouTube cookies file (see _cookies_file):
 put cookies.txt in data/ or set YTDLP_COOKIES_FILE, exported from a
 browser logged into YouTube.
+
+PROXY TYPE (root cause found 2026-11-10, job 3503f24a083a): yt-dlp cuts
+the section with ffmpeg, and ffmpeg fetches the remote googlevideo URL
+ITSELF. ffmpeg CANNOT use a SOCKS5 proxy — yt-dlp warns "does not support
+SOCKS proxies" and hands ffmpeg HTTP_PROXY=socks5://..., which ffmpeg
+ignores (proven locally: with http_proxy=socks5:// ffmpeg never even
+connects to the proxy port; with http_proxy=http:// it sends HTTP CONNECT).
+On Render that made every android section download fail with
+"ffmpeg exited with code 8" while video_info (yt-dlp itself, which DOES
+speak SOCKS5) worked fine. So YTDLP_PROXY must be an HTTP proxy:
+entrypoint.sh adds wireproxy's [http] listener (127.0.0.1:1081) and sets
+YTDLP_PROXY=http://127.0.0.1:1081. Never point it at socks5:// again.
 """
 import json
 import os
@@ -40,7 +52,11 @@ def _cookies_file() -> str | None:
 
 
 def _proxy() -> str | None:
-    """SOCKS5/HTTP proxy for yt-dlp, set by entrypoint.sh when WARP is up."""
+    """Proxy for yt-dlp, set by entrypoint.sh when WARP is up.
+
+    MUST be an HTTP proxy (http://...), never socks5:// — see the module
+    docstring: ffmpeg, which yt-dlp uses to cut sections, cannot use SOCKS5.
+    """
     return os.environ.get("YTDLP_PROXY") or None
 
 
@@ -210,6 +226,9 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
                 return files[0]
             errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s for a "
                           f"{end - start:.0f}s section (truncated)")
+    if _proxy() and _proxy().startswith("socks"):
+        errors.append("hint: YTDLP_PROXY is SOCKS5 — ffmpeg cannot use it; "
+                      "use the wireproxy HTTP proxy instead (see entrypoint.sh)")
     raise RuntimeError(f"yt-dlp failed after {attempt} attempts: "
                        + " | ".join(errors))
 

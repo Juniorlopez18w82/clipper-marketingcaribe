@@ -11,6 +11,8 @@ Sin suscripción activa el usuario está BLOQUEADO: el panel muestra
 "Debes contratar un plan para usar el clipper" y los endpoints de
 clips/render devuelven 403 cuando el usuario va logueado (sin token
 siguen públicos en v1 para no romper el flujo actual — ver README).
+Excepción: el ADMIN (is_admin=True) nunca está bloqueado ni necesita
+plan — has_active_subscription() devuelve True siempre para el admin.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -203,6 +205,14 @@ def get_active_subscription(db, user_id: int):
 
 
 def has_active_subscription(db, user_id: int) -> bool:
+    """True si el usuario tiene suscripción activa y vigente.
+
+    El ADMIN nunca necesita plan: is_admin=True siempre desbloquea
+    (2026-11-10: el admin veía el bloqueo de "contrata un plan").
+    """
+    user = db.query(auth.User).filter(auth.User.id == user_id).first()
+    if user is not None and getattr(user, "is_admin", False):
+        return True
     return get_active_subscription(db, user_id) is not None
 
 

@@ -5,11 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClipViral — Clips de YouTube a Reels 9:16</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script>/* Si hay sesión guardada, NO mostrar el login ni un instante: se oculta
+   la landing y sale "Cargando tu panel…" hasta validar el token. */
+try { if (localStorage.getItem("clipper_token")) { document.documentElement.className += " booting"; } } catch (e) {}</script>
 <style>
 :root{--bg:#040017;--yellow:#FADE4C;--card:#0d1230;--text:#f2f2f7;--muted:#9aa0b5}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
 header{padding:18px 20px;border-bottom:3px solid var(--yellow);display:flex;justify-content:space-between;align-items:center}
 header b{color:var(--yellow);font-size:22px}
+/* Estado de carga inicial (mientras se valida el token guardado) */
+#bootLoading{display:none;min-height:70vh;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#f2f2f7}
+#bootLoading .spin{width:40px;height:40px;border:4px solid #333a66;border-top-color:var(--yellow);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+html.booting header,html.booting main{display:none}
+html.booting #bootLoading{display:flex}
 /* Landing: solo hero + tarjeta Mi cuenta (el creador vive dentro del panel) */
 main{max-width:640px;margin:0 auto;padding:40px 20px 60px}
 .hero-line{color:#f2f2f7;font-size:18px;line-height:1.6;text-align:center;margin:0 0 28px}
@@ -60,6 +69,9 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 /* ===== Panel ClipViral: app shell blanco / negro / rojo #E10600 ===== */
 .panel{background:#f7f7f8;color:#111;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
 .panel [hidden]{display:none !important}
+#impBanner{display:flex;align-items:center;gap:12px;justify-content:center;background:#111;color:#fff;padding:10px 16px;font-size:14px}
+#impBanner b{color:#FADE4C}
+#impBanner button{background:#E10600;color:#fff;border:0;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;font-size:13px}
 .panel-top{display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #e5e5e5;padding:0 24px;height:60px;position:sticky;top:0;z-index:10}
 .panel-top .brand{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#111}
 .panel-top .brand img{width:26px;height:26px}
@@ -121,6 +133,24 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .switch input:checked+.slider{background:#E10600}
 .panel .switch input:checked+.slider:before{background:#fff}
 .panel input[type=color]{background:#fff;border:1px solid #d4d4d4}
+/* Pasos de generación (Descargar → Transcribir → IA elige → Cortar → Listo) */
+.panel .steps{display:flex;align-items:flex-start;gap:0;margin:6px 0 4px}
+.panel .step{flex:1;text-align:center;position:relative;font-size:13px;font-weight:600;color:#999}
+.panel .step .dot{width:34px;height:34px;border-radius:50%;background:#eee;color:#999;display:flex;align-items:center;justify-content:center;margin:0 auto 6px;font-size:15px;font-weight:700;border:2px solid #e5e5e5}
+.panel .step::before{content:"";position:absolute;top:17px;left:calc(-50% + 20px);right:calc(50% + 20px);height:2px;background:#e5e5e5}
+.panel .step:first-child::before{display:none}
+.panel .step.active{color:#111}
+.panel .step.active .dot{background:#E10600;border-color:#E10600;color:#fff}
+.panel .step.done{color:#111}
+.panel .step.done .dot{background:#111;border-color:#111;color:#fff}
+.panel .step.done::before{background:#111}
+.panel .step-status{font-size:15px;color:#111;font-weight:600;margin:10px 0 0;min-height:22px}
+.panel .job-error{display:none;background:#fff5f5;border:1px solid #E10600;border-radius:12px;padding:16px 18px;margin-top:14px;font-size:15px;color:#111}
+.panel .job-error b{color:#E10600}
+/* Pestañas de configuración (Plantilla / Clips / Video) y del admin */
+.panel .mini-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.panel .mini-tab{background:#f2f2f3;color:#111;border:1px solid #e5e5e5;border-radius:999px;padding:8px 16px;font-weight:600;cursor:pointer;font-size:14px}
+.panel .mini-tab.on{background:#111;color:#fff;border-color:#111}
 /* Planes */
 .panel .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .panel .plan{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:22px;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column}
@@ -156,10 +186,12 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 </style>
 </head>
 <body>
+<div id="bootLoading"><div class="spin"></div><p>Cargando tu panel…</p></div>
 <header><b><img src="/favicon.svg" alt="ClipViral" style="width:26px;height:26px;vertical-align:-6px;margin-right:6px">ClipViral</b><span class="muted">YouTube / Live → Reels 9:16 · sin API de YouTube</span></header>
 
 <!-- Panel de usuario (blanco / negro / rojo). Cuando se abre, toma TODA la pantalla (body.panel-open oculta header y main). -->
 <section class="panel" id="panel" hidden>
+  <div id="impBanner" hidden>Estás en la cuenta de <b id="impName"></b><button id="btnBackAdmin">Volver a mi cuenta</button></div>
   <div class="panel-top">
     <span class="brand"><img src="/favicon.svg" alt="ClipViral"> ClipViral</span>
     <span class="spacer"></span>
@@ -182,57 +214,71 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
     <div class="pane" id="pane-home">
       <h3>Inicio</h3>
-      <p class="sub" id="panelWelcome">Tus clips, tus aprobaciones y tu cuenta, todo en un solo lugar.</p>
+      <p class="sub" id="panelWelcome">Tus clips y tu cuenta, todo en un solo lugar.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
       <div class="stats">
-        <div class="stat"><b id="stTotal">0</b><span>Clips creados</span></div>
-        <div class="stat red"><b id="stPend">0</b><span>Pendientes</span></div>
-        <div class="stat"><b id="stApr">0</b><span>Aprobados</span></div>
+        <div class="stat"><b id="stMonth">0</b><span>Clips este mes</span></div>
+        <div class="stat red"><b id="stProcessing">0</b><span>Videos en proceso</span></div>
+        <div class="stat"><b id="stTotalClips">0</b><span>Total de clips</span></div>
       </div>
-      <div class="card"><p class="muted" style="margin:0">Un clip queda <b>Pendiente</b> cuando se renderiza. El admin lo aprueba y ahí sí lo puedes descargar desde Mis Clips.</p></div>
+      <div class="card"><p class="muted" style="margin:0">Tus clips quedan listos para descargar apenas se renderizan. Sin aprobaciones ni esperas.</p></div>
       </div>
     </div>
 
     <div class="pane" id="pane-clips" hidden>
       <h3>Mis Clips</h3>
-      <p class="sub">Todos tus clips renderizados y su estado de aprobación.</p>
+      <p class="sub">Todos tus clips renderizados, listos para descargar.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body"><div id="myClips"><p class="muted">Cargando…</p></div></div>
     </div>
 
     <div class="pane" id="pane-create" hidden>
       <h3>Crear Clip</h3>
-      <p class="sub">Pega el link, genera los clips y renderiza tu clip 9:16 con marco y subtítulos.</p>
+      <p class="sub">Pega el link o sube tu video, la IA busca los mejores momentos y tú eliges el clip.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
       <div class="create-grid">
       <div>
       <section class="card">
-        <h2>1 · Pega el link del video o live</h2>
+        <h2>Pega un enlace para empezar</h2>
         <label>Link de YouTube</label>
-        <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="https://www.youtube.com/watch?v=lvPIofmDIGk">
+        <input id="url" type="url" placeholder="youtube.com/watch?v=…" value="https://www.youtube.com/watch?v=lvPIofmDIGk">
         <div class="row" style="margin-top:12px">
-          <button id="btnInfo">Analizar video</button>
-          <span id="videoMeta" class="muted"></span>
+          <button id="btnClips">Sacar clips</button>
+          <button id="btnUpload" class="black">Subir archivo</button>
+          <input id="uploadFile" type="file" accept="video/*" hidden>
         </div>
+        <p id="uploadInfo" class="muted" hidden></p>
         <div class="row">
           <div><label>Analizar desde (seg)</label><input id="rangeStart" type="number" value="0" min="0"></div>
           <div><label>Hasta (seg)</label><input id="rangeEnd" type="number" value="120" min="10"></div>
           <div><label>Modelo Whisper</label><select id="model"><option value="base" selected>base (recomendado)</option><option value="tiny">tiny (rápido)</option><option value="small">small (más preciso, lento)</option></select></div>
         </div>
-        <div style="margin-top:12px"><button id="btnClips">Generar clips</button></div>
-        <p id="status"></p>
-        <p class="muted">La transcripción es automática y local (Whisper). En slang dominicano rápido o voces que se montan algunas palabras pueden salir mal: corrígelas en el paso 3 antes de exportar.</p>
+        <span id="videoMeta" class="muted"></span>
       </section>
 
-      <section class="card">
-        <h2>2 · Elige un clip</h2>
+      <section class="card" id="stepsCard" hidden>
+        <h2>Avance de tu video</h2>
+        <div class="steps" id="stepsBar">
+          <div class="step" data-step="0"><div class="dot">1</div>Descargar</div>
+          <div class="step" data-step="1"><div class="dot">2</div>Transcribir</div>
+          <div class="step" data-step="2"><div class="dot">3</div>IA elige</div>
+          <div class="step" data-step="3"><div class="dot">4</div>Cortar</div>
+          <div class="step" data-step="4"><div class="dot">5</div>Listo</div>
+        </div>
+        <p class="step-status" id="stepStatus">Esperando un video. Pega un link arriba para empezar…</p>
+        <div class="job-error" id="jobError"></div>
+      </section>
+
+      <section class="card" id="candidatesCard" hidden>
+        <h2 id="candidatesTitle">Elige un clip</h2>
         <div id="candidates"><p class="muted">Primero genera los clips.</p></div>
+        <p class="muted">La transcripción es automática y local (Whisper). En slang dominicano rápido o voces que se montan algunas palabras pueden salir mal: corrígelas en el paso siguiente antes de exportar.</p>
       </section>
 
-      <section class="card">
-        <h2>3 · Revisa / corrige los subtítulos</h2>
+      <section class="card" id="step3Card" hidden>
+        <h2>Revisa / corrige los subtítulos</h2>
         <label>Texto del clip (editable — se usa para los subtítulos)</label>
         <textarea id="subText" rows="3" placeholder="Elige un clip para ver su texto…"></textarea>
         <p class="muted">Si corriges una palabra aquí, el render usa tu texto.</p>
@@ -252,30 +298,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
       <div>
       <section class="card">
-        <h2>Configuración</h2>
-        <div class="switchrow">
-          <label class="switch"><input type="checkbox" id="frameEnabled" checked><span class="slider"></span></label>
-          <div><b id="frameLabel">Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
-        </div>
-        <label>Nombre que saldrá en el marco</label>
-        <input id="brandText" type="text" value="@marketingcaribe">
-        <div class="row">
-          <div><label>Color del marco</label><input id="frameColor" type="color" value="#FADE4C"></div>
-          <div><label>Grosor (px)</label><input id="frameWidth" type="number" value="14" min="0" max="40"></div>
-        </div>
-        <label>Título debajo del nombre (opcional)</label>
-        <input id="titleText" type="text" value="BULIN 47 x VIN DIESEL">
-        <label>Subtítulos</label>
-        <select id="showSubs"><option value="1" selected>Con subtítulos virales</option><option value="0">Sin subtítulos</option></select>
-        <div class="row">
-          <div><label>Estilo</label><select id="subStyle"><option value="viral" selected>Viral (blanco + amarillo)</option><option value="plain">Blanco</option><option value="yellow">Amarillo</option></select></div>
-          <div><label>Tamaño</label><input id="subSize" type="number" value="76" min="40" max="110"></div>
-        </div>
-        <label>Posición</label>
-        <select id="subPos"><option value="bottom" selected>Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select>
-      </section>
-
-      <section class="card">
         <h2>Vista previa (en vivo)</h2>
         <p class="muted">Cambia el marco o el nombre y se refleja aquí antes de exportar.</p>
         <div class="phone" id="phone">
@@ -285,6 +307,60 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
         </div>
         <p class="muted" style="text-align:center" id="pvNote">9:16 · 1080×1920 · Reels / TikTok / Shorts</p>
+      </section>
+
+      <section class="card">
+        <h2>Configuración</h2>
+        <div class="mini-tabs">
+          <button class="mini-tab on" data-cfg="template">Plantilla</button>
+          <button class="mini-tab" data-cfg="clips">Clips</button>
+          <button class="mini-tab" data-cfg="video">Video</button>
+        </div>
+        <div class="cfg-pane" id="cfg-template">
+          <label>Plantilla del clip</label>
+          <select id="cfgTemplate"><option>Gancho grande</option><option>Viral</option><option>Minimalista</option></select>
+          <div class="switchrow">
+            <label class="switch"><input type="checkbox" id="frameEnabled" checked><span class="slider"></span></label>
+            <div><b id="frameLabel">Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
+          </div>
+          <label>Nombre que saldrá en el marco</label>
+          <input id="brandText" type="text" value="@marketingcaribe">
+          <p class="muted">Tu marca de agua se cambia en Configuración.</p>
+          <div class="row">
+            <div><label>Color del marco</label><input id="frameColor" type="color" value="#FADE4C"></div>
+            <div><label>Grosor (px)</label><input id="frameWidth" type="number" value="14" min="0" max="40"></div>
+          </div>
+          <label>Título debajo del nombre (opcional)</label>
+          <input id="titleText" type="text" value="BULIN 47 x VIN DIESEL">
+          <label>Subtítulos</label>
+          <select id="showSubs"><option value="1" selected>Con subtítulos virales</option><option value="0">Sin subtítulos</option></select>
+          <div class="row">
+            <div><label>Estilo</label><select id="subStyle"><option value="viral" selected>Viral (blanco + amarillo)</option><option value="plain">Blanco</option><option value="yellow">Amarillo</option></select></div>
+            <div><label>Tamaño</label><input id="subSize" type="number" value="76" min="40" max="110"></div>
+          </div>
+          <label>Posición</label>
+          <select id="subPos"><option value="bottom" selected>Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select>
+        </div>
+        <div class="cfg-pane" id="cfg-clips" hidden>
+          <label>Clips por video (máx.)</label>
+          <input id="cfgMaxClips" type="number" value="5" min="1" max="15">
+          <label>Duración mínima del clip (seg)</label>
+          <input id="cfgMinClip" type="number" value="20" min="5" max="120">
+          <label>Duración máxima del clip (seg)</label>
+          <input id="cfgMaxClip" type="number" value="45" min="10" max="180">
+          <p class="muted">La IA busca momentos de entre el mínimo y el máximo, y te muestra hasta el máximo de clips.</p>
+        </div>
+        <div class="cfg-pane" id="cfg-video" hidden>
+          <label>Calidad de salida</label>
+          <select id="cfgQuality"><option value="1080p" selected>Full HD 1080p (1080×1920)</option><option value="720p">HD 720p (720×1280)</option></select>
+          <div class="switchrow">
+            <label class="switch"><input type="checkbox" id="frameEnabledVideo" checked><span class="slider"></span></label>
+            <div><b>Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
+          </div>
+          <p class="muted">El video final siempre es vertical 9:16, listo para Reels, TikTok y Shorts.</p>
+        </div>
+        <div style="margin-top:16px"><button id="btnSaveConfig">Guardar configuración</button></div>
+        <p id="cfgMsg" class="muted"></p>
       </section>
       </div>
       </div>
@@ -324,41 +400,91 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
       <p id="accMsg" class="muted"></p>
       </div>
+      <div class="card">
+        <h4>Retiros</h4>
+        <p class="muted">Pide un retiro y el admin lo aprueba o lo rechaza.</p>
+        <label>Monto (RD$)</label>
+        <input id="wdAmount" type="number" min="1" placeholder="Ej: 1000">
+        <label>Método de retiro</label>
+        <input id="wdMethod" type="text" placeholder="Ej: Transferencia Banco Popular">
+        <label>Detalles (cuenta, titular…)</label>
+        <textarea id="wdDetails" rows="2" placeholder="Ej: Cuenta de ahorros 123-456789-0, Juan Pérez"></textarea>
+        <div style="margin-top:14px"><button id="btnWithdraw">Pedir retiro</button></div>
+        <p id="wdMsg" class="muted"></p>
+        <div id="myWithdrawals" style="margin-top:14px"></div>
+      </div>
       </div>
     </div>
 
     <div class="pane" id="pane-admin" hidden>
       <h3>Panel Admin</h3>
-      <p class="sub">Solo para administradores.</p>
-      <div class="card">
-        <h4>Usuarios</h4>
-        <div id="adminUsers"><p class="muted">Cargando…</p></div>
+      <p class="sub">Solo para administradores. Elige una sección:</p>
+      <div class="mini-tabs" id="adminTabs">
+        <button class="mini-tab on" data-admin="users">Usuarios</button>
+        <button class="mini-tab" data-admin="clips">Clips</button>
+        <button class="mini-tab" data-admin="requests">Solicitudes de pago</button>
+        <button class="mini-tab" data-admin="plans">Planes</button>
+        <button class="mini-tab" data-admin="methods">Métodos de pago</button>
+        <button class="mini-tab" data-admin="withdrawals">Retiros</button>
+        <button class="mini-tab" data-admin="settings">Configuración</button>
       </div>
-      <div class="card">
-        <h4>Todos los clips</h4>
-        <div id="adminClips"><p class="muted">Cargando…</p></div>
+      <div class="admin-pane" id="adminPane-users">
+        <div class="card">
+          <h4>Usuarios</h4>
+          <div id="adminUsers"><p class="muted">Cargando…</p></div>
+        </div>
       </div>
-      <div class="card">
-        <h4>Solicitudes de pago</h4>
-        <div id="adminRequests"><p class="muted">Cargando…</p></div>
+      <div class="admin-pane" id="adminPane-clips" hidden>
+        <div class="card">
+          <h4>Todos los clips</h4>
+          <p class="muted">Los clips se descargan apenas se renderizan, sin aprobación.</p>
+          <div id="adminClips"><p class="muted">Cargando…</p></div>
+        </div>
       </div>
-      <div class="card">
-        <h4>Planes</h4>
-        <div id="adminPlans"><p class="muted">Cargando…</p></div>
-        <label>Nombre del plan</label><input id="npName" type="text" placeholder="Ej: Full">
-        <div class="row"><div><label>Precio RD$</label><input id="npPrice" type="number" value="3500"></div><div><label>Días</label><input id="npDays" type="number" value="30"></div></div>
-        <label>Características (una por línea)</label><textarea id="npFeatures" rows="4" placeholder="Videos ilimitados&#10;Hasta 15 clips por video"></textarea>
-        <label><input type="checkbox" id="npPopular" style="width:18px;height:18px;vertical-align:-3px"> Más popular</label>
-        <div style="margin-top:12px"><button id="btnNewPlan">Crear plan</button></div>
+      <div class="admin-pane" id="adminPane-requests" hidden>
+        <div class="card">
+          <h4>Solicitudes de pago</h4>
+          <div id="adminRequests"><p class="muted">Cargando…</p></div>
+        </div>
       </div>
-      <div class="card">
-        <h4>Métodos de pago</h4>
-        <div id="adminMethods"><p class="muted">Cargando…</p></div>
-        <label>Nombre</label><input id="nmName" type="text" placeholder="Ej: Transferencia Banco Popular">
-        <div class="row"><div><label>Banco</label><input id="nmBank" type="text"></div><div><label>Tipo de cuenta</label><input id="nmType" type="text" placeholder="Ahorros"></div></div>
-        <div class="row"><div><label>Número de cuenta</label><input id="nmAccount" type="text"></div><div><label>Titular</label><input id="nmHolder" type="text"></div></div>
-        <label>Instrucciones</label><textarea id="nmInstr" rows="2" placeholder="Ej: Envía el comprobante por WhatsApp…"></textarea>
-        <div style="margin-top:12px"><button id="btnNewMethod">Crear método de pago</button></div>
+      <div class="admin-pane" id="adminPane-plans" hidden>
+        <div class="card">
+          <h4>Planes</h4>
+          <div id="adminPlans"><p class="muted">Cargando…</p></div>
+          <label>Nombre del plan</label><input id="npName" type="text" placeholder="Ej: Full">
+          <div class="row"><div><label>Precio RD$</label><input id="npPrice" type="number" value="3500"></div><div><label>Días</label><input id="npDays" type="number" value="30"></div></div>
+          <label>Características (una por línea)</label><textarea id="npFeatures" rows="4" placeholder="Videos ilimitados&#10;Hasta 15 clips por video"></textarea>
+          <label><input type="checkbox" id="npPopular" style="width:18px;height:18px;vertical-align:-3px"> Más popular</label>
+          <div style="margin-top:12px"><button id="btnNewPlan">Crear plan</button></div>
+        </div>
+      </div>
+      <div class="admin-pane" id="adminPane-methods" hidden>
+        <div class="card">
+          <h4>Métodos de pago</h4>
+          <div id="adminMethods"><p class="muted">Cargando…</p></div>
+          <label>Nombre</label><input id="nmName" type="text" placeholder="Ej: Transferencia Banco Popular">
+          <div class="row"><div><label>Banco</label><input id="nmBank" type="text"></div><div><label>Tipo de cuenta</label><input id="nmType" type="text" placeholder="Ahorros"></div></div>
+          <div class="row"><div><label>Número de cuenta</label><input id="nmAccount" type="text"></div><div><label>Titular</label><input id="nmHolder" type="text"></div></div>
+          <label>Instrucciones</label><textarea id="nmInstr" rows="2" placeholder="Ej: Envía el comprobante por WhatsApp…"></textarea>
+          <div style="margin-top:12px"><button id="btnNewMethod">Crear método de pago</button></div>
+        </div>
+      </div>
+      <div class="admin-pane" id="adminPane-withdrawals" hidden>
+        <div class="card">
+          <h4>Retiros</h4>
+          <div id="adminWithdrawals"><p class="muted">Cargando…</p></div>
+        </div>
+      </div>
+      <div class="admin-pane" id="adminPane-settings" hidden>
+        <div class="card">
+          <h4>Configuración de la plataforma</h4>
+          <p class="muted">Estos valores son los que reciben los usuarios nuevos al registrarse.</p>
+          <label>Nombre por defecto en el marco</label>
+          <input id="setBrand" type="text" placeholder="@marketingcaribe">
+          <label><input type="checkbox" id="setFrame" style="width:18px;height:18px;vertical-align:-3px"> Marco activado por defecto</label>
+          <div style="margin-top:14px"><button id="btnSaveSettings">Guardar configuración</button></div>
+          <p id="setMsg" class="muted"></p>
+        </div>
       </div>
     </div>
 
@@ -393,6 +519,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

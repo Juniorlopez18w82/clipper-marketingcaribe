@@ -3,8 +3,10 @@ __pycache__/
 .venv/
 venv/
 .env
+data/*.db
 data/sources/*
 data/outputs/*
 data/jobs/*
 data/transcripts/*
+data/receipts/*
 !data/*/.gitkeep

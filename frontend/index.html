@@ -10,8 +10,10 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
 header{padding:18px 20px;border-bottom:3px solid var(--yellow);display:flex;justify-content:space-between;align-items:center}
 header b{color:var(--yellow);font-size:22px}
-main{max-width:1100px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1fr 340px;gap:20px}
-@media(max-width:900px){main{grid-template-columns:1fr}}
+/* Landing: solo hero + tarjeta Mi cuenta (el creador vive dentro del panel) */
+main{max-width:640px;margin:0 auto;padding:40px 20px 60px}
+.hero-line{color:#f2f2f7;font-size:18px;line-height:1.6;text-align:center;margin:0 0 28px}
+.hero-line b{color:var(--yellow)}
 .card{background:var(--card);border:1px solid #222a55;border-radius:16px;padding:18px;margin-bottom:16px}
 h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
 input[type=text],input[type=url],input[type=email],input[type=password],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #333a66;background:#040017;color:var(--text);font-size:15px}
@@ -42,13 +44,18 @@ button.ghost{background:transparent;color:var(--yellow);border:2px solid var(--y
 .phone .subs{position:absolute;left:12px;right:12px;bottom:70px;text-align:center;color:#fff;font-weight:800;font-size:22px;text-shadow:0 2px 0 #000,0 0 8px #000}
 .phone .subs span{color:var(--yellow)}
 video#result{width:100%;border-radius:12px;background:#000}
-/* ===== Mi cuenta y Panel: SOLO aquí blanco / negro / rojo #E10600 ===== */
-#accountCard{background:#fff;color:#111;border:3px solid #000}
-#accountCard h2{color:#000;font-size:24px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
+/* Takeover del panel: cuando el panel está abierto, la landing desaparece.
+   (El atributo hidden NO bastaba: header{display:flex} y main{display:grid}
+   lo anulaban. La clase en body con !important sí los oculta.) */
+body.panel-open{background:#f7f7f8}
+body.panel-open>header,body.panel-open>main{display:none !important}
+/* ===== Mi cuenta (landing): blanco / negro / rojo, botones estilo panel ===== */
+#accountCard{background:#fff;color:#111;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+#accountCard h2{color:#111;font-size:22px;font-weight:700}
 #accountCard label{color:#333}
-#accountCard input{background:#fff;color:#111;border:2px solid #000}
-#accountCard .btn-red{background:#E10600;color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
-#accountCard .btn-black{background:#000;color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
+#accountCard input{background:#fff;color:#111;border:1px solid #d4d4d4;padding:11px 12px}
+#accountCard .btn-red{background:#E10600;color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px}
+#accountCard .btn-black{background:#000;color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px}
 #accountCard .muted{color:#555}
 /* ===== Panel ClipViral: app shell blanco / negro / rojo #E10600 ===== */
 .panel{background:#f7f7f8;color:#111;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
@@ -103,6 +110,17 @@ video#result{width:100%;border-radius:12px;background:#000}
 .panel .locked button{margin-top:16px}
 .panel .pane.is-locked .locked{display:block}
 .panel .pane.is-locked .pane-body{display:none}
+/* Creador dentro del panel (Crear Clip): 2 columnas, izquierda flujo, derecha config+preview */
+.panel .create-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.panel .create-grid .card h2{font-size:18px;font-weight:700;color:#111;margin:0 0 12px}
+.panel .clip{border:1px solid #d4d4d4;background:#fff;color:#111}
+.panel .clip.sel{border-color:#E10600;background:#fff5f5}
+.panel .clip small{color:#666}
+.panel #status{color:#E10600}
+.panel .slider{background:#d4d4d4}
+.panel .switch input:checked+.slider{background:#E10600}
+.panel .switch input:checked+.slider:before{background:#fff}
+.panel input[type=color]{background:#fff;border:1px solid #d4d4d4}
 /* Planes */
 .panel .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .panel .plan{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:22px;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column}
@@ -122,6 +140,9 @@ video#result{width:100%;border-radius:12px;background:#000}
 .panel .buybox input[type=file]{font-size:14px}
 .panel .bankbox{background:#f5f5f6;color:#111;border-radius:10px;padding:14px 16px;margin-top:12px;font-size:14px;line-height:1.7}
 .panel .bankbox b{color:#111}
+@media(max-width:900px){
+  .panel .create-grid{grid-template-columns:1fr}
+}
 @media(max-width:800px){
   .panel-shell{flex-direction:column}
   .panel-nav{width:auto;height:auto;position:static;flex-direction:row;overflow-x:auto;padding:12px;border-right:0;border-bottom:1px solid #e5e5e5}
@@ -137,7 +158,7 @@ video#result{width:100%;border-radius:12px;background:#000}
 <body>
 <header><b><img src="/favicon.svg" alt="ClipViral" style="width:26px;height:26px;vertical-align:-6px;margin-right:6px">ClipViral</b><span class="muted">YouTube / Live → Reels 9:16 · sin API de YouTube</span></header>
 
-<!-- Panel de usuario (blanco / negro / rojo). Solo se muestra al entrar. -->
+<!-- Panel de usuario (blanco / negro / rojo). Cuando se abre, toma TODA la pantalla (body.panel-open oculta header y main). -->
 <section class="panel" id="panel" hidden>
   <div class="panel-top">
     <span class="brand"><img src="/favicon.svg" alt="ClipViral"> ClipViral</span>
@@ -182,15 +203,99 @@ video#result{width:100%;border-radius:12px;background:#000}
 
     <div class="pane" id="pane-create" hidden>
       <h3>Crear Clip</h3>
-      <p class="sub">Pega el link del video, analízalo y úsalo en el creador.</p>
+      <p class="sub">Pega el link, genera los clips y renderiza tu clip 9:16 con marco y subtítulos.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
-      <div class="card">
-      <label>Link de YouTube</label>
-      <input id="panelUrl" type="url" placeholder="https://www.youtube.com/watch?v=…">
-      <div style="margin-top:12px"><button id="btnPanelInfo">Analizar video</button></div>
-      <p id="panelMeta" class="muted"></p>
-      <div style="margin-top:12px"><button id="btnPanelUse" class="black" hidden>Usar este video en el creador ↓</button></div>
+      <div class="create-grid">
+      <div>
+      <section class="card">
+        <h2>Link del video</h2>
+        <label>Link de YouTube</label>
+        <input id="panelUrl" type="url" placeholder="https://www.youtube.com/watch?v=…">
+        <div style="margin-top:12px"><button id="btnPanelInfo">Analizar video</button></div>
+        <p id="panelMeta" class="muted"></p>
+        <div style="margin-top:12px"><button id="btnPanelUse" class="black" hidden>Usar este video para generar clips</button></div>
+      </section>
+
+      <section class="card">
+        <h2>1 · Pega el link del video o live</h2>
+        <label>Link de YouTube</label>
+        <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="https://www.youtube.com/watch?v=lvPIofmDIGk">
+        <div class="row" style="margin-top:12px">
+          <button id="btnInfo">Analizar video</button>
+          <span id="videoMeta" class="muted"></span>
+        </div>
+        <div class="row">
+          <div><label>Analizar desde (seg)</label><input id="rangeStart" type="number" value="0" min="0"></div>
+          <div><label>Hasta (seg)</label><input id="rangeEnd" type="number" value="120" min="10"></div>
+          <div><label>Modelo Whisper</label><select id="model"><option value="base" selected>base (recomendado)</option><option value="tiny">tiny (rápido)</option><option value="small">small (más preciso, lento)</option></select></div>
+        </div>
+        <div style="margin-top:12px"><button id="btnClips">Generar clips</button></div>
+        <p id="status"></p>
+        <p class="muted">La transcripción es automática y local (Whisper). En slang dominicano rápido o voces que se montan algunas palabras pueden salir mal: corrígelas en el paso 3 antes de exportar.</p>
+      </section>
+
+      <section class="card">
+        <h2>2 · Elige un clip</h2>
+        <div id="candidates"><p class="muted">Primero genera los clips.</p></div>
+      </section>
+
+      <section class="card">
+        <h2>3 · Revisa / corrige los subtítulos</h2>
+        <label>Texto del clip (editable — se usa para los subtítulos)</label>
+        <textarea id="subText" rows="3" placeholder="Elige un clip para ver su texto…"></textarea>
+        <p class="muted">Si corriges una palabra aquí, el render usa tu texto.</p>
+        <div class="row">
+          <div><label>Inicio (seg)</label><input id="clipStart" type="number" step="0.1"></div>
+          <div><label>Fin (seg)</label><input id="clipEnd" type="number" step="0.1"></div>
+        </div>
+        <div style="margin-top:14px"><button id="btnRender">Renderizar clip 9:16</button></div>
+      </section>
+
+      <section class="card" id="resultCard" hidden>
+        <h2>Clip listo</h2>
+        <video id="result" controls playsinline></video>
+        <p style="margin-top:12px"><a id="downloadLink" href="#" download><button>⬇ Descargar MP4</button></a></p>
+      </section>
+      </div>
+
+      <div>
+      <section class="card">
+        <h2>Configuración</h2>
+        <div class="switchrow">
+          <label class="switch"><input type="checkbox" id="frameEnabled" checked><span class="slider"></span></label>
+          <div><b id="frameLabel">Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
+        </div>
+        <label>Nombre que saldrá en el marco</label>
+        <input id="brandText" type="text" value="@marketingcaribe">
+        <div class="row">
+          <div><label>Color del marco</label><input id="frameColor" type="color" value="#FADE4C"></div>
+          <div><label>Grosor (px)</label><input id="frameWidth" type="number" value="14" min="0" max="40"></div>
+        </div>
+        <label>Título debajo del nombre (opcional)</label>
+        <input id="titleText" type="text" value="BULIN 47 x VIN DIESEL">
+        <label>Subtítulos</label>
+        <select id="showSubs"><option value="1" selected>Con subtítulos virales</option><option value="0">Sin subtítulos</option></select>
+        <div class="row">
+          <div><label>Estilo</label><select id="subStyle"><option value="viral" selected>Viral (blanco + amarillo)</option><option value="plain">Blanco</option><option value="yellow">Amarillo</option></select></div>
+          <div><label>Tamaño</label><input id="subSize" type="number" value="76" min="40" max="110"></div>
+        </div>
+        <label>Posición</label>
+        <select id="subPos"><option value="bottom" selected>Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select>
+      </section>
+
+      <section class="card">
+        <h2>Vista previa (en vivo)</h2>
+        <p class="muted">Cambia el marco o el nombre y se refleja aquí antes de exportar.</p>
+        <div class="phone" id="phone">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,#222,#000);display:flex;align-items:center;justify-content:center;color:#666;font-size:60px">▶</div>
+          <div class="frame" id="pvFrame"></div>
+          <div class="brand" id="pvBrand">@marketingcaribe</div>
+          <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
+        </div>
+        <p class="muted" style="text-align:center" id="pvNote">9:16 · 1080×1920 · Reels / TikTok / Shorts</p>
+      </section>
+      </div>
       </div>
       </div>
     </div>
@@ -222,7 +327,7 @@ video#result{width:100%;border-radius:12px;background:#000}
       <input id="accName" type="text">
       <label>Correo</label>
       <input id="accEmail" type="email" disabled>
-      <label>Nombre que saldrá en el marco</label>
+      <label>Nombre del marco</label>
       <input id="accBrand" type="text" placeholder="@marketingcaribe">
       <label><input type="checkbox" id="accFrame" style="width:18px;height:18px;vertical-align:-3px"> Con marco (amarillo + nombre)</label>
       <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
@@ -271,114 +376,32 @@ video#result{width:100%;border-radius:12px;background:#000}
   </div>
 </section>
 <main>
-  <div>
-    <section class="card">
-      <h2>1 · Pega el link del video o live</h2>
-      <label>Link de YouTube</label>
-      <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="https://www.youtube.com/watch?v=lvPIofmDIGk">
+  <p class="hero-line">Convierte videos y lives de YouTube en <b>clips verticales 9:16</b> listos para Reels, TikTok y Shorts — sin API de YouTube.</p>
+  <section class="card" id="accountCard">
+    <h2>Mi cuenta</h2>
+    <div id="authLoggedOut">
+      <label>Nombre (solo para registrarse)</label>
+      <input id="authName" type="text" placeholder="Tu nombre">
+      <label>Correo</label>
+      <input id="authEmail" type="email" placeholder="tu@correo.com">
+      <label>Contraseña</label>
+      <input id="authPass" type="password" placeholder="Mínimo 6 caracteres">
       <div class="row" style="margin-top:12px">
-        <button id="btnInfo">Analizar video</button>
-        <span id="videoMeta" class="muted"></span>
+        <button id="btnLogin" class="btn-red">Entrar</button>
+        <button id="btnRegister" class="btn-black">Crear cuenta</button>
       </div>
-      <div class="row">
-        <div><label>Analizar desde (seg)</label><input id="rangeStart" type="number" value="0" min="0"></div>
-        <div><label>Hasta (seg)</label><input id="rangeEnd" type="number" value="120" min="10"></div>
-        <div><label>Modelo Whisper</label><select id="model"><option value="base" selected>base (recomendado)</option><option value="tiny">tiny (rápido)</option><option value="small">small (más preciso, lento)</option></select></div>
+      <p id="authMsg" class="muted"></p>
+    </div>
+    <div id="authLoggedIn" hidden>
+      <p>Hola, <b id="authUserName" style="color:#E10600"></b></p>
+      <p class="muted"><span id="authUserEmail"></span> · Plan <span id="authUserPlan"></span></p>
+      <div class="row" style="margin-top:12px">
+        <button id="btnShowPanel" class="btn-red">Ver mi panel</button>
+        <button id="btnLogout" class="btn-black">Cerrar sesión</button>
       </div>
-      <div style="margin-top:12px"><button id="btnClips">Generar clips</button></div>
-      <p id="status"></p>
-      <p class="muted">La transcripción es automática y local (Whisper). En slang dominicano rápido o voces que se montan algunas palabras pueden salir mal: corrígelas en el paso 3 antes de exportar.</p>
-    </section>
-
-    <section class="card">
-      <h2>2 · Elige un clip</h2>
-      <div id="candidates"><p class="muted">Primero genera los clips.</p></div>
-    </section>
-
-    <section class="card">
-      <h2>3 · Revisa / corrige los subtítulos</h2>
-      <label>Texto del clip (editable — se usa para los subtítulos)</label>
-      <textarea id="subText" rows="3" placeholder="Elige un clip para ver su texto…"></textarea>
-      <p class="muted">Si corriges una palabra aquí, el render usa tu texto.</p>
-      <div class="row">
-        <div><label>Inicio (seg)</label><input id="clipStart" type="number" step="0.1"></div>
-        <div><label>Fin (seg)</label><input id="clipEnd" type="number" step="0.1"></div>
-      </div>
-      <div style="margin-top:14px"><button id="btnRender">Renderizar clip 9:16</button></div>
-    </section>
-
-    <section class="card" id="resultCard" hidden>
-      <h2>Clip listo</h2>
-      <video id="result" controls playsinline></video>
-      <p style="margin-top:12px"><a id="downloadLink" href="#" download><button>⬇ Descargar MP4</button></a></p>
-    </section>
-  </div>
-
-  <div>
-    <section class="card" id="accountCard">
-      <h2>Mi cuenta</h2>
-      <div id="authLoggedOut">
-        <label>Nombre (solo para registrarse)</label>
-        <input id="authName" type="text" placeholder="Tu nombre">
-        <label>Correo</label>
-        <input id="authEmail" type="email" placeholder="tu@correo.com">
-        <label>Contraseña</label>
-        <input id="authPass" type="password" placeholder="Mínimo 6 caracteres">
-        <div class="row" style="margin-top:12px">
-          <button id="btnLogin" class="btn-red">Entrar</button>
-          <button id="btnRegister" class="btn-black">Crear cuenta</button>
-        </div>
-        <p id="authMsg" class="muted"></p>
-      </div>
-      <div id="authLoggedIn" hidden>
-        <p>Hola, <b id="authUserName" style="color:#E10600"></b></p>
-        <p class="muted"><span id="authUserEmail"></span> · Plan <span id="authUserPlan"></span></p>
-        <div class="row" style="margin-top:12px">
-          <button id="btnShowPanel" class="btn-red">Ver mi panel</button>
-          <button id="btnLogout" class="btn-black">Cerrar sesión</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>Configuración</h2>
-      <!-- NUEVO REQUISITO: interruptor Con marco / Sin marco -->
-      <div class="switchrow">
-        <label class="switch"><input type="checkbox" id="frameEnabled" checked><span class="slider"></span></label>
-        <div><b id="frameLabel">Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
-      </div>
-      <!-- NUEVO REQUISITO: campo editable del nombre en el marco -->
-      <label>Nombre que saldrá en el marco</label>
-      <input id="brandText" type="text" value="@marketingcaribe">
-      <div class="row">
-        <div><label>Color del marco</label><input id="frameColor" type="color" value="#FADE4C"></div>
-        <div><label>Grosor (px)</label><input id="frameWidth" type="number" value="14" min="0" max="40"></div>
-      </div>
-      <label>Título debajo del nombre (opcional)</label>
-      <input id="titleText" type="text" value="BULIN 47 x VIN DIESEL">
-      <label>Subtítulos</label>
-      <select id="showSubs"><option value="1" selected>Con subtítulos virales</option><option value="0">Sin subtítulos</option></select>
-      <div class="row">
-        <div><label>Estilo</label><select id="subStyle"><option value="viral" selected>Viral (blanco + amarillo)</option><option value="plain">Blanco</option><option value="yellow">Amarillo</option></select></div>
-        <div><label>Tamaño</label><input id="subSize" type="number" value="76" min="40" max="110"></div>
-      </div>
-      <label>Posición</label>
-      <select id="subPos"><option value="bottom" selected>Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select>
-    </section>
-
-    <section class="card">
-      <h2>Vista previa (en vivo)</h2>
-      <p class="muted">Cambia el marco o el nombre y se refleja aquí antes de exportar.</p>
-      <div class="phone" id="phone">
-        <div style="position:absolute;inset:0;background:linear-gradient(180deg,#222,#000);display:flex;align-items:center;justify-content:center;color:#666;font-size:60px">▶</div>
-        <div class="frame" id="pvFrame"></div>
-        <div class="brand" id="pvBrand">@marketingcaribe</div>
-        <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
-      </div>
-      <p class="muted" style="text-align:center" id="pvNote">9:16 · 1080×1920 · Reels / TikTok / Shorts</p>
-    </section>
-  </div>
+    </div>
+  </section>
 </main>
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

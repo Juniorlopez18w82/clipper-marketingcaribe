@@ -1,7 +1,10 @@
 """Clip records (DB) — the panel's "Mis Clips".
 
-A Clip is created when a render job finishes: it starts as "pendiente"
-and only an admin can change it to "aprobado" or "rechazado".
+A Clip is created when a render job finishes. Since 2026-11-10 clips are
+downloadable IMMEDIATELY after render — there is no admin approval for
+clips (Juan reversed the flow: only payments/receipts need approval).
+The status field stays in the DB for history but blocks nothing; new
+clips are recorded as "listo".
 Jobs themselves stay in data/jobs/ JSON files (v1); Clip is the durable,
 per-user record the panel and the admin panel list.
 """
@@ -13,10 +16,11 @@ from sqlalchemy import (Column, DateTime, Float, ForeignKey, Integer,
 from . import auth  # noqa: F401 — registers the users table for the FK below
 from .db import Base
 
-STATUS_PENDIENTE = "pendiente"
-STATUS_APROBADO = "aprobado"
-STATUS_RECHAZADO = "rechazado"
-ALL_STATUSES = (STATUS_PENDIENTE, STATUS_APROBADO, STATUS_RECHAZADO)
+STATUS_PENDIENTE = "pendiente"  # legacy, ya no bloquea nada
+STATUS_APROBADO = "aprobado"  # legacy, ya no bloquea nada
+STATUS_RECHAZADO = "rechazado"  # legacy, ya no bloquea nada
+STATUS_LISTO = "listo"  # estado actual: el clip está listo para descargar
+ALL_STATUSES = (STATUS_PENDIENTE, STATUS_APROBADO, STATUS_RECHAZADO, STATUS_LISTO)
 
 
 class Clip(Base):
@@ -57,7 +61,7 @@ def create_clip(db, *, user_id, video_url, title, uploader, start, end,
                 job_id, file) -> Clip:
     clip = Clip(user_id=user_id, video_url=video_url or "", title=title or "",
                 uploader=uploader or "", start=float(start), end=float(end),
-                status=STATUS_PENDIENTE, job_id=job_id, file=file)
+                status=STATUS_LISTO, job_id=job_id, file=file)
     db.add(clip)
     db.commit()
     db.refresh(clip)

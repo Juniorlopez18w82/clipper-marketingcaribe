@@ -13,7 +13,7 @@ main{max-width:1100px;margin:0 auto;padding:20px;display:grid;grid-template-colu
 @media(max-width:900px){main{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid #222a55;border-radius:16px;padding:18px;margin-bottom:16px}
 h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
-input[type=text],input[type=url],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #333a66;background:#040017;color:var(--text);font-size:15px}
+input[type=text],input[type=url],input[type=email],input[type=password],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #333a66;background:#040017;color:var(--text);font-size:15px}
 input[type=color]{width:60px;height:40px;padding:2px;background:#040017;border:1px solid #333a66;border-radius:10px}
 button{background:var(--yellow);color:#040017;border:0;border-radius:999px;padding:12px 20px;font-weight:700;cursor:pointer;font-size:15px}
 button:disabled{opacity:.5;cursor:wait}
@@ -41,10 +41,175 @@ button.ghost{background:transparent;color:var(--yellow);border:2px solid var(--y
 .phone .subs{position:absolute;left:12px;right:12px;bottom:70px;text-align:center;color:#fff;font-weight:800;font-size:22px;text-shadow:0 2px 0 #000,0 0 8px #000}
 .phone .subs span{color:var(--yellow)}
 video#result{width:100%;border-radius:12px;background:#000}
+/* ===== Mi cuenta y Panel: SOLO aquí blanco / negro / rojo #E10600 ===== */
+#accountCard{background:#fff;color:#111;border:3px solid #000}
+#accountCard h2{color:#000;font-size:24px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
+#accountCard label{color:#333}
+#accountCard input{background:#fff;color:#111;border:2px solid #000}
+#accountCard .btn-red{background:#E10600;color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
+#accountCard .btn-black{background:#000;color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
+#accountCard .muted{color:#555}
+.panel{background:#fff;color:#111;border-top:8px solid #E10600;padding:28px 20px}
+.panel-inner{max-width:1100px;margin:0 auto}
+.panel h2{color:#000;font-size:38px;font-weight:900;text-transform:uppercase;line-height:1.05;margin:0}
+.panel h2 span{color:#E10600}
+.panel .sub{color:#333;font-size:17px;font-weight:700;margin:6px 0 18px}
+.panel .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.panel .tab{background:#000;color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
+.panel .tab.on{background:#E10600}
+.panel .pane h3{font-size:26px;font-weight:900;text-transform:uppercase;margin:0 0 14px}
+.panel .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:700px){.panel .stats{grid-template-columns:1fr}}
+.panel .stat{background:#000;color:#fff;border-radius:16px;padding:20px;text-align:center}
+.panel .stat b{display:block;font-size:52px;font-weight:900;line-height:1}
+.panel .stat.red{background:#E10600}
+.panel .stat span{font-size:15px;font-weight:800;text-transform:uppercase}
+.panel .rowline{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#f4f4f4;border:2px solid #000;border-radius:14px;padding:14px;margin:10px 0;flex-wrap:wrap}
+.panel .rowline b{font-size:17px}
+.panel .badge{display:inline-block;background:#000;color:#fff;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:900;text-transform:uppercase}
+.panel .badge.aprobado{background:#E10600}
+.panel .badge.rechazado{background:#888}
+.panel label{display:block;font-size:14px;font-weight:800;color:#000;margin:14px 0 4px}
+.panel input[type=text],.panel input[type=url],.panel input[type=email]{width:100%;padding:12px;border-radius:10px;border:2px solid #000;background:#fff;color:#111;font-size:16px}
+.panel button{background:#E10600;color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
+.panel button.black{background:#000}
+.panel button.small{padding:8px 14px;font-size:13px}
+.panel .muted{color:#555;font-size:14px}
+.panel table{width:100%;border-collapse:collapse;font-size:15px}
+.panel th,.panel td{border-bottom:2px solid #000;padding:10px 6px;text-align:left}
+.panel th{text-transform:uppercase;font-size:13px}
+.panel .locked{display:none;background:#E10600;color:#fff;border-radius:14px;padding:20px;margin:12px 0;font-weight:800;font-size:18px}
+.panel .locked button{background:#fff;color:#E10600;margin-top:12px}
+.panel .pane.is-locked .locked{display:block}
+.panel .pane.is-locked .pane-body{display:none}
+.panel .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:700px){.panel .plans{grid-template-columns:1fr}}
+.panel .plan{background:#fff;border:3px solid #000;border-radius:18px;padding:20px;position:relative}
+.panel .plan.popular{border-color:#E10600;box-shadow:0 0 0 3px #E10600}
+.panel .plan h4{font-size:28px;font-weight:900;text-transform:uppercase;margin:0}
+.panel .plan .price{font-size:42px;font-weight:900;line-height:1;margin:8px 0}
+.panel .plan .price small{font-size:16px}
+.panel .plan ul{list-style:none;padding:0;margin:14px 0}
+.panel .plan li{padding:6px 0;border-bottom:1px solid #ddd;font-weight:700}
+.panel .plan li.no{color:#888}
+.panel .plan .tag{display:inline-block;background:#E10600;color:#fff;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:900;text-transform:uppercase}
+.panel .plan .tag.mine{background:#000}
+.panel .buybox{border:3px solid #E10600;border-radius:18px;padding:20px;margin-top:18px}
+.panel .buybox label{display:block;font-size:14px;font-weight:800;color:#000;margin:14px 0 4px}
+.panel .buybox select{width:100%;padding:12px;border-radius:10px;border:2px solid #000;background:#fff;color:#111;font-size:16px}
+.panel .buybox input[type=file]{font-size:15px}
+.panel .bankbox{background:#000;color:#fff;border-radius:14px;padding:16px;margin-top:12px;font-size:16px;line-height:1.6}
+.panel .bankbox b{color:#E10600}
 </style>
 </head>
 <body>
 <header><b>✂️ Clipper · MarketingCaribe</b><span class="muted">YouTube / Live → Reels 9:16 · sin API de YouTube</span></header>
+
+<!-- Panel de usuario (blanco / negro / rojo). Solo se muestra al entrar. -->
+<section class="panel" id="panel" hidden>
+  <div class="panel-inner">
+    <h2>Mi panel <span>· Clipper</span></h2>
+    <p class="sub" id="panelWelcome">Tus clips, tus aprobaciones y tu cuenta, todo en un solo lugar.</p>
+    <div class="tabs">
+      <button class="tab on" data-tab="home">Inicio</button>
+      <button class="tab" data-tab="clips">Mis Clips</button>
+      <button class="tab" data-tab="create">Crear Clip</button>
+      <button class="tab" data-tab="plans">Planes</button>
+      <button class="tab" data-tab="account">Mi Cuenta</button>
+      <button class="tab" data-tab="admin" id="tabAdmin" hidden>Panel Admin</button>
+      <button class="tab" data-tab="creator" id="tabCreator" style="background:#fff;color:#000;border:2px solid #000">Ir al creador ↓</button>
+    </div>
+
+    <div class="pane" id="pane-home">
+      <h3>Inicio</h3>
+      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <div class="pane-body">
+      <div class="stats">
+        <div class="stat"><b id="stTotal">0</b><span>Clips creados</span></div>
+        <div class="stat red"><b id="stPend">0</b><span>Pendientes</span></div>
+        <div class="stat"><b id="stApr">0</b><span>Aprobados</span></div>
+      </div>
+      <p class="muted">Un clip queda <b>Pendiente</b> cuando se renderiza. El admin lo aprueba y ahí sí lo puedes descargar desde Mis Clips.</p>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-clips" hidden>
+      <h3>Mis Clips</h3>
+      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <div class="pane-body"><div id="myClips"><p class="muted">Cargando…</p></div></div>
+    </div>
+
+    <div class="pane" id="pane-create" hidden>
+      <h3>Crear Clip</h3>
+      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <div class="pane-body">
+      <label>Link de YouTube</label>
+      <input id="panelUrl" type="url" placeholder="https://www.youtube.com/watch?v=…">
+      <div style="margin-top:12px"><button id="btnPanelInfo">Analizar video</button></div>
+      <p id="panelMeta" class="muted"></p>
+      <div style="margin-top:12px"><button id="btnPanelUse" class="black" hidden>Usar este video en el creador ↓</button></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-plans" hidden>
+      <h3>Planes</h3>
+      <p class="sub">Elige tu plan, paga por transferencia y sube el comprobante. El admin lo aprueba y quedas desbloqueado.</p>
+      <div class="plans" id="planCards"><p class="muted">Cargando planes…</p></div>
+      <div class="buybox" id="buyBox" hidden>
+        <h3 style="font-size:22px" id="buyTitle">Contratar plan</h3>
+        <label>Método de pago (transferencia)</label>
+        <select id="buyMethod"></select>
+        <div class="bankbox" id="bankBox" hidden></div>
+        <label>Comprobante de pago (imagen o PDF, máx. 5 MB)</label>
+        <input id="buyReceipt" type="file" accept="image/*,.pdf">
+        <div style="margin-top:14px"><button id="btnBuy">Enviar comprobante</button></div>
+        <p id="buyMsg" class="muted"></p>
+      </div>
+      <div id="myRequests" style="margin-top:18px"></div>
+    </div>
+
+    <div class="pane" id="pane-account" hidden>
+      <h3>Mi Cuenta / Configuración</h3>
+      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <div class="pane-body">
+      <label>Nombre</label>
+      <input id="accName" type="text">
+      <label>Correo</label>
+      <input id="accEmail" type="email" disabled>
+      <label>Nombre que saldrá en el marco</label>
+      <input id="accBrand" type="text" placeholder="@marketingcaribe">
+      <label><input type="checkbox" id="accFrame" style="width:22px;height:22px"> Con marco (amarillo + nombre)</label>
+      <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
+      <p id="accMsg" class="muted"></p>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-admin" hidden>
+      <h3>Panel Admin</h3>
+      <p class="sub">Solo para administradores.</p>
+      <h3 style="font-size:20px">Usuarios</h3>
+      <div id="adminUsers"><p class="muted">Cargando…</p></div>
+      <h3 style="font-size:20px;margin-top:24px">Todos los clips</h3>
+      <div id="adminClips"><p class="muted">Cargando…</p></div>
+      <h3 style="font-size:20px;margin-top:24px">Solicitudes de pago</h3>
+      <div id="adminRequests"><p class="muted">Cargando…</p></div>
+      <h3 style="font-size:20px;margin-top:24px">Planes</h3>
+      <div id="adminPlans"><p class="muted">Cargando…</p></div>
+      <label>Nombre del plan</label><input id="npName" type="text" placeholder="Ej: Full">
+      <div class="row"><div><label>Precio RD$</label><input id="npPrice" type="number" value="3500"></div><div><label>Días</label><input id="npDays" type="number" value="30"></div></div>
+      <label>Características (una por línea)</label><textarea id="npFeatures" rows="4" placeholder="Videos ilimitados&#10;Hasta 15 clips por video"></textarea>
+      <label><input type="checkbox" id="npPopular" style="width:22px;height:22px"> Más popular</label>
+      <div style="margin-top:12px"><button id="btnNewPlan">Crear plan</button></div>
+      <h3 style="font-size:20px;margin-top:24px">Métodos de pago</h3>
+      <div id="adminMethods"><p class="muted">Cargando…</p></div>
+      <label>Nombre</label><input id="nmName" type="text" placeholder="Ej: Transferencia Banco Popular">
+      <div class="row"><div><label>Banco</label><input id="nmBank" type="text"></div><div><label>Tipo de cuenta</label><input id="nmType" type="text" placeholder="Ahorros"></div></div>
+      <div class="row"><div><label>Número de cuenta</label><input id="nmAccount" type="text"></div><div><label>Titular</label><input id="nmHolder" type="text"></div></div>
+      <label>Instrucciones</label><textarea id="nmInstr" rows="2" placeholder="Ej: Envía el comprobante por WhatsApp…"></textarea>
+      <div style="margin-top:12px"><button id="btnNewMethod">Crear método de pago</button></div>
+    </div>
+  </div>
+</section>
 <main>
   <div>
     <section class="card">
@@ -90,6 +255,31 @@ video#result{width:100%;border-radius:12px;background:#000}
   </div>
 
   <div>
+    <section class="card" id="accountCard">
+      <h2>Mi cuenta</h2>
+      <div id="authLoggedOut">
+        <label>Nombre (solo para registrarse)</label>
+        <input id="authName" type="text" placeholder="Tu nombre">
+        <label>Correo</label>
+        <input id="authEmail" type="email" placeholder="tu@correo.com">
+        <label>Contraseña</label>
+        <input id="authPass" type="password" placeholder="Mínimo 6 caracteres">
+        <div class="row" style="margin-top:12px">
+          <button id="btnLogin" class="btn-red">Entrar</button>
+          <button id="btnRegister" class="btn-black">Crear cuenta</button>
+        </div>
+        <p id="authMsg" class="muted"></p>
+      </div>
+      <div id="authLoggedIn" hidden>
+        <p>Hola, <b id="authUserName" style="color:#E10600"></b></p>
+        <p class="muted"><span id="authUserEmail"></span> · Plan <span id="authUserPlan"></span></p>
+        <div class="row" style="margin-top:12px">
+          <button id="btnShowPanel" class="btn-red">Ver mi panel</button>
+          <button id="btnLogout" class="btn-black">Cerrar sesión</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <h2>Configuración</h2>
       <!-- NUEVO REQUISITO: interruptor Con marco / Sin marco -->

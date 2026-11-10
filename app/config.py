@@ -9,8 +9,10 @@ OUTPUTS_DIR = DATA_DIR / "outputs"
 JOBS_DIR = DATA_DIR / "jobs"
 TRANSCRIPTS_DIR = DATA_DIR / "transcripts"
 RECEIPTS_DIR = DATA_DIR / "receipts"  # comprobantes de pago subidos
+UPLOADS_DIR = DATA_DIR / "uploads"  # videos subidos por el usuario
 
-for d in (SOURCES_DIR, OUTPUTS_DIR, JOBS_DIR, TRANSCRIPTS_DIR, RECEIPTS_DIR):
+for d in (SOURCES_DIR, OUTPUTS_DIR, JOBS_DIR, TRANSCRIPTS_DIR, RECEIPTS_DIR,
+          UPLOADS_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # Whisper model: "tiny" (fast, rough) or "base" (proven 2026-11-10, better ES).
@@ -27,6 +29,8 @@ DEFAULT_TITLE_TEXT = ""
 DEFAULT_SUBTITLE_SIZE = 76
 # Max concurrent heavy jobs (download/transcribe/render) in-process.
 MAX_WORKERS = int(os.environ.get("CLIPPER_MAX_WORKERS", "2"))
+# Límite de subida de video por el usuario (500 MB).
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 
 FONT_BOLD = os.environ.get(
     "CLIPPER_FONT_BOLD", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"

@@ -8,8 +8,12 @@ faster-whisper==1.2.1
 # NOTE: faster-whisper 1.2.1 + av 19.x breaks decode_audio() (metadata_errors kwarg).
 # We never pass a file path to Whisper: transcribe.py loads the WAV with the
 # stdlib `wave` module and passes a numpy array (proven in clipper-prueba/).
-# Pin av below 15 as a second guard.
-av>=10,<15
+# Pin av below 15 as a second guard. av==14.0.0 exactly, NOT a range:
+# pip resolves av>=10,<15 to 14.4.0, which ships no wheel for Python 3.12,
+# so pip tries to build it from source and fails in slim images (no
+# pkg-config / ffmpeg dev libs). 14.0.0 has a prebuilt wheel. Verified
+# 2026-11-10: full requirements install clean, av 14.0.0 + faster-whisper import ok.
+av==14.0.0
 numpy==2.2.3
 ctranslate2==4.8.5
 python-multipart==0.0.20

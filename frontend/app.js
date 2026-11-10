@@ -1,18 +1,42 @@
 // ClipViral — frontend (same origin, talks to /api/*)
 const $ = (id) => document.getElementById(id);
-const state = { clipsJob: null, transcript: null, selected: null, words: null, user: null };
+const state = { clipsJob: null, transcript: null, selected: null, words: null,
+  user: null, uploadedFile: null, busy: false };
+const FRIENDLY_ERROR = "El servidor está despertando o se está actualizando, espera un minuto e inténtalo de nuevo";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ---------- Mi cuenta: registro / login (JWT en localStorage) ----------
+// ---------- fetch seguro: nunca rompe con JSON vacío o no-JSON ----------
+// Todas las llamadas a la API pasan por aquí. Si el servidor responde
+// vacío, con HTML o con un 5xx (p. ej. Render reiniciando), el usuario
+// ve un mensaje amable en la pantalla, nunca "Failed to execute 'json'".
+async function safeJson(r) {
+  const text = await r.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+async function apiFetch(path, opts = {}) {
+  let r;
+  try {
+    r = await fetch(path, opts);
+  } catch {
+    const e = new Error(FRIENDLY_ERROR);
+    e.status = 0;
+    throw e;
+  }
+  const d = await safeJson(r);
+  if (!r.ok) {
+    const e = new Error((d && d.detail) || FRIENDLY_ERROR);
+    e.status = r.status;
+    throw e;
+  }
+  return d;
+}
 function authHeaders(extra = {}) {
   const t = localStorage.getItem("clipper_token");
   return t ? { ...extra, Authorization: `Bearer ${t}` } : extra;
 }
-async function authCall(path, body) {
-  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.detail || "Error");
-  return d;
-}
+
+// ---------- Mi cuenta: registro / login (JWT en localStorage) ----------
 // El panel es la app: al abrirse toma TODA la pantalla (body.panel-open
 // oculta el header oscuro y todo el <main> con display:none !important —
 // el atributo hidden solo NO bastaba, porque header{display:flex} y
@@ -39,9 +63,15 @@ function updateTopBar() {
   $("panelUserName").textContent = u.name || "";
   $("panelUserPlan").textContent = u.is_admin ? "Admin" : (u.plan && u.plan !== "free" ? u.plan : "Sin plan");
   $("panelUserPlan").classList.toggle("admin", !!u.is_admin);
+  // Banner de impersonación (el admin entró a la cuenta de un usuario).
+  const imp = localStorage.getItem("clipper_admin_token");
+  $("impBanner").hidden = !imp;
+  if (imp) $("impName").textContent = localStorage.getItem("clipper_impersonating") || u.name || "";
 }
 function doLogout() {
   localStorage.removeItem("clipper_token");
+  localStorage.removeItem("clipper_admin_token");
+  localStorage.removeItem("clipper_impersonating");
   showUser(null);
 }
 function showUser(user) {
@@ -53,13 +83,16 @@ function showUser(user) {
     $("authUserEmail").textContent = user.email;
     $("authUserPlan").textContent = user.is_admin ? "Admin" : user.plan;
     updateTopBar();
-    $("panelWelcome").textContent = `Hola, ${user.name} — tus clips, tus aprobaciones y tu cuenta, todo en un solo lugar.`;
+    $("panelWelcome").textContent = `Hola, ${user.name} — tus clips y tu cuenta, todo en un solo lugar.`;
     $("tabAdmin").hidden = !user.is_admin;
     // La configuración guardada del usuario manda en el creador.
     if (user.brand_text) $("brandText").value = user.brand_text;
     $("frameEnabled").checked = user.frame_enabled !== false;
+    $("frameEnabledVideo").checked = user.frame_enabled !== false;
+    fillConfig(user);
     updatePreview();
     loadPanel();
+    loadMyWithdrawals();
     // Al entrar, el panel SE ABRE SOLO: el panel es la app, la landing
     // es solo la puerta.
     openPanel();
@@ -70,16 +103,27 @@ function showUser(user) {
 }
 async function refreshMe() {
   const t = localStorage.getItem("clipper_token");
-  if (!t) return showUser(null);
+  if (!t) {
+    document.documentElement.classList.remove("booting");
+    return showUser(null);
+  }
   try {
-    const r = await fetch("/api/auth/me", { headers: authHeaders() });
-    if (!r.ok) throw new Error();
-    showUser(await r.json());
-  } catch { localStorage.removeItem("clipper_token"); showUser(null); }
+    const me = await apiFetch("/api/auth/me", { headers: authHeaders() });
+    document.documentElement.classList.remove("booting");
+    showUser(me);
+  } catch (e) {
+    // 401 = token inválido: se borra y se muestra el login. Cualquier
+    // otro fallo (servidor despertando) conserva el token.
+    if (e.status === 401) localStorage.removeItem("clipper_token");
+    document.documentElement.classList.remove("booting");
+    if (e.status !== 401) $("authMsg").textContent = FRIENDLY_ERROR;
+    showUser(null);
+  }
 }
 $("btnLogin").onclick = async () => {
   try {
-    const d = await authCall("/api/auth/login", { email: $("authEmail").value.trim(), password: $("authPass").value });
+    const d = await apiFetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: $("authEmail").value.trim(), password: $("authPass").value }) });
     localStorage.setItem("clipper_token", d.access_token);
     $("authMsg").textContent = "";
     showUser(d.user);
@@ -87,7 +131,8 @@ $("btnLogin").onclick = async () => {
 };
 $("btnRegister").onclick = async () => {
   try {
-    const d = await authCall("/api/auth/register", { name: $("authName").value.trim(), email: $("authEmail").value.trim(), password: $("authPass").value });
+    const d = await apiFetch("/api/auth/register", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("authName").value.trim(), email: $("authEmail").value.trim(), password: $("authPass").value }) });
     localStorage.setItem("clipper_token", d.access_token);
     $("authMsg").textContent = "";
     showUser(d.user);
@@ -96,6 +141,13 @@ $("btnRegister").onclick = async () => {
 $("btnLogout").onclick = doLogout;
 $("btnLogoutTop").onclick = doLogout;
 $("btnShowPanel").onclick = () => openPanel();
+$("btnBackAdmin").onclick = () => {
+  const adminToken = localStorage.getItem("clipper_admin_token");
+  if (adminToken) localStorage.setItem("clipper_token", adminToken);
+  localStorage.removeItem("clipper_admin_token");
+  localStorage.removeItem("clipper_impersonating");
+  location.reload();
+};
 refreshMe();
 
 // ---------- Panel: pestañas ----------
@@ -110,13 +162,42 @@ document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
   };
 });
 
+// ---------- Panel Admin: pestañas (una sección a la vez) ----------
+document.querySelectorAll("#adminTabs .mini-tab").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll("#adminTabs .mini-tab").forEach((b) => b.classList.toggle("on", b === btn));
+    document.querySelectorAll(".admin-pane").forEach((p) => p.hidden = true);
+    $("adminPane-" + btn.dataset.admin).hidden = false;
+    const loaders = { users: loadAdminUsers, clips: loadAdminClips, requests: loadAdminRequests,
+      plans: loadAdminPlans, methods: loadAdminMethods, withdrawals: loadAdminWithdrawals,
+      settings: loadAdminSettings };
+    if (loaders[btn.dataset.admin]) loaders[btn.dataset.admin]();
+  };
+});
+
+// ---------- Configuración del creador: pestañas Plantilla / Clips / Video ----------
+document.querySelectorAll(".panel [data-cfg]").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll(".panel [data-cfg]").forEach((b) => b.classList.toggle("on", b === btn));
+    document.querySelectorAll(".cfg-pane").forEach((p) => p.hidden = true);
+    $("cfg-" + btn.dataset.cfg).hidden = false;
+  };
+});
+
+function fillConfig(u) {
+  $("cfgTemplate").value = u.template || "Gancho grande";
+  $("cfgMaxClips").value = u.max_clips ?? 5;
+  $("cfgMinClip").value = u.min_clip_secs ?? 20;
+  $("cfgMaxClip").value = u.max_clip_secs ?? 45;
+  $("cfgQuality").value = u.quality || "1080p";
+}
+
 async function loadPanel() {
   // ¿Tiene plan activo? Si no, se bloquean Inicio / Mis Clips / Crear / Cuenta.
   // El ADMIN nunca se bloquea: no necesita plan para usar la plataforma.
   let hasPlan = !!(state.user && state.user.is_admin), activePlanId = null;
   try {
-    const r = await fetch("/api/subscriptions/mine", { headers: authHeaders() });
-    const d = await r.json();
+    const d = await apiFetch("/api/subscriptions/mine", { headers: authHeaders() });
     hasPlan = hasPlan || !!d.active_subscription;
     activePlanId = d.active_subscription ? d.active_subscription.plan_id : null;
     renderMyRequests(d.requests || []);
@@ -126,11 +207,10 @@ async function loadPanel() {
     if (pane) pane.classList.toggle("is-locked", !hasPlan);
   });
   try {
-    const r = await fetch("/api/me/stats", { headers: authHeaders() });
-    const s = await r.json();
-    $("stTotal").textContent = s.clips ?? 0;
-    $("stPend").textContent = s.pendientes ?? 0;
-    $("stApr").textContent = s.aprobados ?? 0;
+    const s = await apiFetch("/api/me/stats", { headers: authHeaders() });
+    $("stMonth").textContent = s.clips_this_month ?? 0;
+    $("stProcessing").textContent = s.videos_in_process ?? 0;
+    $("stTotalClips").textContent = s.clips_total ?? 0;
   } catch { /* stats best-effort */ }
   $("accName").value = state.user.name || "";
   $("accEmail").value = state.user.email || "";
@@ -157,8 +237,7 @@ function featureItem(f) {
 async function renderPlans(activePlanId) {
   const box = $("planCards");
   try {
-    const r = await fetch("/api/plans");
-    _plans = await r.json();
+    _plans = await apiFetch("/api/plans");
     box.innerHTML = "";
     _plans.forEach((p) => {
       const div = document.createElement("div");
@@ -180,8 +259,7 @@ async function startBuy(plan) {
   $("buyTitle").textContent = `Contratar ${plan.name} — RD$ ${plan.price_dop.toLocaleString("es-DO")}`;
   $("buyMsg").textContent = "";
   try {
-    const r = await fetch("/api/payment-methods", { headers: authHeaders() });
-    _methods = await r.json();
+    _methods = await apiFetch("/api/payment-methods", { headers: authHeaders() });
     const sel = $("buyMethod");
     sel.innerHTML = _methods.map((m) => `<option value="${m.id}">${m.name} — ${m.bank}</option>`).join("");
     if (!_methods.length) { sel.innerHTML = "<option value=''>No hay métodos de pago activos</option>"; }
@@ -206,20 +284,35 @@ $("btnBuy").onclick = async () => {
   fd.append("payment_method_id", $("buyMethod").value);
   fd.append("receipt", file);
   try {
-    const r = await fetch("/api/subscriptions", { method: "POST", headers: authHeaders(), body: fd });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Error");
+    await apiFetch("/api/subscriptions", { method: "POST", headers: authHeaders(), body: fd });
     $("buyMsg").textContent = "Solicitud enviada. Queda Pendiente hasta que el admin la apruebe.";
     $("buyBox").hidden = true;
     loadPanel();
   } catch (e) { $("buyMsg").textContent = "Error: " + e.message; }
 };
 
-// ---------- Panel Admin: solicitudes, planes y métodos ----------
+// ---------- Panel Admin ----------
+async function loadAdminUsers() {
+  try {
+    const users = await apiFetch("/api/admin/users", { headers: authHeaders() });
+    $("adminUsers").innerHTML = "<table><tr><th>Nombre</th><th>Correo</th><th>Plan</th><th>Admin</th><th></th></tr>" +
+      users.map((u) => `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.plan}</td><td>${u.is_admin ? "SÍ" : "No"}</td>
+        <td>${u.is_admin ? "" : `<button class="small" data-imp="${u.id}" data-name="${u.name}">Entrar como usuario</button>`}</td></tr>`).join("") + "</table>";
+    $("adminUsers").querySelectorAll("[data-imp]").forEach((b) => b.onclick = () => impersonateUser(b.dataset.imp, b.dataset.name));
+  } catch { $("adminUsers").innerHTML = "<p class='muted'>No se pudieron cargar los usuarios.</p>"; }
+}
+async function impersonateUser(userId, name) {
+  try {
+    const d = await apiFetch(`/api/admin/impersonate/${userId}`, { method: "POST", headers: authHeaders() });
+    localStorage.setItem("clipper_admin_token", localStorage.getItem("clipper_token"));
+    localStorage.setItem("clipper_impersonating", name);
+    localStorage.setItem("clipper_token", d.access_token);
+    location.reload();
+  } catch (e) { alert("Error: " + e.message); }
+}
 async function loadAdminRequests() {
   try {
-    const r = await fetch("/api/admin/subscriptions", { headers: authHeaders() });
-    const list = await r.json();
+    const list = await apiFetch("/api/admin/subscriptions", { headers: authHeaders() });
     const box = $("adminRequests");
     box.innerHTML = "";
     if (!list.length) { box.innerHTML = "<p class='muted'>No hay solicitudes.</p>"; return; }
@@ -231,8 +324,8 @@ async function loadAdminRequests() {
       if (s.status === "pending") {
         const acts = document.createElement("div");
         acts.innerHTML = `<button class="small" data-act="approve">Aprobar</button> <button class="small black" data-act="reject">Rechazar</button>`;
-        acts.querySelector('[data-act="approve"]').onclick = async () => { await fetch(`/api/admin/subscriptions/${s.id}/approve`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminRequests(); loadPanel(); };
-        acts.querySelector('[data-act="reject"]').onclick = async () => { await fetch(`/api/admin/subscriptions/${s.id}/reject`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminRequests(); loadPanel(); };
+        acts.querySelector('[data-act="approve"]').onclick = async () => { await apiFetch(`/api/admin/subscriptions/${s.id}/approve`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminRequests(); loadPanel(); };
+        acts.querySelector('[data-act="reject"]').onclick = async () => { await apiFetch(`/api/admin/subscriptions/${s.id}/reject`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminRequests(); loadPanel(); };
         div.appendChild(acts);
       }
       box.appendChild(div);
@@ -241,27 +334,24 @@ async function loadAdminRequests() {
 }
 async function loadAdminPlans() {
   try {
-    const r = await fetch("/api/plans");
-    const plans = await r.json();
+    const plans = await apiFetch("/api/plans");
     $("adminPlans").innerHTML = plans.map((p) =>
       `<div class="rowline"><div><b>${p.name}</b> · RD$ ${p.price_dop.toLocaleString("es-DO")} · ${p.duration_days} días ${p.is_popular ? "· ⭐ Popular" : ""}</div>
       <button class="small black" data-del="${p.id}">Eliminar</button></div>`).join("") || "<p class='muted'>No hay planes.</p>";
-    $("adminPlans").querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { await fetch(`/api/admin/plans/${b.dataset.del}`, { method: "DELETE", headers: authHeaders() }); loadAdminPlans(); renderPlans(); });
+    $("adminPlans").querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { await apiFetch(`/api/admin/plans/${b.dataset.del}`, { method: "DELETE", headers: authHeaders() }); loadAdminPlans(); renderPlans(); });
   } catch { $("adminPlans").innerHTML = "<p class='muted'>No se pudieron cargar los planes.</p>"; }
 }
 async function loadAdminMethods() {
   try {
-    const r = await fetch("/api/payment-methods", { headers: authHeaders() });
-    const methods = await r.json();
+    const methods = await apiFetch("/api/payment-methods", { headers: authHeaders() });
     const box = $("adminMethods");
     box.innerHTML = "";
-    // Los inactivos (ej. el ejemplo) no salen en /api/payment-methods: se listan aparte.
     methods.forEach((m) => {
       const div = document.createElement("div");
       div.className = "rowline";
       div.innerHTML = `<div><b>${m.name}</b> · ${m.bank} · ${m.account_number}<br><small>${m.account_holder} · ${m.account_type}</small></div>
         <button class="small black" data-del="${m.id}">Eliminar</button>`;
-      div.querySelector("[data-del]").onclick = async () => { await fetch(`/api/admin/payment-methods/${m.id}`, { method: "DELETE", headers: authHeaders() }); loadAdminMethods(); };
+      div.querySelector("[data-del]").onclick = async () => { await apiFetch(`/api/admin/payment-methods/${m.id}`, { method: "DELETE", headers: authHeaders() }); loadAdminMethods(); };
       box.appendChild(div);
     });
     if (!methods.length) box.innerHTML = "<p class='muted'>No hay métodos activos. Crea uno abajo.</p>";
@@ -271,94 +361,158 @@ $("btnNewPlan").onclick = async () => {
   const body = { name: $("npName").value.trim(), price_dop: parseInt($("npPrice").value || "0", 10), duration_days: parseInt($("npDays").value || "30", 10),
     features: $("npFeatures").value.split("\n").map((s) => s.trim()).filter(Boolean), is_popular: $("npPopular").checked, is_active: true, sort_order: 99 };
   if (!body.name) return alert("Ponle un nombre al plan");
-  const r = await fetch("/api/admin/plans", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
-  if (!r.ok) return alert("No se pudo crear el plan");
-  $("npName").value = ""; $("npFeatures").value = "";
-  loadAdminPlans(); renderPlans();
+  try {
+    await apiFetch("/api/admin/plans", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    $("npName").value = ""; $("npFeatures").value = "";
+    loadAdminPlans(); renderPlans();
+  } catch { alert("No se pudo crear el plan"); }
 };
 $("btnNewMethod").onclick = async () => {
   const body = { name: $("nmName").value.trim(), bank: $("nmBank").value.trim(), account_number: $("nmAccount").value.trim(),
     account_holder: $("nmHolder").value.trim(), account_type: $("nmType").value.trim(), instructions: $("nmInstr").value.trim(), is_active: true };
   if (!body.name) return alert("Ponle un nombre al método");
-  const r = await fetch("/api/admin/payment-methods", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
-  if (!r.ok) return alert("No se pudo crear el método");
-  ["nmName", "nmBank", "nmAccount", "nmHolder", "nmType", "nmInstr"].forEach((id) => $(id).value = "");
-  loadAdminMethods();
+  try {
+    await apiFetch("/api/admin/payment-methods", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    ["nmName", "nmBank", "nmAccount", "nmHolder", "nmType", "nmInstr"].forEach((id) => $(id).value = "");
+    loadAdminMethods();
+  } catch { alert("No se pudo crear el método"); }
+};
+async function loadAdminWithdrawals() {
+  const box = $("adminWithdrawals");
+  try {
+    const list = await apiFetch("/api/admin/withdrawals", { headers: authHeaders() });
+    box.innerHTML = "";
+    if (!list.length) { box.innerHTML = "<p class='muted'>Aún no hay solicitudes de retiro.</p>"; return; }
+    list.forEach((w) => {
+      const div = document.createElement("div");
+      div.className = "rowline";
+      div.innerHTML = `<div><b>RD$ ${w.amount_dop.toLocaleString("es-DO")}</b> · ${w.user_name || ""} (${w.user_email || ""})<br><small>${w.method} · ${w.details || ""} · ${w.created_at ? w.created_at.slice(0, 10) : ""}</small></div>
+        <span class="badge ${w.status === "approved" ? "aprobado" : ""}">${w.status === "pending" ? "Pendiente" : w.status === "approved" ? "Aprobado" : "Rechazado"}</span>`;
+      if (w.status === "pending") {
+        const acts = document.createElement("div");
+        acts.innerHTML = `<button class="small" data-act="approve">Aprobar</button> <button class="small black" data-act="reject">Rechazar</button>`;
+        acts.querySelector('[data-act="approve"]').onclick = async () => { await apiFetch(`/api/admin/withdrawals/${w.id}/approve`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminWithdrawals(); };
+        acts.querySelector('[data-act="reject"]').onclick = async () => { await apiFetch(`/api/admin/withdrawals/${w.id}/reject`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminWithdrawals(); };
+        div.appendChild(acts);
+      }
+      box.appendChild(div);
+    });
+  } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar los retiros.</p>"; }
+}
+async function loadAdminSettings() {
+  try {
+    const s = await apiFetch("/api/admin/settings", { headers: authHeaders() });
+    $("setBrand").value = s.default_brand_text || "@marketingcaribe";
+    $("setFrame").checked = String(s.default_frame_enabled).toLowerCase() === "true";
+  } catch { $("setMsg").textContent = "No se pudo cargar la configuración."; }
+}
+$("btnSaveSettings").onclick = async () => {
+  try {
+    await apiFetch("/api/admin/settings", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ settings: { default_brand_text: $("setBrand").value.trim() || "@marketingcaribe", default_frame_enabled: $("setFrame").checked ? "true" : "false" } }) });
+    $("setMsg").textContent = "Configuración guardada. Los usuarios nuevos recibirán estos valores.";
+  } catch (e) { $("setMsg").textContent = "Error: " + e.message; }
 };
 
+// Los clips ya NO necesitan aprobación del admin: se descargan apenas
+// se renderizan. clipRow muestra siempre el botón de descarga.
 function clipRow(c, admin) {
   const div = document.createElement("div");
   div.className = "rowline";
-  const dl = c.status === "aprobado" && c.download_url
-    ? `<a href="${c.download_url}" download><button class="small">Descargar MP4</button></a>`
-    : `<span class="muted">${c.status === "pendiente" ? "Esperando aprobación del admin" : "Rechazado"}</span>`;
+  const dl = c.download_url ? `<a href="${c.download_url}" download><button class="small">Descargar MP4</button></a>` : "";
   const who = admin ? `<br><small>${c.user_name || ""} · ${c.user_email || ""}</small>` : "";
-  div.innerHTML = `<div><b>${(c.title || "Clip").slice(0, 60) || "Clip"}</b> · ${c.start}s – ${c.end}s<br><small>${(c.video_url || "").slice(0, 70)}</small>${who}</div>
-    <div><span class="badge ${c.status}">${c.status}</span> ${dl}</div>`;
+  const date = c.created_at ? c.created_at.slice(0, 10) : "";
+  div.innerHTML = `<div><b>${(c.title || "Clip").slice(0, 60) || "Clip"}</b> · ${c.start}s – ${c.end}s<br><small>${(c.video_url || "").slice(0, 70)} · ${date}</small>${who}</div>
+    <div>${dl}</div>`;
   return div;
 }
 
 async function loadMyClips() {
   const box = $("myClips");
   try {
-    const r = await fetch("/api/me/clips", { headers: authHeaders() });
-    const list = await r.json();
+    const list = await apiFetch("/api/me/clips", { headers: authHeaders() });
     box.innerHTML = "";
     if (!list.length) { box.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>"; return; }
     list.forEach((c) => box.appendChild(clipRow(c, false)));
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
 }
-
-async function loadAdmin() {
-  loadAdminRequests();
-  loadAdminPlans();
-  loadAdminMethods();
+async function loadAdminClips() {
   try {
-    const ru = await fetch("/api/admin/users", { headers: authHeaders() });
-    const users = await ru.json();
-    $("adminUsers").innerHTML = "<table><tr><th>Nombre</th><th>Correo</th><th>Plan</th><th>Admin</th></tr>" +
-      users.map((u) => `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.plan}</td><td>${u.is_admin ? "SÍ" : "No"}</td></tr>`).join("") + "</table>";
-  } catch { $("adminUsers").innerHTML = "<p class='muted'>No se pudieron cargar los usuarios.</p>"; }
-  try {
-    const rc = await fetch("/api/admin/clips", { headers: authHeaders() });
-    const clips = await rc.json();
+    const clips = await apiFetch("/api/admin/clips", { headers: authHeaders() });
     const box = $("adminClips");
     box.innerHTML = "";
     if (!clips.length) { box.innerHTML = "<p class='muted'>No hay clips todavía.</p>"; return; }
-    clips.forEach((c) => {
-      const row = clipRow(c, true);
-      if (c.status === "pendiente") {
-        const acts = document.createElement("div");
-        acts.innerHTML = `<button class="small" data-act="approve">Aprobar</button> <button class="small black" data-act="reject">Rechazar</button>`;
-        acts.querySelector('[data-act="approve"]').onclick = async () => { await fetch(`/api/admin/clips/${c.id}/approve`, { method: "POST", headers: authHeaders() }); loadAdmin(); loadPanel(); };
-        acts.querySelector('[data-act="reject"]').onclick = async () => { await fetch(`/api/admin/clips/${c.id}/reject`, { method: "POST", headers: authHeaders() }); loadAdmin(); loadPanel(); };
-        row.appendChild(acts);
-      }
-      box.appendChild(row);
-    });
+    clips.forEach((c) => box.appendChild(clipRow(c, true)));
   } catch { $("adminClips").innerHTML = "<p class='muted'>No se pudieron cargar los clips.</p>"; }
+}
+function loadAdmin() {
+  loadAdminUsers();
+  loadAdminClips();
+  loadAdminRequests();
+  loadAdminPlans();
+  loadAdminMethods();
+  loadAdminWithdrawals();
+  loadAdminSettings();
 }
 
 // ---------- Panel: Mi Cuenta ----------
 $("btnSaveAccount").onclick = async () => {
   try {
-    const r = await fetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }),
+    const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ name: $("accName").value.trim(), brand_text: $("accBrand").value.trim(), frame_enabled: $("accFrame").checked }) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Error");
     $("accMsg").textContent = "Guardado.";
     showUser(d);
   } catch (e) { $("accMsg").textContent = "Error: " + e.message; }
 };
 
-async function pollJob(jobId, onDone) {
+// ---------- Retiros (usuario) ----------
+$("btnWithdraw").onclick = async () => {
+  const amount = parseInt($("wdAmount").value || "0", 10);
+  const method = $("wdMethod").value.trim();
+  if (!amount || amount <= 0) return $("wdMsg").textContent = "Pon un monto mayor que 0.";
+  if (!method) return $("wdMsg").textContent = "Indica el método de retiro.";
+  try {
+    await apiFetch("/api/withdrawals", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ amount_dop: amount, method, details: $("wdDetails").value.trim() }) });
+    $("wdMsg").textContent = "Solicitud enviada. Queda Pendiente hasta que el admin la revise.";
+    $("wdAmount").value = ""; $("wdMethod").value = ""; $("wdDetails").value = "";
+    loadMyWithdrawals();
+  } catch (e) { $("wdMsg").textContent = "Error: " + e.message; }
+};
+async function loadMyWithdrawals() {
+  const box = $("myWithdrawals");
+  if (!box) return;
+  try {
+    const list = await apiFetch("/api/withdrawals/mine", { headers: authHeaders() });
+    if (!list.length) { box.innerHTML = "<p class='muted'>No tienes retiros todavía.</p>"; return; }
+    box.innerHTML = "<h4 style='font-size:16px'>Mis retiros</h4>" + list.map((w) =>
+      `<div class="rowline"><div><b>RD$ ${w.amount_dop.toLocaleString("es-DO")}</b> · ${w.method}<br><small>${w.created_at ? w.created_at.slice(0, 10) : ""}</small></div><span class="badge ${w.status === "approved" ? "aprobado" : ""}">${w.status === "pending" ? "Pendiente" : w.status === "approved" ? "Aprobado" : "Rechazado"}</span></div>`).join("");
+  } catch { box.innerHTML = ""; }
+}
+
+// ---------- Poll de jobs (con reintentos ante respuestas vacías) ----------
+async function pollJob(jobId, onProgress) {
+  let fails = 0;
   while (true) {
-    const r = await fetch(`/api/jobs/${jobId}`);
-    const j = await r.json();
-    $("status").textContent = `${j.message || ""} (${j.progress || 0}%)`;
-    if (j.status === "done") return onDone(j);
-    if (j.status === "error") throw new Error(j.error || "El job falló");
-    await new Promise((r) => setTimeout(r, 2000));
+    let j;
+    try {
+      j = await apiFetch(`/api/jobs/${jobId}`);
+      fails = 0;
+    } catch (e) {
+      // El servidor puede estar reiniciando: reintentar unas veces antes
+      // de rendirse con un mensaje amable.
+      if (++fails >= 5) throw new Error(FRIENDLY_ERROR);
+      await sleep(3000);
+      continue;
+    }
+    if (onProgress) onProgress(j);
+    if (j.status === "done") return j;
+    if (j.status === "error") {
+      const err = new Error("JOB_FAILED");
+      err.raw = j.error || "";
+      throw err;
+    }
+    await sleep(2000);
   }
 }
 
@@ -386,36 +540,124 @@ function updatePreview() {
 }
 ["frameEnabled", "brandText", "frameColor", "frameWidth", "showSubs", "subSize", "subPos", "subStyle"]
   .forEach((id) => $(id).addEventListener("input", updatePreview));
+$("frameEnabledVideo").addEventListener("change", () => {
+  $("frameEnabled").checked = $("frameEnabledVideo").checked;
+  updatePreview();
+});
+$("frameEnabled").addEventListener("change", () => {
+  $("frameEnabledVideo").checked = $("frameEnabled").checked;
+});
 updatePreview();
 
-// ---------- Paso 1 ----------
-$("btnInfo").onclick = async () => {
-  const url = $("url").value.trim();
-  if (!url) return alert("Pega un link de YouTube");
-  $("status").textContent = "Leyendo el video…";
-  const r = await fetch("/api/video-info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
-  const d = await r.json();
-  if (!r.ok) return $("status").textContent = d.detail || "No se pudo leer el video";
-  const mins = d.duration ? `${Math.floor(d.duration / 60)}:${String(d.duration % 60).padStart(2, "0")}` : "live";
-  $("videoMeta").textContent = `${d.title} · ${d.uploader || ""} · ${mins}`;
-  $("rangeEnd").value = Math.min(d.duration || 120, 300);
-  $("status").textContent = "Video listo. Genera los clips.";
+// ---------- Crear Clip: 5 pasos (Descargar → Transcribir → IA elige → Cortar → Listo) ----------
+const FLOW_MSGS = [
+  "Descargando el video…",
+  "Transcribiendo el audio…",
+  "La IA está eligiendo los mejores momentos…",
+  "Cortando tu clip…",
+  "Listo. Tu clip está pronto para descargar.",
+];
+function renderSteps(doneCount, activeIdx, statusText) {
+  document.querySelectorAll("#stepsBar .step").forEach((el, i) => {
+    el.classList.toggle("done", i < doneCount);
+    el.classList.toggle("active", i === activeIdx);
+    el.querySelector(".dot").textContent = i < doneCount ? "✓" : String(i + 1);
+  });
+  if (statusText !== undefined) $("stepStatus").textContent = statusText;
+}
+function clipsStepFromProgress(p) {
+  if (p < 30) return 0;
+  if (p < 70) return 1;
+  return 2;
+}
+function showJobError(friendly) {
+  const box = $("jobError");
+  box.style.display = "block";
+  box.innerHTML = `<b>No se pudo completar.</b> ${friendly}`;
+}
+function hideJobError() {
+  $("jobError").style.display = "none";
+  $("jobError").innerHTML = "";
+}
+function resetCreateFlow() {
+  state.clipsJob = null;
+  state.transcript = null;
+  state.selected = null;
+  state.words = null;
+  $("candidatesCard").hidden = true;
+  $("step3Card").hidden = true;
+  $("resultCard").hidden = true;
+  $("candidates").innerHTML = "<p class='muted'>Primero genera los clips.</p>";
+  $("stepsCard").hidden = false;
+  hideJobError();
+  renderSteps(0, 0, "Esperando un video. Pega un link arriba para empezar…");
+}
+
+// ---------- Subir archivo ----------
+$("btnUpload").onclick = () => $("uploadFile").click();
+$("uploadFile").onchange = async () => {
+  const file = $("uploadFile").files[0];
+  if (!file) return;
+  const mb = (file.size / (1024 * 1024)).toFixed(1);
+  const info = $("uploadInfo");
+  info.hidden = false;
+  info.textContent = `Subiendo ${file.name} (${mb} MB)…`;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const d = await apiFetch("/api/upload", { method: "POST", headers: authHeaders(), body: fd });
+    state.uploadedFile = d.file_id;
+    info.textContent = `Archivo listo: ${d.filename} (${mb} MB). Dale a "Sacar clips".`;
+    $("videoMeta").textContent = "";
+  } catch (e) {
+    state.uploadedFile = null;
+    info.textContent = "Error: " + e.message;
+  }
 };
 
+// ---------- Sacar clips (un solo botón: analiza + genera) ----------
 $("btnClips").onclick = async () => {
+  if (state.busy) return;
   const url = $("url").value.trim();
+  if (!state.uploadedFile && !url) return alert("Pega un link de YouTube o sube un video");
+  state.busy = true;
   $("btnClips").disabled = true;
+  $("btnUpload").disabled = true;
+  resetCreateFlow();
   try {
-    const r = await fetch("/api/clips", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ url, start: parseFloat($("rangeStart").value || 0), end: parseFloat($("rangeEnd").value || 120), model: $("model").value }) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Error");
-    const job = await pollJob(d.job_id, (j) => j);
+    let body;
+    if (state.uploadedFile) {
+      body = { source_file: state.uploadedFile };
+    } else {
+      // Validar el link y ajustar el rango con la duración real.
+      renderSteps(0, 0, "Leyendo el video…");
+      const info = await apiFetch("/api/video-info", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ url }) });
+      const mins = info.duration ? `${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}` : "live";
+      $("videoMeta").textContent = `${info.title} · ${info.uploader || ""} · ${mins}`;
+      $("rangeEnd").value = Math.min(info.duration || 120, 300);
+      body = { url };
+    }
+    body.start = parseFloat($("rangeStart").value || 0);
+    body.end = parseFloat($("rangeEnd").value || 120);
+    body.model = $("model").value;
+    body.max_clips = parseInt($("cfgMaxClips").value || "5", 10);
+    body.min_len = parseFloat($("cfgMinClip").value || "20");
+    body.max_len = parseFloat($("cfgMaxClip").value || "45");
+    const d = await apiFetch("/api/clips", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    const job = await pollJob(d.job_id, (j) => {
+      renderSteps(clipsStepFromProgress(j.progress || 0), clipsStepFromProgress(j.progress || 0), FLOW_MSGS[clipsStepFromProgress(j.progress || 0)]);
+    });
     state.clipsJob = job;
     state.transcript = job.result.transcript;
+    renderSteps(3, -1, `La IA encontró ${job.result.candidates.length} clip${job.result.candidates.length === 1 ? "" : "s"}, elige uno para continuar.`);
     const box = $("candidates");
     box.innerHTML = "";
-    if (!job.result.candidates.length) { box.innerHTML = "<p class='muted'>No se encontraron clips en ese rango. Prueba otro rango.</p>"; return; }
+    if (!job.result.candidates.length) {
+      $("candidatesCard").hidden = false;
+      box.innerHTML = "<p class='muted'>No se encontraron clips en ese rango. Prueba otro rango.</p>";
+      return;
+    }
+    $("candidatesTitle").textContent = `La IA encontró ${job.result.candidates.length} clips, elige uno para continuar`;
     job.result.candidates.forEach((c, i) => {
       const div = document.createElement("div");
       div.className = "clip";
@@ -423,9 +665,17 @@ $("btnClips").onclick = async () => {
       div.onclick = () => selectClip(c, div);
       box.appendChild(div);
     });
-    selectClip(job.result.candidates[0], box.firstChild);
-  } catch (e) { $("status").textContent = "Error: " + e.message; }
-  finally { $("btnClips").disabled = false; }
+    $("candidatesCard").hidden = false;
+    $("candidatesCard").scrollIntoView({ behavior: "smooth" });
+  } catch (e) {
+    console.error("Sacar clips falló:", e.raw || e.message);
+    renderSteps(0, -1, "");
+    showJobError("No se pudo procesar el video. Revisa el enlace o el archivo e inténtalo de nuevo.");
+  } finally {
+    state.busy = false;
+    $("btnClips").disabled = false;
+    $("btnUpload").disabled = false;
+  }
 };
 
 function clipWords(absStart, absEnd) {
@@ -448,11 +698,36 @@ function selectClip(c, el) {
   $("clipEnd").value = c.abs_end;
   $("subText").value = c.text;
   $("pvSubs").innerHTML = state.words.slice(0, 3).map((w, i) => i === 1 ? `<span>${w.w.trim().toUpperCase()}</span>` : w.w.trim().toUpperCase()).join(" ") || "SUBTÍTULOS";
+  // El paso 3 (subtítulos + render) solo aparece DESPUÉS de elegir un clip.
+  $("step3Card").hidden = false;
+  $("resultCard").hidden = true;
+  $("step3Card").scrollIntoView({ behavior: "smooth" });
 }
 
-// ---------- Paso 3: render ----------
+// ---------- Guardar configuración del creador ----------
+$("btnSaveConfig").onclick = async () => {
+  const body = {
+    template: $("cfgTemplate").value,
+    brand_text: $("brandText").value.trim(),
+    frame_enabled: $("frameEnabled").checked,
+    max_clips: parseInt($("cfgMaxClips").value || "5", 10),
+    min_clip_secs: parseFloat($("cfgMinClip").value || "20"),
+    max_clip_secs: parseFloat($("cfgMaxClip").value || "45"),
+    quality: $("cfgQuality").value,
+    subtitles_enabled: $("showSubs").value === "1",
+  };
+  try {
+    const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    state.user = d;
+    updateTopBar();
+    $("cfgMsg").textContent = "Configuración guardada.";
+  } catch (e) { $("cfgMsg").textContent = "Error: " + e.message; }
+};
+
+// ---------- Renderizar ----------
 $("btnRender").onclick = async () => {
   if (!state.clipsJob) return alert("Primero genera los clips y elige uno");
+  if (state.busy) return;
   const start = parseFloat($("clipStart").value), end = parseFloat($("clipEnd").value);
   if (!(end > start)) return alert("El fin debe ser mayor que el inicio");
   // Palabras editadas: reparte el texto corregido en el tiempo del clip.
@@ -463,10 +738,14 @@ $("btnRender").onclick = async () => {
     const dur = end - start, step = dur / toks.length;
     edited = toks.map((t, i) => ({ w: " " + t, s: +(i * step).toFixed(2), e: +((i + 1) * step).toFixed(2) }));
   }
+  state.busy = true;
   $("btnRender").disabled = true;
+  hideJobError();
+  renderSteps(3, 3, FLOW_MSGS[3]);
   try {
     const body = {
       job_id: state.clipsJob.id, start, end, model: $("model").value,
+      quality: $("cfgQuality").value,
       frame_enabled: $("frameEnabled").checked,
       frame_color: $("frameColor").value,
       frame_width: parseInt($("frameWidth").value || "14", 10),
@@ -478,17 +757,24 @@ $("btnRender").onclick = async () => {
       subtitle_position: $("subPos").value,
       edited_words: edited,
     };
-    const r = await fetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Error al renderizar");
-    const job = await pollJob(d.job_id, (j) => j);
+    const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    const job = await pollJob(d.job_id, (j) => {
+      if ((j.progress || 0) >= 70) renderSteps(3, 3, FLOW_MSGS[3]);
+    });
     const file = job.result.file;
+    renderSteps(5, -1, FLOW_MSGS[4]);
     $("resultCard").hidden = false;
     $("result").src = `/api/download/${file}`;
     $("downloadLink").href = `/api/download/${file}`;
     $("downloadLink").download = file;
-    $("status").textContent = `Listo: ${file} · ${job.result.output.width}×${job.result.output.height} · marco: ${job.result.frame_enabled ? "sí" : "no"}`;
     document.getElementById("resultCard").scrollIntoView({ behavior: "smooth" });
-  } catch (e) { $("status").textContent = "Error: " + e.message; }
-  finally { $("btnRender").disabled = false; }
+    loadPanel();
+    loadMyClips();
+  } catch (e) {
+    console.error("Render falló:", e.raw || e.message);
+    showJobError(e.message === "JOB_FAILED" ? "No se pudo cortar el clip. Inténtalo de nuevo." : e.message);
+  } finally {
+    state.busy = false;
+    $("btnRender").disabled = false;
+  }
 };

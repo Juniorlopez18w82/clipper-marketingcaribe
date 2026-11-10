@@ -97,24 +97,55 @@ def _fmt_time(seconds: float) -> str:
 
 
 def _stream_durations(path: Path) -> tuple[float, float]:
-    """(video_duration, audio_duration) from stream tags; 0 if missing."""
+    """(video_duration, audio_duration) in seconds; 0 if missing.
+
+    BUG found 2026-11-10: the old code read only the stream DURATION tag,
+    which webm/mkv files carry but MP4 files do NOT — the android client
+    returns format 18 (MP4, 640x360), so every MP4 download was reported
+    as 0 s of audio and retried forever. Now read the stream `duration`
+    field first, fall back to the DURATION tag, then to format duration.
+    """
     proc = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
-         "-show_entries", "stream_tags=DURATION", "-of", "json", str(path)],
+        ["ffprobe", "-v", "error",
+         "-show_entries", "stream=codec_type,duration",
+         "-show_entries", "stream_tags=DURATION",
+         "-show_entries", "format=duration",
+         "-of", "json", str(path)],
         capture_output=True, text=True, timeout=60,
     )
     if proc.returncode != 0:
         return 0.0, 0.0
+    data = json.loads(proc.stdout)
+    fmt_dur = float(data.get("format", {}).get("duration") or 0)
     v_dur = a_dur = 0.0
-    for s in json.loads(proc.stdout).get("streams", []):
-        dur = s.get("tags", {}).get("DURATION", "00:00:00")
-        parts = [float(p) for p in dur.split(":")]
-        secs = parts[0] * 3600 + parts[1] * 60 + parts[2] if len(parts) == 3 else 0.0
+    for s in data.get("streams", []):
+        secs = 0.0
+        if s.get("duration"):
+            try:
+                secs = float(s["duration"])
+            except (TypeError, ValueError):
+                secs = 0.0
+        if not secs:
+            tag = (s.get("tags") or {}).get("DURATION", "")
+            parts = [float(p) for p in tag.split(":")] if tag else []
+            secs = parts[0] * 3600 + parts[1] * 60 + parts[2] if len(parts) == 3 else 0.0
+        if not secs:
+            secs = fmt_dur
         if s.get("codec_type") == "video":
             v_dur = secs
         elif s.get("codec_type") == "audio":
             a_dur = secs
     return v_dur, a_dur
+
+
+# Format selectors tried in order per client. The android client only
+# offers the combined format 18 (640x360 MP4), so the bv+ba selector
+# resolves to it via its /b fallback — but if a client ever reports
+# "Requested format is not available", fall back to 18/best explicitly.
+FORMAT_SELECTORS = [
+    "bv[height<=720]+ba/b[height<=720]",
+    "18/best[height<=720]/best",
+]
 
 
 def download_section(url: str, start: float, end: float, job_id: str) -> Path:
@@ -139,10 +170,10 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
         raise ValueError("section too long (max 15 min per job in v1)")
     out_tmpl = str(SOURCES_DIR / f"{job_id}.%(ext)s")
     section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
-    last_err = ""
+    errors: list[str] = []
     attempt = 0
     for client in PLAYER_CLIENTS:
-        for _ in range(2):
+        for fmt in FORMAT_SELECTORS:
             attempt += 1
             for old in SOURCES_DIR.glob(f"{job_id}.*"):
                 old.unlink()
@@ -150,7 +181,7 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
                 sys.executable, "-m", "yt_dlp", "--no-warnings",
                 "--extractor-args", f"youtube:player_client={client}",
                 "--download-sections", section,
-                "-f", "bv[height<=720]+ba/b[height<=720]",
+                "-f", fmt,
                 "-o", out_tmpl,
                 url,
             ]
@@ -162,23 +193,25 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
                 cmd[3:3] = ["--proxy", proxy]
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if proc.returncode != 0:
-                last_err = proc.stderr[-2000:]
+                err = proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "yt-dlp failed"
+                errors.append(f"{client}/{fmt}: {err}")
                 # Bot block: no point retrying this client, try the next one.
-                if _is_bot_block(last_err):
+                if _is_bot_block(proc.stderr):
                     break
                 continue
             files = sorted(SOURCES_DIR.glob(f"{job_id}.*"))
             if not files:
-                last_err = "yt-dlp finished but produced no file"
+                errors.append(f"{client}/{fmt}: yt-dlp finished but produced no file")
                 continue
             v_dur, a_dur = _stream_durations(files[0])
             # Audio must cover (nearly) the whole section; video is ~10 s long
             # because of keyframes, so compare audio against the requested length.
             if a_dur >= (end - start) * 0.8:
                 return files[0]
-            last_err = (f"attempt {attempt}: audio truncated "
-                        f"({a_dur:.1f}s for a {end - start:.0f}s section), retrying")
-    raise RuntimeError(f"yt-dlp failed after {attempt} attempts: {last_err}")
+            errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s for a "
+                          f"{end - start:.0f}s section (truncated)")
+    raise RuntimeError(f"yt-dlp failed after {attempt} attempts: "
+                       + " | ".join(errors))
 
 
 def probe(path: Path) -> dict:

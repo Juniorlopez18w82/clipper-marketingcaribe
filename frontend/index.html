@@ -50,57 +50,88 @@ video#result{width:100%;border-radius:12px;background:#000}
 #accountCard .btn-red{background:#E10600;color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
 #accountCard .btn-black{background:#000;color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
 #accountCard .muted{color:#555}
-.panel{background:#fff;color:#111;border-top:8px solid #E10600;padding:28px 20px}
-.panel-inner{max-width:1100px;margin:0 auto}
-.panel h2{color:#000;font-size:38px;font-weight:900;text-transform:uppercase;line-height:1.05;margin:0}
-.panel h2 span{color:#E10600}
-.panel .sub{color:#333;font-size:17px;font-weight:700;margin:6px 0 18px}
-.panel .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
-.panel .tab{background:#000;color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
-.panel .tab.on{background:#E10600}
-.panel .pane h3{font-size:26px;font-weight:900;text-transform:uppercase;margin:0 0 14px}
-.panel .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-@media(max-width:700px){.panel .stats{grid-template-columns:1fr}}
-.panel .stat{background:#000;color:#fff;border-radius:16px;padding:20px;text-align:center}
-.panel .stat b{display:block;font-size:52px;font-weight:900;line-height:1}
-.panel .stat.red{background:#E10600}
-.panel .stat span{font-size:15px;font-weight:800;text-transform:uppercase}
-.panel .rowline{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#f4f4f4;border:2px solid #000;border-radius:14px;padding:14px;margin:10px 0;flex-wrap:wrap}
-.panel .rowline b{font-size:17px}
-.panel .badge{display:inline-block;background:#000;color:#fff;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:900;text-transform:uppercase}
+/* ===== Panel ClipViral: app shell blanco / negro / rojo #E10600 ===== */
+.panel{background:#f7f7f8;color:#111;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.panel [hidden]{display:none !important}
+.panel-top{display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #e5e5e5;padding:0 24px;height:60px;position:sticky;top:0;z-index:10}
+.panel-top .brand{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#111}
+.panel-top .brand img{width:26px;height:26px}
+.panel-top .spacer{flex:1}
+.panel-top .who{font-size:14px;color:#555}
+.panel-top .who b{color:#111}
+.panel .planbadge{display:inline-block;background:#111;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;margin-left:6px}
+.panel .planbadge.admin{background:#E10600}
+.panel-shell{display:flex;align-items:stretch;max-width:1280px;margin:0 auto}
+.panel-nav{width:248px;flex:none;background:#fff;border-right:1px solid #e5e5e5;padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:60px;height:calc(100vh - 60px)}
+.panel-nav .nav-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#999;padding:6px 12px 8px}
+.panel-nav .tab{display:block;width:100%;text-align:left;background:transparent;color:#111;border:0;border-radius:10px;padding:11px 14px;font-size:15px;font-weight:600;cursor:pointer;text-transform:none}
+.panel-nav .tab:hover{background:#f2f2f3}
+.panel-nav .tab.on{background:#111;color:#fff}
+.panel-nav .tab.creator{margin-top:auto;border:1px solid #e5e5e5;color:#333}
+.panel-content{flex:1;min-width:0;padding:32px}
+.panel-inner{max-width:960px;margin:0 auto}
+.panel .pane h3{font-size:26px;font-weight:700;color:#111;margin:0 0 6px}
+.panel .sub{color:#555;font-size:15px;line-height:1.6;margin:0 0 20px}
+.panel .card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px 24px;margin-bottom:16px}
+.panel .card h4{font-size:17px;font-weight:700;color:#111;margin:0 0 12px}
+.panel .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+.panel .stat{background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px}
+.panel .stat b{display:block;font-size:32px;font-weight:700;line-height:1.1;color:#111}
+.panel .stat.red b{color:#E10600}
+.panel .stat span{font-size:13px;font-weight:600;color:#666}
+.panel .rowline{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:14px 16px;margin:10px 0;flex-wrap:wrap}
+.panel .rowline b{font-size:15px}
+.panel .badge{display:inline-block;background:#111;color:#fff;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
 .panel .badge.aprobado{background:#E10600}
 .panel .badge.rechazado{background:#888}
-.panel label{display:block;font-size:14px;font-weight:800;color:#000;margin:14px 0 4px}
-.panel input[type=text],.panel input[type=url],.panel input[type=email]{width:100%;padding:12px;border-radius:10px;border:2px solid #000;background:#fff;color:#111;font-size:16px}
-.panel button{background:#E10600;color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:900;cursor:pointer;font-size:16px;text-transform:uppercase}
-.panel button.black{background:#000}
-.panel button.small{padding:8px 14px;font-size:13px}
-.panel .muted{color:#555;font-size:14px}
-.panel table{width:100%;border-collapse:collapse;font-size:15px}
-.panel th,.panel td{border-bottom:2px solid #000;padding:10px 6px;text-align:left}
-.panel th{text-transform:uppercase;font-size:13px}
-.panel .locked{display:none;background:#E10600;color:#fff;border-radius:14px;padding:20px;margin:12px 0;font-weight:800;font-size:18px}
-.panel .locked button{background:#fff;color:#E10600;margin-top:12px}
+.panel label{display:block;font-size:13px;font-weight:600;color:#333;margin:16px 0 6px}
+.panel input[type=text],.panel input[type=url],.panel input[type=email],.panel input[type=number],.panel select,.panel textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d4d4d4;background:#fff;color:#111;font-size:15px}
+.panel input:focus,.panel select:focus,.panel textarea:focus{outline:none;border-color:#E10600;box-shadow:0 0 0 3px rgba(225,6,0,.12)}
+.panel input:disabled{background:#f5f5f6;color:#999}
+.panel button{background:#E10600;color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px}
+.panel button.black{background:#111}
+.panel button.ghost{background:#fff;color:#111;border:1px solid #d4d4d4}
+.panel button.small{padding:8px 12px;font-size:13px}
+.panel .muted{color:#666;font-size:14px;line-height:1.6}
+.panel table{width:100%;border-collapse:collapse;font-size:14px}
+.panel th,.panel td{border-bottom:1px solid #eee;padding:10px 8px;text-align:left}
+.panel th{text-transform:uppercase;font-size:12px;letter-spacing:.05em;color:#666}
+/* Bloqueo sin plan (solo usuarios sin plan; el admin nunca lo ve) */
+.panel .locked{display:none;background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:32px 24px;margin:16px 0;text-align:center}
+.panel .locked .lock-icon{width:56px;height:56px;border-radius:50%;background:#E10600;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.panel .locked p{font-size:17px;font-weight:600;color:#111;margin:0 0 6px}
+.panel .locked button{margin-top:16px}
 .panel .pane.is-locked .locked{display:block}
 .panel .pane.is-locked .pane-body{display:none}
-.panel .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-@media(max-width:700px){.panel .plans{grid-template-columns:1fr}}
-.panel .plan{background:#fff;border:3px solid #000;border-radius:18px;padding:20px;position:relative}
-.panel .plan.popular{border-color:#E10600;box-shadow:0 0 0 3px #E10600}
-.panel .plan h4{font-size:28px;font-weight:900;text-transform:uppercase;margin:0}
-.panel .plan .price{font-size:42px;font-weight:900;line-height:1;margin:8px 0}
-.panel .plan .price small{font-size:16px}
-.panel .plan ul{list-style:none;padding:0;margin:14px 0}
-.panel .plan li{padding:6px 0;border-bottom:1px solid #ddd;font-weight:700}
-.panel .plan li.no{color:#888}
-.panel .plan .tag{display:inline-block;background:#E10600;color:#fff;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:900;text-transform:uppercase}
-.panel .plan .tag.mine{background:#000}
-.panel .buybox{border:3px solid #E10600;border-radius:18px;padding:20px;margin-top:18px}
-.panel .buybox label{display:block;font-size:14px;font-weight:800;color:#000;margin:14px 0 4px}
-.panel .buybox select{width:100%;padding:12px;border-radius:10px;border:2px solid #000;background:#fff;color:#111;font-size:16px}
-.panel .buybox input[type=file]{font-size:15px}
-.panel .bankbox{background:#000;color:#fff;border-radius:14px;padding:16px;margin-top:12px;font-size:16px;line-height:1.6}
-.panel .bankbox b{color:#E10600}
+/* Planes */
+.panel .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.panel .plan{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:22px;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column}
+.panel .plan.popular{border:2px solid #E10600}
+.panel .plan h4{font-size:20px;font-weight:700;margin:0}
+.panel .plan .price{font-size:32px;font-weight:800;line-height:1.1;margin:10px 0 4px}
+.panel .plan .price small{font-size:14px;font-weight:600;color:#666}
+.panel .plan ul{list-style:none;padding:0;margin:14px 0;flex:1}
+.panel .plan li{padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px;font-weight:500}
+.panel .plan li.no{color:#999}
+.panel .plan .tag{display:inline-block;background:#E10600;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700}
+.panel .plan .tag.mine{background:#111}
+.panel .plan button{width:100%;margin-top:14px}
+.panel .buybox{background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px 24px;margin-top:16px}
+.panel .buybox h3{font-size:18px;font-weight:700;margin:0 0 4px}
+.panel .buybox select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d4d4d4;background:#fff;color:#111;font-size:15px}
+.panel .buybox input[type=file]{font-size:14px}
+.panel .bankbox{background:#f5f5f6;color:#111;border-radius:10px;padding:14px 16px;margin-top:12px;font-size:14px;line-height:1.7}
+.panel .bankbox b{color:#111}
+@media(max-width:800px){
+  .panel-shell{flex-direction:column}
+  .panel-nav{width:auto;height:auto;position:static;flex-direction:row;overflow-x:auto;padding:12px;border-right:0;border-bottom:1px solid #e5e5e5}
+  .panel-nav .nav-label{display:none}
+  .panel-nav .tab{white-space:nowrap;width:auto}
+  .panel-nav .tab.creator{margin-top:0}
+  .panel-content{padding:20px 16px}
+  .panel .plans{grid-template-columns:1fr}
+  .panel .stats{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -108,47 +139,59 @@ video#result{width:100%;border-radius:12px;background:#000}
 
 <!-- Panel de usuario (blanco / negro / rojo). Solo se muestra al entrar. -->
 <section class="panel" id="panel" hidden>
-  <div class="panel-inner">
-    <h2>Mi panel <span>· ClipViral</span></h2>
-    <p class="sub" id="panelWelcome">Tus clips, tus aprobaciones y tu cuenta, todo en un solo lugar.</p>
-    <div class="tabs">
+  <div class="panel-top">
+    <span class="brand"><img src="/favicon.svg" alt="ClipViral"> ClipViral</span>
+    <span class="spacer"></span>
+    <span class="who">Hola, <b id="panelUserName"></b><span class="planbadge" id="panelUserPlan">Sin plan</span></span>
+    <button class="ghost" id="btnLogoutTop">Cerrar sesión</button>
+  </div>
+  <div class="panel-shell">
+    <nav class="panel-nav">
+      <span class="nav-label">Mi panel</span>
       <button class="tab on" data-tab="home">Inicio</button>
       <button class="tab" data-tab="clips">Mis Clips</button>
       <button class="tab" data-tab="create">Crear Clip</button>
       <button class="tab" data-tab="plans">Planes</button>
       <button class="tab" data-tab="account">Mi Cuenta</button>
       <button class="tab" data-tab="admin" id="tabAdmin" hidden>Panel Admin</button>
-      <button class="tab" data-tab="creator" id="tabCreator" style="background:#fff;color:#000;border:2px solid #000">Ir al creador ↓</button>
-    </div>
+      <button class="tab creator" data-tab="creator">← Ir al creador</button>
+    </nav>
+    <div class="panel-content">
+      <div class="panel-inner">
 
     <div class="pane" id="pane-home">
       <h3>Inicio</h3>
-      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <p class="sub" id="panelWelcome">Tus clips, tus aprobaciones y tu cuenta, todo en un solo lugar.</p>
+      <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
       <div class="stats">
         <div class="stat"><b id="stTotal">0</b><span>Clips creados</span></div>
         <div class="stat red"><b id="stPend">0</b><span>Pendientes</span></div>
         <div class="stat"><b id="stApr">0</b><span>Aprobados</span></div>
       </div>
-      <p class="muted">Un clip queda <b>Pendiente</b> cuando se renderiza. El admin lo aprueba y ahí sí lo puedes descargar desde Mis Clips.</p>
+      <div class="card"><p class="muted" style="margin:0">Un clip queda <b>Pendiente</b> cuando se renderiza. El admin lo aprueba y ahí sí lo puedes descargar desde Mis Clips.</p></div>
       </div>
     </div>
 
     <div class="pane" id="pane-clips" hidden>
       <h3>Mis Clips</h3>
-      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <p class="sub">Todos tus clips renderizados y su estado de aprobación.</p>
+      <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body"><div id="myClips"><p class="muted">Cargando…</p></div></div>
     </div>
 
     <div class="pane" id="pane-create" hidden>
       <h3>Crear Clip</h3>
-      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <p class="sub">Pega el link del video, analízalo y úsalo en el creador.</p>
+      <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
+      <div class="card">
       <label>Link de YouTube</label>
       <input id="panelUrl" type="url" placeholder="https://www.youtube.com/watch?v=…">
       <div style="margin-top:12px"><button id="btnPanelInfo">Analizar video</button></div>
       <p id="panelMeta" class="muted"></p>
       <div style="margin-top:12px"><button id="btnPanelUse" class="black" hidden>Usar este video en el creador ↓</button></div>
+      </div>
       </div>
     </div>
 
@@ -157,7 +200,7 @@ video#result{width:100%;border-radius:12px;background:#000}
       <p class="sub">Elige tu plan, paga por transferencia y sube el comprobante. El admin lo aprueba y quedas desbloqueado.</p>
       <div class="plans" id="planCards"><p class="muted">Cargando planes…</p></div>
       <div class="buybox" id="buyBox" hidden>
-        <h3 style="font-size:22px" id="buyTitle">Contratar plan</h3>
+        <h3 id="buyTitle">Contratar plan</h3>
         <label>Método de pago (transferencia)</label>
         <select id="buyMethod"></select>
         <div class="bankbox" id="bankBox" hidden></div>
@@ -171,43 +214,59 @@ video#result{width:100%;border-radius:12px;background:#000}
 
     <div class="pane" id="pane-account" hidden>
       <h3>Mi Cuenta / Configuración</h3>
-      <div class="locked">Debes contratar un plan para usar el clipper.<br><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <p class="sub">Tu nombre y el nombre que saldrá en el marco de tus clips.</p>
+      <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
+      <div class="card">
       <label>Nombre</label>
       <input id="accName" type="text">
       <label>Correo</label>
       <input id="accEmail" type="email" disabled>
       <label>Nombre que saldrá en el marco</label>
       <input id="accBrand" type="text" placeholder="@marketingcaribe">
-      <label><input type="checkbox" id="accFrame" style="width:22px;height:22px"> Con marco (amarillo + nombre)</label>
+      <label><input type="checkbox" id="accFrame" style="width:18px;height:18px;vertical-align:-3px"> Con marco (amarillo + nombre)</label>
       <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
       <p id="accMsg" class="muted"></p>
+      </div>
       </div>
     </div>
 
     <div class="pane" id="pane-admin" hidden>
       <h3>Panel Admin</h3>
       <p class="sub">Solo para administradores.</p>
-      <h3 style="font-size:20px">Usuarios</h3>
-      <div id="adminUsers"><p class="muted">Cargando…</p></div>
-      <h3 style="font-size:20px;margin-top:24px">Todos los clips</h3>
-      <div id="adminClips"><p class="muted">Cargando…</p></div>
-      <h3 style="font-size:20px;margin-top:24px">Solicitudes de pago</h3>
-      <div id="adminRequests"><p class="muted">Cargando…</p></div>
-      <h3 style="font-size:20px;margin-top:24px">Planes</h3>
-      <div id="adminPlans"><p class="muted">Cargando…</p></div>
-      <label>Nombre del plan</label><input id="npName" type="text" placeholder="Ej: Full">
-      <div class="row"><div><label>Precio RD$</label><input id="npPrice" type="number" value="3500"></div><div><label>Días</label><input id="npDays" type="number" value="30"></div></div>
-      <label>Características (una por línea)</label><textarea id="npFeatures" rows="4" placeholder="Videos ilimitados&#10;Hasta 15 clips por video"></textarea>
-      <label><input type="checkbox" id="npPopular" style="width:22px;height:22px"> Más popular</label>
-      <div style="margin-top:12px"><button id="btnNewPlan">Crear plan</button></div>
-      <h3 style="font-size:20px;margin-top:24px">Métodos de pago</h3>
-      <div id="adminMethods"><p class="muted">Cargando…</p></div>
-      <label>Nombre</label><input id="nmName" type="text" placeholder="Ej: Transferencia Banco Popular">
-      <div class="row"><div><label>Banco</label><input id="nmBank" type="text"></div><div><label>Tipo de cuenta</label><input id="nmType" type="text" placeholder="Ahorros"></div></div>
-      <div class="row"><div><label>Número de cuenta</label><input id="nmAccount" type="text"></div><div><label>Titular</label><input id="nmHolder" type="text"></div></div>
-      <label>Instrucciones</label><textarea id="nmInstr" rows="2" placeholder="Ej: Envía el comprobante por WhatsApp…"></textarea>
-      <div style="margin-top:12px"><button id="btnNewMethod">Crear método de pago</button></div>
+      <div class="card">
+        <h4>Usuarios</h4>
+        <div id="adminUsers"><p class="muted">Cargando…</p></div>
+      </div>
+      <div class="card">
+        <h4>Todos los clips</h4>
+        <div id="adminClips"><p class="muted">Cargando…</p></div>
+      </div>
+      <div class="card">
+        <h4>Solicitudes de pago</h4>
+        <div id="adminRequests"><p class="muted">Cargando…</p></div>
+      </div>
+      <div class="card">
+        <h4>Planes</h4>
+        <div id="adminPlans"><p class="muted">Cargando…</p></div>
+        <label>Nombre del plan</label><input id="npName" type="text" placeholder="Ej: Full">
+        <div class="row"><div><label>Precio RD$</label><input id="npPrice" type="number" value="3500"></div><div><label>Días</label><input id="npDays" type="number" value="30"></div></div>
+        <label>Características (una por línea)</label><textarea id="npFeatures" rows="4" placeholder="Videos ilimitados&#10;Hasta 15 clips por video"></textarea>
+        <label><input type="checkbox" id="npPopular" style="width:18px;height:18px;vertical-align:-3px"> Más popular</label>
+        <div style="margin-top:12px"><button id="btnNewPlan">Crear plan</button></div>
+      </div>
+      <div class="card">
+        <h4>Métodos de pago</h4>
+        <div id="adminMethods"><p class="muted">Cargando…</p></div>
+        <label>Nombre</label><input id="nmName" type="text" placeholder="Ej: Transferencia Banco Popular">
+        <div class="row"><div><label>Banco</label><input id="nmBank" type="text"></div><div><label>Tipo de cuenta</label><input id="nmType" type="text" placeholder="Ahorros"></div></div>
+        <div class="row"><div><label>Número de cuenta</label><input id="nmAccount" type="text"></div><div><label>Titular</label><input id="nmHolder" type="text"></div></div>
+        <label>Instrucciones</label><textarea id="nmInstr" rows="2" placeholder="Ej: Envía el comprobante por WhatsApp…"></textarea>
+        <div style="margin-top:12px"><button id="btnNewMethod">Crear método de pago</button></div>
+      </div>
+    </div>
+
+      </div>
     </div>
   </div>
 </section>

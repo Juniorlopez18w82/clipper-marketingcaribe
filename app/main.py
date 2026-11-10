@@ -69,7 +69,7 @@ from .render import render_clip
 from .settings import (WD_APPROVED, WD_PENDING, WD_REJECTED,
                        WithdrawalRequest, get_setting, set_setting,
                        withdrawal_out)
-from .transcribe import transcribe_file
+from .transcribe import transcribe_file, transcription_engine
 from .video import download_section, probe, video_info
 
 
@@ -371,6 +371,7 @@ def health():
     return {"ok": True, "service": "ClipViral", "version": "1.4.0",
             "warp": os.environ.get("WARP_STATUS", "not_configured"),
             "proxy": bool(os.environ.get("YTDLP_PROXY")),
+            "transcription": transcription_engine(),
             "db": db_backend(), "auth": True}
 
 

@@ -4,15 +4,21 @@ No YouTube API key: yt-dlp reads the pasted link directly.
 Endpoints:
   GET  /                        health
   POST /api/video-info          {url} -> title/uploader/duration
-  POST /api/clips               {url, start, end, model} -> job (download +
-                                transcribe + clip candidates)
-  POST /api/render              {job_id|url, start, end, frame_*, brand_text,
-                                title_text, subtitle_*, edited_words} -> job
+  POST /api/upload              video file (max 500 MB) -> {file_id}
+  POST /api/clips               {url|source_file, start, end, model} -> job
+                                (download + transcribe + clip candidates)
+  POST /api/render              {job_id|url|source_file, start, end, ...} -> job
   GET  /api/jobs/{id}           job status/result
-  GET  /api/download/{file}    rendered mp4
+  GET  /api/download/{file}    rendered mp4 — NO approval needed: any user
+                                with a plan downloads right after render
+                                (clip approval was removed 2026-11-10)
   POST /api/auth/register       {name, email, password} -> user + token
   POST /api/auth/login          {email, password} -> token
   GET  /api/auth/me            (token) -> current user
+  GET  /api/me/stats           clips este mes / en proceso / total
+  POST /api/withdrawals         request a withdrawal (amount, method, details)
+  POST /api/admin/impersonate/{user_id}  admin -> JWT for that user
+  GET/POST /api/admin/settings  platform defaults (brand, frame)
 
 Usuarios: PostgreSQL en Render (DATABASE_URL) o SQLite local
 (data/clipper.db) si no hay DATABASE_URL. Claves con bcrypt, sesiones JWT.
@@ -26,37 +32,43 @@ Render options (Configuración):
   brand_text: str = "@marketingcaribe"   "Nombre que saldrá en el marco",
                                editable. Empty = frame kept, name omitted.
   frame_color / frame_width / title_text / subtitle_style / subtitle_size /
-  subtitle_position / show_subtitles: see RenderRequest.
+  subtitle_position / show_subtitles / quality: see RenderRequest.
 """
 import json
 import os
+import shutil
+import subprocess
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form,
                      HTTPException, UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from . import auth, billing, clips_db, jobs
+from . import auth, billing, clips_db, jobs, settings
 from .auth import User, get_current_user, get_optional_user
 from .billing import (PaymentMethod, PaymentRequest, Plan, UserSubscription,
                       approve_request, get_active_subscription,
                       has_active_subscription, method_out, plan_out,
                       reject_request, request_out, subscription_out)
 from .clips import build_candidates
-from .clips_db import (STATUS_APROBADO, STATUS_PENDIENTE, STATUS_RECHAZADO,
-                       Clip, clip_out, create_clip)
+from .clips_db import Clip, clip_out, create_clip
 from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
-                     DEFAULT_FRAME_WIDTH, MAX_WORKERS, OUTPUTS_DIR,
-                     RECEIPTS_DIR, SOURCES_DIR, TRANSCRIPTS_DIR)
+                     DEFAULT_FRAME_WIDTH, MAX_UPLOAD_BYTES, MAX_WORKERS,
+                     OUTPUTS_DIR, RECEIPTS_DIR, SOURCES_DIR, TRANSCRIPTS_DIR,
+                     UPLOADS_DIR)
 from .db import SessionLocal, db_backend, get_db, init_db
 from .render import render_clip
+from .settings import (WD_APPROVED, WD_PENDING, WD_REJECTED,
+                       WithdrawalRequest, get_setting, set_setting,
+                       withdrawal_out)
 from .transcribe import transcribe_file
 from .video import download_section, probe, video_info
 
@@ -75,27 +87,48 @@ app.add_middleware(
 _executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 
 
+@app.exception_handler(Exception)
+async def _json_500_handler(_request, _exc):
+    """Any unhandled error still returns JSON (never an empty/plain body),
+    so the frontend's response.json() never throws
+    "Unexpected end of JSON input" at the user."""
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Error interno del servidor, inténtalo de nuevo"},
+    )
+
+
 # ---------------------------------------------------------------- models
 class VideoInfoRequest(BaseModel):
     url: str
 
 
 class ClipsRequest(BaseModel):
-    url: str
+    # Either a YouTube url …
+    url: str | None = None
+    # … or an uploaded file (POST /api/upload returns its file_id).
+    source_file: str | None = None
     # Absolute seconds in the original video to analyse (default: first 2 min).
     start: float = 0.0
     end: float = 120.0
     model: str = "base"  # tiny | base | small
+    # Clip prefs (defaults come from the user's saved config).
+    max_clips: int = 5
+    min_len: float = 20.0
+    max_len: float = 45.0
 
 
 class RenderRequest(BaseModel):
     # Either a clips job (reuses its downloaded source + transcript) …
     job_id: str | None = None
-    # … or a raw url + range (downloads that section first).
+    # … or a raw url + range (downloads that section first) …
     url: str | None = None
+    # … or an uploaded file + range (cuts that section first).
+    source_file: str | None = None
     start: float = Field(..., description="Absolute start (s) in original video")
     end: float = Field(..., description="Absolute end (s) in original video")
     model: str = "base"
+    quality: str = "1080p"  # 720p | 1080p
     # --- Configuración: marco ---
     frame_enabled: bool = True
     frame_color: str = DEFAULT_FRAME_COLOR
@@ -137,6 +170,12 @@ class UserResponse(BaseModel):
     is_admin: bool
     brand_text: str = DEFAULT_BRAND_TEXT
     frame_enabled: bool = True
+    max_clips: int = 5
+    min_clip_secs: float = 20.0
+    max_clip_secs: float = 45.0
+    quality: str = "1080p"
+    subtitles_enabled: bool = True
+    template: str = "Gancho grande"
     created_at: str | None = None
 
 
@@ -144,6 +183,12 @@ class UpdateMeRequest(BaseModel):
     name: str | None = None
     brand_text: str | None = None
     frame_enabled: bool | None = None
+    max_clips: int | None = None
+    min_clip_secs: float | None = None
+    max_clip_secs: float | None = None
+    quality: str | None = None
+    subtitles_enabled: bool | None = None
+    template: str | None = None
 
 
 # ---------------------------------------------------------------- helpers
@@ -158,15 +203,58 @@ def _clip_words(transcript: dict, clip_start_rel: float,
     return [w for w in words if w["w"].strip()]
 
 
-def _run_clips_job(job_id: str, url: str, start: float, end: float, model: str):
+def _cut_upload(upload: Path, start: float, end: float, job_id: str) -> Path:
+    """Cut [start, end] out of an uploaded video into data/sources/.
+
+    Stream copy first (fast); if the container won't cut cleanly, fall
+    back to a re-encode. Returns the cut file.
+    """
+    out = SOURCES_DIR / f"{job_id}.mp4"
+    dur = max(1.0, end - start)
+    cmd = ["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-i", str(upload),
+           "-t", str(dur), "-c", "copy", str(out)]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        cmd = ["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-i", str(upload),
+               "-t", str(dur), "-c:v", "libx264", "-preset", "veryfast",
+               "-c:a", "aac", str(out)]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        if proc.returncode != 0:
+            raise RuntimeError(f"No se pudo cortar el archivo subido: {proc.stderr[-500:]}")
+    return out
+
+
+def _upload_path(file_id: str) -> Path:
+    """Resolve an upload file_id, guarding against path traversal."""
+    name = Path(file_id or "").name
+    if not name or name != (file_id or ""):
+        raise HTTPException(400, "Archivo subido no válido")
+    path = UPLOADS_DIR / name
+    if not path.exists():
+        raise HTTPException(404, "Archivo subido no encontrado")
+    return path
+
+
+def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
+                   model: str, source_file: str | None = None,
+                   max_clips: int = 5, min_len: float = 20.0,
+                   max_len: float = 45.0):
     try:
-        jobs.update(job_id, status="running", progress=10,
-                    message="Descargando el rango del video…")
-        source = download_section(url, start, end, job_id)
-        jobs.update(job_id, progress=40, message="Transcribiendo (Whisper local)…")
+        if source_file:
+            jobs.update(job_id, status="running", progress=10,
+                        message="Leyendo tu archivo…")
+            source = _cut_upload(_upload_path(source_file), start, end, job_id)
+        else:
+            jobs.update(job_id, status="running", progress=10,
+                        message="Descargando el video…")
+            source = download_section(url, start, end, job_id)
+        jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=model)
-        jobs.update(job_id, progress=80, message="Buscando momentos para clips…")
-        candidates = build_candidates(transcript["segments"])
+        jobs.update(job_id, progress=80,
+                    message="La IA está eligiendo los mejores momentos…")
+        candidates = build_candidates(transcript["segments"],
+                                      min_len=min_len, max_len=max_len)
+        candidates = candidates[:max(1, max_clips)]
         # Candidates are relative to the section; expose absolute times too.
         for c in candidates:
             c["abs_start"] = round(c["start"] + start, 2)
@@ -198,14 +286,21 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         transcript = json.loads(
             (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(encoding="utf-8"))
         return source, section_start, transcript
-    if req.url:
+    if req.source_file:
         jobs.update(job_id, status="running", progress=10,
-                    message="Descargando el rango del video…")
-        source = download_section(req.url, req.start, req.end, job_id)
-        jobs.update(job_id, progress=40, message="Transcribiendo (Whisper local)…")
+                    message="Leyendo tu archivo…")
+        source = _cut_upload(_upload_path(req.source_file), req.start, req.end, job_id)
+        jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=req.model)
         return source, req.start, transcript
-    raise HTTPException(400, "Pasa job_id o url")
+    if req.url:
+        jobs.update(job_id, status="running", progress=10,
+                    message="Descargando el video…")
+        source = download_section(req.url, req.start, req.end, job_id)
+        jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
+        transcript = transcribe_file(source, job_id, model=req.model)
+        return source, req.start, transcript
+    raise HTTPException(400, "Pasa job_id, url o un archivo subido")
 
 
 def _run_render_job(job_id: str, req: RenderRequest):
@@ -226,7 +321,7 @@ def _run_render_job(job_id: str, req: RenderRequest):
         if words is None and req.show_subtitles:
             words = _clip_words(transcript, rel_start, rel_end)
         jobs.update(job_id, progress=70,
-                    message="Renderizando 9:16 con marco y subtítulos…")
+                    message="Cortando tu clip…")
         out_name = f"clip_{job_id}.mp4"
         out_path = OUTPUTS_DIR / out_name
         render_clip(
@@ -237,6 +332,7 @@ def _run_render_job(job_id: str, req: RenderRequest):
             subtitle_style=req.subtitle_style, subtitle_size=req.subtitle_size,
             subtitle_position=req.subtitle_position,
             show_subtitles=req.show_subtitles,
+            quality=req.quality,
         )
         info = probe(out_path)
         jobs.update(job_id, status="done", progress=100, message="Clip listo.",
@@ -244,8 +340,9 @@ def _run_render_job(job_id: str, req: RenderRequest):
                             "duration": duration, "output": info,
                             "frame_enabled": req.frame_enabled,
                             "brand_text": req.brand_text})
-        # Durable per-user record for the panel (status starts "pendiente",
-        # only an admin can approve/reject it). Never breaks the render.
+        # Durable per-user record for the panel. The clip is downloadable
+        # IMMEDIATELY — no admin approval for clips (reversed 2026-11-10).
+        # Never breaks the render.
         try:
             parent = jobs.get(job_id) or {}
             video_url = req.url or ""
@@ -313,6 +410,18 @@ def api_update_me(req: UpdateMeRequest, db: Session = Depends(get_db),
         user.brand_text = req.brand_text.strip() or DEFAULT_BRAND_TEXT
     if req.frame_enabled is not None:
         user.frame_enabled = bool(req.frame_enabled)
+    if req.max_clips is not None:
+        user.max_clips = max(1, min(15, int(req.max_clips)))
+    if req.min_clip_secs is not None:
+        user.min_clip_secs = max(5.0, float(req.min_clip_secs))
+    if req.max_clip_secs is not None:
+        user.max_clip_secs = max(10.0, min(180.0, float(req.max_clip_secs)))
+    if req.quality is not None and req.quality in ("720p", "1080p"):
+        user.quality = req.quality
+    if req.subtitles_enabled is not None:
+        user.subtitles_enabled = bool(req.subtitles_enabled)
+    if req.template is not None and req.template.strip():
+        user.template = req.template.strip()[:80]
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -323,12 +432,29 @@ def api_update_me(req: UpdateMeRequest, db: Session = Depends(get_db),
 @app.get("/api/me/stats")
 def api_my_stats(db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)):
+    from .config import JOBS_DIR
+
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
     q = db.query(Clip).filter(Clip.user_id == user.id)
+    total = q.count()
+    this_month = q.filter(Clip.created_at >= month_start).count()
+    # Videos en proceso: jobs en cola o corriendo de este usuario (v1: JSON).
+    in_process = 0
+    try:
+        for path in JOBS_DIR.glob("*.json"):
+            try:
+                job = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 — skip corrupt job files
+                continue
+            if job.get("user_id") == user.id and job.get("status") in ("queued", "running"):
+                in_process += 1
+    except Exception:  # noqa: BLE001 — stats are best-effort
+        in_process = 0
     return {
-        "clips": q.count(),
-        "pendientes": q.filter(Clip.status == STATUS_PENDIENTE).count(),
-        "aprobados": q.filter(Clip.status == STATUS_APROBADO).count(),
-        "rechazados": q.filter(Clip.status == STATUS_RECHAZADO).count(),
+        "clips_this_month": this_month,
+        "videos_in_process": in_process,
+        "clips_total": total,
     }
 
 
@@ -368,29 +494,168 @@ def api_admin_clips(db: Session = Depends(get_db),
     return out
 
 
-def _admin_set_clip(db: Session, clip_id: int, status: str) -> dict:
-    clip = db.query(Clip).filter(Clip.id == clip_id).first()
-    if clip is None:
-        raise HTTPException(404, "Clip no encontrado")
-    if status not in (STATUS_APROBADO, STATUS_RECHAZADO):
-        raise HTTPException(400, "Estado no válido")
-    clip.status = status
-    db.add(clip)
+# NOTA 2026-11-10: la aprobación de clips por el admin fue ELIMINADA por
+# decisión de Juan — los clips se descargan apenas se renderizan. Los
+# endpoints approve/reject de clips ya no existen; solo la aprobación de
+# PAGOS (suscripciones) sigue siendo manual.
+
+
+# ---------------------------------------------------------------- subida de video
+UPLOAD_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
+
+
+@app.post("/api/upload")
+async def api_upload(file: UploadFile = File(...),
+                     db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    _require_plan(db, user)
+    ext = (Path(file.filename or "").suffix or "").lower()
+    if ext not in UPLOAD_EXTS:
+        raise HTTPException(
+            400, "El archivo debe ser un video (mp4, mov, webm, mkv o avi)")
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOADS_DIR / filename
+    total = 0
+    try:
+        with dest.open("wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        400, "El video no puede pasar de 500 MB")
+                out.write(chunk)
+    except HTTPException:
+        if dest.exists():
+            dest.unlink()
+        raise
+    return {"file_id": filename, "filename": file.filename or filename,
+            "size": total}
+
+
+# ---------------------------------------------------------------- impersonar (admin entra a la cuenta de un usuario)
+@app.post("/api/admin/impersonate/{user_id}")
+def api_admin_impersonate(user_id: int, db: Session = Depends(get_db),
+                          _admin: User = Depends(require_admin)):
+    target = db.query(User).filter(User.id == user_id).first()
+    if target is None:
+        raise HTTPException(404, "Usuario no encontrado")
+    if target.is_admin:
+        raise HTTPException(400, "No se puede impersonar a otro admin")
+    return {"access_token": auth.create_access_token(target.id),
+            "user": auth.user_out(target)}
+
+
+# ---------------------------------------------------------------- retiros
+class DecideRequest(BaseModel):
+    admin_note: str = ""
+
+
+class WithdrawalRequestIn(BaseModel):
+    amount_dop: int
+    method: str = ""
+    details: str = ""
+
+
+@app.post("/api/withdrawals")
+def api_create_withdrawal(req: WithdrawalRequestIn,
+                          db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    if req.amount_dop <= 0:
+        raise HTTPException(400, "El monto debe ser mayor que 0")
+    if not req.method.strip():
+        raise HTTPException(400, "Indica el método de retiro")
+    w = WithdrawalRequest(user_id=user.id, amount_dop=int(req.amount_dop),
+                          method=req.method.strip()[:120],
+                          details=req.details.strip()[:500])
+    db.add(w)
     db.commit()
-    db.refresh(clip)
-    return clip_out(clip)
+    db.refresh(w)
+    return withdrawal_out(w, user=user)
 
 
-@app.post("/api/admin/clips/{clip_id}/approve")
-def api_admin_approve(clip_id: int, db: Session = Depends(get_db),
-                      _admin: User = Depends(require_admin)):
-    return _admin_set_clip(db, clip_id, STATUS_APROBADO)
+@app.get("/api/withdrawals/mine")
+def api_my_withdrawals(db: Session = Depends(get_db),
+                       user: User = Depends(get_current_user)):
+    rows = (db.query(WithdrawalRequest)
+            .filter(WithdrawalRequest.user_id == user.id)
+            .order_by(WithdrawalRequest.created_at.desc()).all())
+    return [withdrawal_out(w, user=user) for w in rows]
 
 
-@app.post("/api/admin/clips/{clip_id}/reject")
-def api_admin_reject(clip_id: int, db: Session = Depends(get_db),
-                     _admin: User = Depends(require_admin)):
-    return _admin_set_clip(db, clip_id, STATUS_RECHAZADO)
+@app.get("/api/admin/withdrawals")
+def api_admin_withdrawals(db: Session = Depends(get_db),
+                          _admin: User = Depends(require_admin)):
+    rows = (db.query(WithdrawalRequest)
+            .order_by(WithdrawalRequest.created_at.desc()).all())
+    out = []
+    for w in rows:
+        out.append(withdrawal_out(
+            w, db.query(User).filter(User.id == w.user_id).first()))
+    return out
+
+
+def _decide_withdrawal(db: Session, w_id: int, status: str,
+                       admin_note: str) -> dict:
+    w = db.query(WithdrawalRequest).filter(WithdrawalRequest.id == w_id).first()
+    if w is None:
+        raise HTTPException(404, "Solicitud de retiro no encontrada")
+    if w.status != WD_PENDING:
+        raise HTTPException(400, f"La solicitud ya está {w.status}")
+    w.status = status
+    w.admin_note = admin_note or ""
+    w.decided_at = datetime.now(timezone.utc)
+    db.add(w)
+    db.commit()
+    db.refresh(w)
+    return withdrawal_out(
+        w, db.query(User).filter(User.id == w.user_id).first())
+
+
+@app.post("/api/admin/withdrawals/{w_id}/approve")
+def api_admin_approve_withdrawal(w_id: int, body: DecideRequest | None = None,
+                                 db: Session = Depends(get_db),
+                                 _admin: User = Depends(require_admin)):
+    return _decide_withdrawal(db, w_id, WD_APPROVED,
+                              body.admin_note if body else "")
+
+
+@app.post("/api/admin/withdrawals/{w_id}/reject")
+def api_admin_reject_withdrawal(w_id: int, body: DecideRequest | None = None,
+                                db: Session = Depends(get_db),
+                                _admin: User = Depends(require_admin)):
+    return _decide_withdrawal(db, w_id, WD_REJECTED,
+                              body.admin_note if body else "")
+
+
+# ---------------------------------------------------------------- configuración de la plataforma (admin)
+class SettingsRequest(BaseModel):
+    settings: dict
+
+
+@app.get("/api/admin/settings")
+def api_admin_get_settings(db: Session = Depends(get_db),
+                           _admin: User = Depends(require_admin)):
+    from .settings import DEFAULT_SETTINGS
+
+    return {k: get_setting(db, k, v) for k, v in DEFAULT_SETTINGS.items()}
+
+
+@app.post("/api/admin/settings")
+def api_admin_save_settings(req: SettingsRequest,
+                            db: Session = Depends(get_db),
+                            _admin: User = Depends(require_admin)):
+    from .settings import DEFAULT_SETTINGS
+
+    out = {}
+    for k, v in (req.settings or {}).items():
+        if k not in DEFAULT_SETTINGS:
+            continue
+        set_setting(db, k, str(v)[:500])
+        out[k] = str(v)[:500]
+    return out
 
 
 # ---------------------------------------------------------------- planes y pagos
@@ -412,10 +677,6 @@ class MethodRequest(BaseModel):
     account_type: str = ""
     instructions: str = ""
     is_active: bool = True
-
-
-class DecideRequest(BaseModel):
-    admin_note: str = ""
 
 
 @app.get("/api/plans")
@@ -648,12 +909,18 @@ def api_clips(req: ClipsRequest, background: BackgroundTasks,
               user: User | None = Depends(get_optional_user),
               db: Session = Depends(get_db)):
     _require_plan(db, user)
-    if req.end <= req.start:
+    if not req.url and not req.source_file:
+        raise HTTPException(400, "Pega un link de YouTube o sube un video")
+    if req.url and not req.source_file and req.end <= req.start:
+        raise HTTPException(400, "end debe ser mayor que start")
+    if req.source_file and req.end <= req.start:
         raise HTTPException(400, "end debe ser mayor que start")
     job = jobs.create("clips", req.model_dump())
     if user is not None:
         jobs.update(job["id"], user_id=user.id)
-    background.add_task(_run_clips_job, job["id"], req.url, req.start, req.end, req.model)
+    background.add_task(_run_clips_job, job["id"], req.url, req.start, req.end,
+                        req.model, req.source_file, req.max_clips, req.min_len,
+                        req.max_len)
     return {"job_id": job["id"], "status": job["status"]}
 
 

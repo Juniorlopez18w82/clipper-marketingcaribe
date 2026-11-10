@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipper — MarketingCaribe</title>
+<style>
+:root{--bg:#040017;--yellow:#FADE4C;--card:#0d1230;--text:#f2f2f7;--muted:#9aa0b5}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
+header{padding:18px 20px;border-bottom:3px solid var(--yellow);display:flex;justify-content:space-between;align-items:center}
+header b{color:var(--yellow);font-size:22px}
+main{max-width:1100px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1fr 340px;gap:20px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid #222a55;border-radius:16px;padding:18px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+input[type=text],input[type=url],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #333a66;background:#040017;color:var(--text);font-size:15px}
+input[type=color]{width:60px;height:40px;padding:2px;background:#040017;border:1px solid #333a66;border-radius:10px}
+button{background:var(--yellow);color:#040017;border:0;border-radius:999px;padding:12px 20px;font-weight:700;cursor:pointer;font-size:15px}
+button:disabled{opacity:.5;cursor:wait}
+button.ghost{background:transparent;color:var(--yellow);border:2px solid var(--yellow)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1;min-width:110px}
+.clip{border:1px solid #333a66;border-radius:12px;padding:12px;margin:8px 0;cursor:pointer}
+.clip.sel{border-color:var(--yellow);background:#171d45}
+.clip small{color:var(--muted)}
+#status{color:var(--yellow);min-height:20px;font-size:14px}
+.muted{color:var(--muted);font-size:13px}
+/* Switch Con marco / Sin marco */
+.switchrow{display:flex;align-items:center;gap:12px;padding:10px 0}
+.switch{position:relative;width:56px;height:30px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#333a66;border-radius:999px;cursor:pointer;transition:.2s}
+.slider:before{content:"";position:absolute;width:24px;height:24px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked+.slider{background:var(--yellow)}
+.switch input:checked+.slider:before{transform:translateX(26px);background:#040017}
+/* Vista previa 9:16 */
+.phone{width:270px;height:480px;margin:0 auto;position:relative;background:#000;overflow:hidden;border-radius:12px}
+.phone video{width:100%;height:100%;object-fit:cover;display:block}
+.phone .frame{position:absolute;inset:0;pointer-events:none;border:14px solid var(--yellow)}
+.phone .brand{position:absolute;top:22px;left:0;right:0;text-align:center;color:var(--yellow);font-weight:800;font-size:20px;background:rgba(0,0,0,.55);padding:6px 8px;margin:0 18px}
+.phone .subs{position:absolute;left:12px;right:12px;bottom:70px;text-align:center;color:#fff;font-weight:800;font-size:22px;text-shadow:0 2px 0 #000,0 0 8px #000}
+.phone .subs span{color:var(--yellow)}
+video#result{width:100%;border-radius:12px;background:#000}
+</style>
+</head>
+<body>
+<header><b>✂️ Clipper · MarketingCaribe</b><span class="muted">YouTube / Live → Reels 9:16 · sin API de YouTube</span></header>
+<main>
+  <div>
+    <section class="card">
+      <h2>1 · Pega el link del video o live</h2>
+      <label>Link de YouTube</label>
+      <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="https://www.youtube.com/watch?v=lvPIofmDIGk">
+      <div class="row" style="margin-top:12px">
+        <button id="btnInfo">Analizar video</button>
+        <span id="videoMeta" class="muted"></span>
+      </div>
+      <div class="row">
+        <div><label>Analizar desde (seg)</label><input id="rangeStart" type="number" value="0" min="0"></div>
+        <div><label>Hasta (seg)</label><input id="rangeEnd" type="number" value="120" min="10"></div>
+        <div><label>Modelo Whisper</label><select id="model"><option value="base" selected>base (recomendado)</option><option value="tiny">tiny (rápido)</option><option value="small">small (más preciso, lento)</option></select></div>
+      </div>
+      <div style="margin-top:12px"><button id="btnClips">Generar clips</button></div>
+      <p id="status"></p>
+      <p class="muted">La transcripción es automática y local (Whisper). En slang dominicano rápido o voces que se montan algunas palabras pueden salir mal: corrígelas en el paso 3 antes de exportar.</p>
+    </section>
+
+    <section class="card">
+      <h2>2 · Elige un clip</h2>
+      <div id="candidates"><p class="muted">Primero genera los clips.</p></div>
+    </section>
+
+    <section class="card">
+      <h2>3 · Revisa / corrige los subtítulos</h2>
+      <label>Texto del clip (editable — se usa para los subtítulos)</label>
+      <textarea id="subText" rows="3" placeholder="Elige un clip para ver su texto…"></textarea>
+      <p class="muted">Si corriges una palabra aquí, el render usa tu texto.</p>
+      <div class="row">
+        <div><label>Inicio (seg)</label><input id="clipStart" type="number" step="0.1"></div>
+        <div><label>Fin (seg)</label><input id="clipEnd" type="number" step="0.1"></div>
+      </div>
+      <div style="margin-top:14px"><button id="btnRender">Renderizar clip 9:16</button></div>
+    </section>
+
+    <section class="card" id="resultCard" hidden>
+      <h2>Clip listo</h2>
+      <video id="result" controls playsinline></video>
+      <p style="margin-top:12px"><a id="downloadLink" href="#" download><button>⬇ Descargar MP4</button></a></p>
+    </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <h2>Configuración</h2>
+      <!-- NUEVO REQUISITO: interruptor Con marco / Sin marco -->
+      <div class="switchrow">
+        <label class="switch"><input type="checkbox" id="frameEnabled" checked><span class="slider"></span></label>
+        <div><b id="frameLabel">Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
+      </div>
+      <!-- NUEVO REQUISITO: campo editable del nombre en el marco -->
+      <label>Nombre que saldrá en el marco</label>
+      <input id="brandText" type="text" value="@marketingcaribe">
+      <div class="row">
+        <div><label>Color del marco</label><input id="frameColor" type="color" value="#FADE4C"></div>
+        <div><label>Grosor (px)</label><input id="frameWidth" type="number" value="14" min="0" max="40"></div>
+      </div>
+      <label>Título debajo del nombre (opcional)</label>
+      <input id="titleText" type="text" value="BULIN 47 x VIN DIESEL">
+      <label>Subtítulos</label>
+      <select id="showSubs"><option value="1" selected>Con subtítulos virales</option><option value="0">Sin subtítulos</option></select>
+      <div class="row">
+        <div><label>Estilo</label><select id="subStyle"><option value="viral" selected>Viral (blanco + amarillo)</option><option value="plain">Blanco</option><option value="yellow">Amarillo</option></select></div>
+        <div><label>Tamaño</label><input id="subSize" type="number" value="76" min="40" max="110"></div>
+      </div>
+      <label>Posición</label>
+      <select id="subPos"><option value="bottom" selected>Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select>
+    </section>
+
+    <section class="card">
+      <h2>Vista previa (en vivo)</h2>
+      <p class="muted">Cambia el marco o el nombre y se refleja aquí antes de exportar.</p>
+      <div class="phone" id="phone">
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg,#222,#000);display:flex;align-items:center;justify-content:center;color:#666;font-size:60px">▶</div>
+        <div class="frame" id="pvFrame"></div>
+        <div class="brand" id="pvBrand">@marketingcaribe</div>
+        <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
+      </div>
+      <p class="muted" style="text-align:center" id="pvNote">9:16 · 1080×1920 · Reels / TikTok / Shorts</p>
+    </section>
+  </div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

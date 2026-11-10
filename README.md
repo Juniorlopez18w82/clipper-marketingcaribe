@@ -1,4 +1,4 @@
-# Clipper — MarketingCaribe
+# ClipViral
 
 Plataforma para sacar clips verticales de videos y lives de YouTube, **sin API de YouTube**: pegas el link, el sistema descarga el rango, lo transcribe con Whisper local, propone clips y renderiza en **9:16 completo (1080×1920)** para Reels / TikTok / Shorts.
 

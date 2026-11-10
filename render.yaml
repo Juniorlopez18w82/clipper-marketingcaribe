@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: clipper-marketingcaribe
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile

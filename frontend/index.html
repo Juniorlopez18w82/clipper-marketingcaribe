@@ -138,6 +138,17 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .clip{border:1px solid #d4d4d4;background:#fff;color:#111}
 .panel .clip.sel{border-color:#E10600;background:#fff5f5}
 .panel .clip small{color:#666}
+/* Candidatos: rejilla visual 3 columnas (2 tablet, 1 móvil) con miniatura
+   de video real arriba y texto abajo. La tarjeta es la vista previa. */
+.panel #candidates{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:1000px){.panel #candidates{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.panel #candidates{grid-template-columns:1fr}}
+.panel .clip{margin:0;padding:0;overflow:hidden;display:flex;flex-direction:column}
+.panel .clip video{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000}
+.panel .clip .clip-body{padding:10px 12px 12px}
+.panel .clip .clip-meta{font-weight:700;font-size:14px;color:#111}
+.panel .clip .clip-score{float:right;color:#E10600;white-space:nowrap}
+.panel .clip .clip-text{display:block;margin-top:4px}
 .panel #status{color:#E10600}
 .panel .slider{background:#d4d4d4}
 .panel .switch input:checked+.slider{background:#E10600}
@@ -338,7 +349,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <h2>Vista previa (en vivo)</h2>
         <p class="muted">Cambia el marco o el nombre y se refleja aquí antes de exportar.</p>
         <div class="phone" id="phone">
-          <div style="position:absolute;inset:0;background:linear-gradient(180deg,#222,#000);display:flex;align-items:center;justify-content:center;color:#666;font-size:60px">▶</div>
+          <video id="pvVideo" muted playsinline preload="metadata"></video>
           <div class="frame" id="pvFrame"></div>
           <div class="brand" id="pvBrand">@marketingcaribe</div>
           <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
@@ -556,6 +567,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

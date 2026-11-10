@@ -233,6 +233,12 @@ def approve_request(db, req: PaymentRequest, admin_note: str = ""):
         ends_at=now + timedelta(days=plan.duration_days or 30),
         status="active")
     db.add(sub)
+    # El campo plan del usuario refleja su plan activo (antes quedaba en
+    # "free" aunque la suscripción estuviera aprobada).
+    owner = db.query(auth.User).filter(auth.User.id == req.user_id).first()
+    if owner is not None:
+        owner.plan = plan.name
+        db.add(owner)
     req.status = REQ_APPROVED
     req.admin_note = admin_note or ""
     req.decided_at = now

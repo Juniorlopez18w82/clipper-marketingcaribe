@@ -1,0 +1,15 @@
+# MarketingCaribe Clipper — backend
+# Pinned where it matters; yt-dlp moves fast, pin to the version proven 2026-11-10.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+yt-dlp==2026.10.26
+faster-whisper==1.2.1
+# NOTE: faster-whisper 1.2.1 + av 19.x breaks decode_audio() (metadata_errors kwarg).
+# We never pass a file path to Whisper: transcribe.py loads the WAV with the
+# stdlib `wave` module and passes a numpy array (proven in clipper-prueba/).
+# Pin av below 15 as a second guard.
+av>=10,<15
+numpy==2.2.3
+ctranslate2==4.8.5
+python-multipart==0.0.20

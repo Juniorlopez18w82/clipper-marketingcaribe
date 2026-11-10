@@ -21,6 +21,7 @@ Render options (Configuración):
   subtitle_position / show_subtitles: see RenderRequest.
 """
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -39,7 +40,7 @@ from .render import render_clip
 from .transcribe import transcribe_file
 from .video import download_section, probe, video_info
 
-app = FastAPI(title="MarketingCaribe Clipper", version="1.0.0")
+app = FastAPI(title="MarketingCaribe Clipper", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -189,7 +190,9 @@ def _run_render_job(job_id: str, req: RenderRequest):
 # ---------------------------------------------------------------- routes
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "MarketingCaribe Clipper", "version": "1.0.0"}
+    return {"ok": True, "service": "MarketingCaribe Clipper", "version": "1.1.0",
+            "warp": os.environ.get("WARP_STATUS", "not_configured"),
+            "proxy": bool(os.environ.get("YTDLP_PROXY"))}
 
 
 @app.post("/api/video-info")

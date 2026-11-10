@@ -17,9 +17,10 @@ import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
 from sqlalchemy.orm import Session
 
+from .config import DEFAULT_BRAND_TEXT
 from .db import Base, get_db
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,14 @@ class User(Base):
     # Mi Cuenta / Configuración: nombre que saldrá en el marco y su interruptor.
     brand_text = Column(String(120), nullable=False, default="@marketingcaribe")
     frame_enabled = Column(Boolean, nullable=False, default=True)
+    # Preferencias de clips (Configuración > Crear Clip): se guardan con
+    # PATCH /api/auth/me y se usan como valores por defecto al generar.
+    max_clips = Column(Integer, nullable=False, default=5)
+    min_clip_secs = Column(Float, nullable=False, default=20.0)
+    max_clip_secs = Column(Float, nullable=False, default=45.0)
+    quality = Column(String(10), nullable=False, default="1080p")  # 720p | 1080p
+    subtitles_enabled = Column(Boolean, nullable=False, default=True)
+    template = Column(String(80), nullable=False, default="Gancho grande")
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 
@@ -64,6 +73,18 @@ SEED_USERS = [
 ]
 
 
+def _apply_platform_defaults(db: Session, user: User) -> None:
+    """New users get the admin's platform defaults (brand + frame)."""
+    try:
+        from .settings import get_setting
+        brand = get_setting(db, "default_brand_text", DEFAULT_BRAND_TEXT)
+        frame = get_setting(db, "default_frame_enabled", "true")
+        user.brand_text = brand or DEFAULT_BRAND_TEXT
+        user.frame_enabled = str(frame).lower() not in ("false", "0", "no")
+    except Exception:  # noqa: BLE001 — defaults are best-effort
+        pass
+
+
 def seed_users(db: Session) -> list[str]:
     """Create the demo users only when the users table is empty."""
     if db.query(User).count() > 0:
@@ -73,6 +94,7 @@ def seed_users(db: Session) -> list[str]:
         user = User(name=seed["name"], email=seed["email"],
                     password_hash=hash_password(seed["password"]),
                     is_admin=seed["is_admin"])
+        _apply_platform_defaults(db, user)
         db.add(user)
         created.append(seed["email"])
     db.commit()
@@ -89,6 +111,12 @@ def user_out(user: User) -> dict:
         "is_admin": bool(user.is_admin),
         "brand_text": user.brand_text,
         "frame_enabled": bool(user.frame_enabled),
+        "max_clips": user.max_clips if user.max_clips is not None else 5,
+        "min_clip_secs": user.min_clip_secs if user.min_clip_secs is not None else 20.0,
+        "max_clip_secs": user.max_clip_secs if user.max_clip_secs is not None else 45.0,
+        "quality": user.quality or "1080p",
+        "subtitles_enabled": bool(user.subtitles_enabled) if user.subtitles_enabled is not None else True,
+        "template": user.template or "Gancho grande",
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
@@ -133,6 +161,7 @@ def register_user(db: Session, name: str, email: str, password: str) -> User:
         raise ValueError("Ese correo ya está registrado")
     user = User(name=name.strip(), email=email,
                 password_hash=hash_password(password))
+    _apply_platform_defaults(db, user)
     db.add(user)
     db.commit()
     db.refresh(user)

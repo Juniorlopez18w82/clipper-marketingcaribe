@@ -339,25 +339,6 @@ async function loadAdmin() {
   } catch { $("adminClips").innerHTML = "<p class='muted'>No se pudieron cargar los clips.</p>"; }
 }
 
-// ---------- Panel: Crear Clip ----------
-$("btnPanelInfo").onclick = async () => {
-  const url = $("panelUrl").value.trim();
-  if (!url) return alert("Pega un link de YouTube");
-  $("panelMeta").textContent = "Leyendo el video…";
-  const r = await fetch("/api/video-info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
-  const d = await r.json();
-  if (!r.ok) return $("panelMeta").textContent = d.detail || "No se pudo leer el video";
-  $("panelMeta").textContent = `${d.title} · ${d.uploader || ""} · ${d.duration ? Math.floor(d.duration / 60) + ":" + String(d.duration % 60).padStart(2, "0") : "live"}`;
-  $("btnPanelUse").hidden = false;
-};
-$("btnPanelUse").onclick = () => {
-  // El creador ya vive dentro del panel (sección Crear Clip): solo pasa
-  // el link al paso 1 y lo analiza ahí mismo, sin salir del panel.
-  $("url").value = $("panelUrl").value.trim();
-  $("btnInfo").click();
-  $("url").scrollIntoView({ behavior: "smooth", block: "center" });
-};
-
 // ---------- Panel: Mi Cuenta ----------
 $("btnSaveAccount").onclick = async () => {
   try {

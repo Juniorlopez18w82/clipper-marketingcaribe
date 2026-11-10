@@ -51,6 +51,7 @@ function openPanel() {
 function closePanel() {
   $("panel").hidden = true;
   document.body.classList.remove("panel-open");
+  document.body.classList.remove("create-wide");
   document.querySelector("main").hidden = false;
   document.querySelector("header").hidden = false;
 }
@@ -151,9 +152,13 @@ $("btnBackAdmin").onclick = () => {
 refreshMe();
 
 // ---------- Panel: pestañas ----------
+// Al entrar en Crear Clip el menú lateral se cierra (body.create-wide) para
+// que la sección se vea más abierta; cualquier otra pestaña, el logo o el
+// botón "← Volver al panel" lo devuelven.
 document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
   btn.onclick = () => {
     if (btn.dataset.tab === "creator") { closePanel(); return; }
+    document.body.classList.toggle("create-wide", btn.dataset.tab === "create");
     document.querySelectorAll(".panel .tab[data-tab]").forEach((b) => b.classList.toggle("on", b === btn));
     document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
     $("pane-" + btn.dataset.tab).hidden = false;
@@ -161,6 +166,8 @@ document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
     if (btn.dataset.tab === "admin") loadAdmin();
   };
 });
+$("btnBackToPanel").onclick = () => document.querySelector('[data-tab="home"]').click();
+$("brandHome").onclick = () => document.querySelector('[data-tab="home"]').click();
 
 // ---------- Panel Admin: pestañas (una sección a la vez) ----------
 document.querySelectorAll("#adminTabs .mini-tab").forEach((btn) => {
@@ -563,8 +570,39 @@ function renderSteps(doneCount, activeIdx, statusText) {
     el.classList.toggle("active", i === activeIdx);
     el.querySelector(".dot").textContent = i < doneCount ? "✓" : String(i + 1);
   });
-  if (statusText !== undefined) $("stepStatus").textContent = statusText;
+  if (statusText !== undefined) {
+    const st = $("stepStatus");
+    // Mientras el trabajo está en marcha el texto lleva un punto rojo que
+    // palpita y puntos suspensivos animados; al cambiar, entra con fade.
+    // Solo se re-anima si el texto o el estado cambian (el poll llama
+    // cada 2 s con el mismo texto y no debe parpadear).
+    const busy = activeIdx >= 0 && statusText !== "";
+    if (st.dataset.txt !== statusText || st.dataset.busy !== String(busy)) {
+      st.dataset.txt = statusText;
+      st.dataset.busy = String(busy);
+      st.classList.toggle("busy", busy);
+      if (busy) {
+        const clean = statusText.replace(/…+$/, "");
+        st.innerHTML = clean + '<span class="ellipsis" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>';
+      } else {
+        st.textContent = statusText;
+      }
+      st.classList.remove("swap");
+      void st.offsetWidth;
+      st.classList.add("swap");
+    }
+  }
 }
+function setJobProgress(p) {
+  const f = $("progressFill");
+  if (f) f.style.width = Math.max(0, Math.min(100, p || 0)) + "%";
+}
+// ---------- Vista previa (en vivo): solo cuando hay un clip que ver ----------
+// Oculta por defecto (hidden en el HTML). Aparece al elegir un clip o al
+// terminar un render; se esconde de nuevo al empezar otro trabajo o al
+// cambiar el link / subir otro archivo.
+function showPreview() { $("previewCard").hidden = false; }
+function hidePreview() { $("previewCard").hidden = true; }
 function clipsStepFromProgress(p) {
   if (p < 30) return 0;
   if (p < 70) return 1;
@@ -587,6 +625,8 @@ function resetCreateFlow() {
   $("candidatesCard").hidden = true;
   $("step3Card").hidden = true;
   $("resultCard").hidden = true;
+  hidePreview();
+  setJobProgress(0);
   $("candidates").innerHTML = "<p class='muted'>Primero genera los clips.</p>";
   $("stepsCard").hidden = false;
   hideJobError();
@@ -594,10 +634,14 @@ function resetCreateFlow() {
 }
 
 // ---------- Subir archivo ----------
+// Cambiar el link o subir otro archivo esconde la vista previa: ya no hay
+// un clip que mostrar hasta elegir uno nuevo.
+$("url").addEventListener("input", hidePreview);
 $("btnUpload").onclick = () => $("uploadFile").click();
 $("uploadFile").onchange = async () => {
   const file = $("uploadFile").files[0];
   if (!file) return;
+  hidePreview();
   const mb = (file.size / (1024 * 1024)).toFixed(1);
   const info = $("uploadInfo");
   info.hidden = false;
@@ -645,8 +689,10 @@ $("btnClips").onclick = async () => {
     body.max_len = parseFloat($("cfgMaxClip").value || "45");
     const d = await apiFetch("/api/clips", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     const job = await pollJob(d.job_id, (j) => {
+      setJobProgress(j.progress || 0);
       renderSteps(clipsStepFromProgress(j.progress || 0), clipsStepFromProgress(j.progress || 0), FLOW_MSGS[clipsStepFromProgress(j.progress || 0)]);
     });
+    setJobProgress(100);
     state.clipsJob = job;
     state.transcript = job.result.transcript;
     renderSteps(3, -1, `La IA encontró ${job.result.candidates.length} clip${job.result.candidates.length === 1 ? "" : "s"}, elige uno para continuar.`);
@@ -698,6 +744,8 @@ function selectClip(c, el) {
   $("clipEnd").value = c.abs_end;
   $("subText").value = c.text;
   $("pvSubs").innerHTML = state.words.slice(0, 3).map((w, i) => i === 1 ? `<span>${w.w.trim().toUpperCase()}</span>` : w.w.trim().toUpperCase()).join(" ") || "SUBTÍTULOS";
+  // Ya hay un clip que ver: aparece la vista previa (encima de Configuración).
+  showPreview();
   // El paso 3 (subtítulos + render) solo aparece DESPUÉS de elegir un clip.
   $("step3Card").hidden = false;
   $("resultCard").hidden = true;
@@ -759,11 +807,14 @@ $("btnRender").onclick = async () => {
     };
     const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     const job = await pollJob(d.job_id, (j) => {
+      setJobProgress(j.progress || 0);
       if ((j.progress || 0) >= 70) renderSteps(3, 3, FLOW_MSGS[3]);
     });
     const file = job.result.file;
+    setJobProgress(100);
     renderSteps(5, -1, FLOW_MSGS[4]);
     $("resultCard").hidden = false;
+    showPreview();
     $("result").src = `/api/download/${file}`;
     $("downloadLink").href = `/api/download/${file}`;
     $("downloadLink").download = file;

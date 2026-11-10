@@ -44,7 +44,8 @@ def _fmt(t: float) -> str:
 
 
 def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
-              style: str = "viral", highlight_color: str = "#FADE4C") -> str:
+              style: str = "viral", highlight_color: str = "#FADE4C",
+              width: int = 1080, height: int = 1920) -> str:
     """ASS subtitles from word timestamps (times relative to clip start).
 
     Groups of 3 words, split on pauses > 0.8 s (proven in make_clip.py).
@@ -74,9 +75,12 @@ def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
         secondary = hex_to_ass_bgr(highlight_color)
 
     alignment = 8 if position == "top" else 2
-    margin_v = 850 if position == "middle" else 320
+    # Márgenes y tamaño de fuente escalan con la resolución de salida.
+    scale = width / 1080.0
+    margin_v = int(round(850 if position == "middle" else 320) * (height / 1920.0))
+    size = max(20, int(round(size * scale)))
     lines = [
-        "[Script Info]", "ScriptType: v4.00+", "PlayResX: 1080", "PlayResY: 1920",
+        "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {width}", f"PlayResY: {height}",
         "ScaledBorderAndShadow: yes", "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
@@ -113,44 +117,52 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 subtitle_style: str = "viral",
                 subtitle_size: int = 76,
                 subtitle_position: str = "bottom",
-                show_subtitles: bool = True) -> Path:
-    """Render one clip. ``start_in_source`` is seconds into ``source`` file."""
+                show_subtitles: bool = True,
+                quality: str = "1080p") -> Path:
+    """Render one clip. ``start_in_source`` is seconds into ``source`` file.
+
+    ``quality``: "1080p" (1080x1920) or "720p" (720x1280) — marco, nombre
+    y subtítulos escalan con la resolución.
+    """
     if duration <= 0:
         raise ValueError("duration must be > 0")
+    out_w, out_h = (720, 1280) if str(quality).strip() == "720p" else (1080, 1920)
+    scale = out_w / 1080.0
     frame_hex = hex_to_ffmpeg(frame_color)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
         filters = (
-            "[0:v]crop=ih*9/16:ih:(iw-ow)/2:0,scale=1080:1920,"
+            f"[0:v]crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},"
             "setpts=PTS-STARTPTS[vid]"
         )
         chain = "[vid]"
         # --- Frame + brand name: ONLY when frame_enabled is True. ---
         if frame_enabled:
-            chain += (f"drawbox=x=0:y=0:w=1080:h=1920:color={frame_hex}:"
+            chain += (f"drawbox=x=0:y=0:w={out_w}:h={out_h}:color={frame_hex}:"
                       f"t={frame_width},")
             if brand_text and brand_text.strip():
                 brand_file = tmpdir / "brand.txt"
                 brand_file.write_text(brand_text.strip(), encoding="utf-8")
                 chain += (
                     "drawtext=fontfile=" + FONT_BOLD +
-                    f":textfile={brand_file}:fontsize=68:fontcolor={frame_hex}:"
-                    "x=(w-text_w)/2:y=90:box=1:boxcolor=black@0.55:boxborderw=20,"
+                    f":textfile={brand_file}:fontsize={int(round(68 * scale))}:fontcolor={frame_hex}:"
+                    f"x=(w-text_w)/2:y={int(round(90 * scale))}:box=1:boxcolor=black@0.55:boxborderw=20,"
                 )
             if title_text and title_text.strip():
                 title_file = tmpdir / "title.txt"
                 title_file.write_text(title_text.strip(), encoding="utf-8")
                 chain += (
                     "drawtext=fontfile=" + FONT_BOLD +
-                    f":textfile={title_file}:fontsize=30:fontcolor=white:"
-                    "x=(w-text_w)/2:y=180:box=1:boxcolor=black@0.55:boxborderw=14,"
+                    f":textfile={title_file}:fontsize={int(round(30 * scale))}:fontcolor=white:"
+                    f"x=(w-text_w)/2:y={int(round(180 * scale))}:box=1:boxcolor=black@0.55:boxborderw=14,"
                 )
         if show_subtitles and words:
             ass_file = tmpdir / "clip.ass"
             ass_file.write_text(
                 build_ass(words, size=subtitle_size, position=subtitle_position,
-                          style=subtitle_style, highlight_color=frame_color),
+                          style=subtitle_style, highlight_color=frame_color,
+                          width=out_w, height=out_h),
                 encoding="utf-8",
             )
             chain += f"ass={ass_file}[out]"

@@ -1,4 +1,4 @@
-// MarketingCaribe Clipper — frontend (same origin, talks to /api/*)
+// ClipViral — frontend (same origin, talks to /api/*)
 const $ = (id) => document.getElementById(id);
 const state = { clipsJob: null, transcript: null, selected: null, words: null, user: null };
 

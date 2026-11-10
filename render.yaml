@@ -4,3 +4,21 @@ services:
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    envVars:
+      # Conexión a la base de datos Postgres (la crea este mismo Blueprint).
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clipper-db
+          property: connectionString
+      # Secreto para firmar los tokens de sesión (JWT). Render lo genera.
+      - key: JWT_SECRET
+        generateValue: true
+
+# PostgreSQL gratis en Render: 90 días, 1 GB, luego ~$7/mes.
+# ANTES de que caduque, migra con pg_dump a Supabase/Neon (gratis, sin
+# caducidad) o a una base nueva de Render — ver README "Base de datos".
+databases:
+  - name: clipper-db
+    plan: free
+    databaseName: clipper
+    user: clipper

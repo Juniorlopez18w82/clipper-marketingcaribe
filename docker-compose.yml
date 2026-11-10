@@ -1,0 +1,10 @@
+services:
+  clipper:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - CLIPPER_WHISPER_MODEL=${CLIPPER_WHISPER_MODEL:-base}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

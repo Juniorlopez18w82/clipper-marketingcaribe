@@ -39,6 +39,11 @@ def _cookies_file() -> str | None:
     return str(local) if local.exists() else None
 
 
+def _proxy() -> str | None:
+    """SOCKS5/HTTP proxy for yt-dlp, set by entrypoint.sh when WARP is up."""
+    return os.environ.get("YTDLP_PROXY") or None
+
+
 def _ydl_opts(client: str) -> dict:
     opts: dict = {
         "quiet": True,
@@ -47,6 +52,9 @@ def _ydl_opts(client: str) -> dict:
         "noplaylist": True,
         "extractor_args": {"youtube": {"player_client": [client]}},
     }
+    proxy = _proxy()
+    if proxy:
+        opts["proxy"] = proxy
     cookies = _cookies_file()
     if cookies:
         opts["cookiefile"] = cookies
@@ -149,6 +157,9 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
             cookies = _cookies_file()
             if cookies:
                 cmd[3:3] = ["--cookies", cookies]
+            proxy = _proxy()
+            if proxy:
+                cmd[3:3] = ["--proxy", proxy]
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if proc.returncode != 0:
                 last_err = proc.stderr[-2000:]

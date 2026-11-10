@@ -13,15 +13,36 @@ async function authCall(path, body) {
   if (!r.ok) throw new Error(d.detail || "Error");
   return d;
 }
+// El panel es una app aparte: solo se abre con "Ver mi panel" y al
+// abrirse oculta el creador; al cerrarse vuelve el creador.
+function openPanel() {
+  $("panel").hidden = false;
+  document.querySelector("main").hidden = true;
+  document.querySelector("header").hidden = true;
+  window.scrollTo(0, 0);
+}
+function closePanel() {
+  $("panel").hidden = true;
+  document.querySelector("main").hidden = false;
+  document.querySelector("header").hidden = false;
+}
+function doLogout() {
+  localStorage.removeItem("clipper_token");
+  showUser(null);
+}
 function showUser(user) {
   state.user = user;
   $("authLoggedOut").hidden = !!user;
   $("authLoggedIn").hidden = !user;
-  $("panel").hidden = !user;
+  // El panel empieza cerrado; se abre con "Ver mi panel".
+  closePanel();
   if (user) {
     $("authUserName").textContent = user.name;
     $("authUserEmail").textContent = user.email;
-    $("authUserPlan").textContent = user.plan;
+    $("authUserPlan").textContent = user.is_admin ? "Admin" : user.plan;
+    $("panelUserName").textContent = user.name;
+    $("panelUserPlan").textContent = user.is_admin ? "Admin" : (user.plan === "free" ? "Sin plan" : user.plan);
+    $("panelUserPlan").classList.toggle("admin", !!user.is_admin);
     $("panelWelcome").textContent = `Hola, ${user.name} — tus clips, tus aprobaciones y tu cuenta, todo en un solo lugar.`;
     $("tabAdmin").hidden = !user.is_admin;
     // La configuración guardada del usuario manda en el creador.
@@ -56,14 +77,15 @@ $("btnRegister").onclick = async () => {
     showUser(d.user);
   } catch (e) { $("authMsg").textContent = "Error: " + e.message; }
 };
-$("btnLogout").onclick = () => { localStorage.removeItem("clipper_token"); showUser(null); };
-$("btnShowPanel").onclick = () => { $("panel").hidden = false; $("panel").scrollIntoView({ behavior: "smooth" }); };
+$("btnLogout").onclick = doLogout;
+$("btnLogoutTop").onclick = doLogout;
+$("btnShowPanel").onclick = () => openPanel();
 refreshMe();
 
 // ---------- Panel: pestañas ----------
 document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
   btn.onclick = () => {
-    if (btn.dataset.tab === "creator") { document.querySelector("main").scrollIntoView({ behavior: "smooth" }); return; }
+    if (btn.dataset.tab === "creator") { closePanel(); return; }
     document.querySelectorAll(".panel .tab[data-tab]").forEach((b) => b.classList.toggle("on", b === btn));
     document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
     $("pane-" + btn.dataset.tab).hidden = false;
@@ -74,11 +96,12 @@ document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
 
 async function loadPanel() {
   // ¿Tiene plan activo? Si no, se bloquean Inicio / Mis Clips / Crear / Cuenta.
-  let hasPlan = false, activePlanId = null;
+  // El ADMIN nunca se bloquea: no necesita plan para usar la plataforma.
+  let hasPlan = !!(state.user && state.user.is_admin), activePlanId = null;
   try {
     const r = await fetch("/api/subscriptions/mine", { headers: authHeaders() });
     const d = await r.json();
-    hasPlan = !!d.active_subscription;
+    hasPlan = hasPlan || !!d.active_subscription;
     activePlanId = d.active_subscription ? d.active_subscription.plan_id : null;
     renderMyRequests(d.requests || []);
   } catch { /* sin plan */ }

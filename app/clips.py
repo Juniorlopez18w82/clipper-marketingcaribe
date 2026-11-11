@@ -9,7 +9,7 @@ absolute original-video times by adding the section start):
    on a speech segment boundary, scored by words-per-minute, exclamations
    and laughter. It does NOT understand topics, so it can cut a sentence
    in half; the user picks the window in the frontend.
-2. LLM (v2, ``build_candidates_llm``): a real model (Groq llama, free
+2. LLM (v2, ``build_candidates_llm``): a real model (Groq gpt-oss, free
    tier) reads the whole transcript and picks up to 5 clips, each covering
    ONE complete topic/idea from its first sentence to its last. The code
    then snaps every cut to word boundaries, so a clip can never start or
@@ -95,8 +95,8 @@ def build_candidates(segments: list[dict], min_len: float = 20.0,
 # Same key as Groq transcription (GROQ_API_KEY). No key -> the caller
 # falls back to the heuristic; nothing here ever raises for a missing key.
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_LLM_PRIMARY = "llama-3.3-70b-versatile"
-GROQ_LLM_FALLBACK = "llama-3.1-8b-instant"
+GROQ_LLM_PRIMARY = "openai/gpt-oss-120b"
+GROQ_LLM_FALLBACK = "openai/gpt-oss-20b"
 GROQ_LLM_TIMEOUT = 90  # seconds per request
 # The prompt asks for clips between min_len and max_len; validation is
 # deliberately a little looser (15-60 s) so a good clip is not thrown
@@ -287,7 +287,7 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
 def build_candidates_llm(segments: list[dict], max_clips: int = LLM_MAX_CLIPS,
                          min_len: float = 20.0,
                          max_len: float = LLM_MAX_SECONDS) -> list[dict] | None:
-    """Topic-aware clip selection with a real LLM (Groq llama, free tier).
+    """Topic-aware clip selection with a real LLM (Groq gpt-oss, free tier).
 
     Returns candidates in the EXACT shape the frontend already uses
     (start/end/duration/text/words/score, plus the LLM's title/reason),

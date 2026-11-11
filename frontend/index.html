@@ -364,6 +364,22 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <input id="coverRange" type="range" min="0" max="30" step="0.1" value="0" style="flex:1">
           <span id="coverVal" class="muted" style="min-width:52px;text-align:right">0.0 s</span>
         </div>
+        <label>Cámara</label>
+        <select id="cameraMode">
+          <option value="center" selected>Centrada — encuadre fijo en el centro</option>
+          <option value="follow_speaker">Seguir al que habla — la cámara sigue a quien habla</option>
+          <option value="follow_person">Elegir una persona — sigue siempre a la misma persona</option>
+          <option value="dual">Doble cámara — dos personas, una arriba y otra abajo</option>
+        </select>
+        <div id="cameraPersonRow" hidden>
+          <label>¿A quién sigo?</label>
+          <select id="cameraPerson">
+            <option value="left">Izquierda</option>
+            <option value="center" selected>Centro</option>
+            <option value="right">Derecha</option>
+          </select>
+        </div>
+        <p class="muted" id="cameraHint">Centrada: el recorte 9:16 fijo en el centro del video, como siempre.</p>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button id="btnRender">Renderizar clip 9:16</button>
           <button id="btnSaveMeta" class="ghost" hidden>Guardar título y portada</button>
@@ -581,6 +597,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

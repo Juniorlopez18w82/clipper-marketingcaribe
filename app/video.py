@@ -56,7 +56,7 @@ PLAYER_CLIENTS = ["tv_embedded", "android", "web"]
 # 85 s. Por eso el audio largo se baja en trozos paralelos y luego se
 # unen con ffmpeg.
 AUDIO_CHUNK_SECONDS = 150
-AUDIO_PARALLEL_WORKERS = 4
+AUDIO_PARALLEL_WORKERS = 8
 AUDIO_PARALLEL_MAX_CHUNKS = 8
 AUDIO_PARALLEL_MIN_SECONDS = 180
 

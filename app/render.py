@@ -408,24 +408,25 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
     """Cuadro de la facecam (2026-11-11, queja de Juan: el cuadro debe
     quedar COMPLETO y FIJO arriba, sin moverse).
 
-    El cuadro es un rectángulo fijo anclado a una esquina del video
-    (RDjavi: arriba a la izquierda, ~14% del ancho x ~19% del alto,
-    con borde negro y rótulo "RD JAVI"). NO se sigue la cara: centrar
-    en la cara desplazaba el cuadro y recortaba su lado derecho. Se
-    usa un rectángulo fijo anclado a la esquina (16% x 22% con
-    margen), el mismo para todo el clip. Devuelve (w, h, x, y).
+    El cuadro es un rectángulo fijo anclado a una esquina del video.
+    Medido en el video de RDjavi (visual grounding, 640x360): cuadro
+    CUADRADO ~18% del ancho x ~32% del alto, con un pequeño margen
+    superior (y≈0.03). NO se sigue la cara: centrar en la cara
+    desplazaba el cuadro y recortaba su lado derecho. Se usa un
+    rectángulo fijo anclado a la esquina, el mismo para todo el clip.
+    Devuelve (w, h, x, y).
     """
     vw, vh = probe_size(source)
     corner = (corner or "top-left").strip().lower()
-    bw, bh = vw * 0.16, vh * 0.22
+    bw, bh = vw * 0.18, vh * 0.32
     if corner == "top-left":
-        x, y = 0.0, 0.0
+        x, y = 0.0, vh * 0.02
     elif corner == "top-right":
-        x, y = vw - bw, 0.0
+        x, y = vw - bw, vh * 0.02
     elif corner == "bottom-left":
-        x, y = 0.0, vh - bh
+        x, y = 0.0, vh - bh - vh * 0.02
     else:
-        x, y = vw - bw, vh - bh
+        x, y = vw - bw, vh - bh - vh * 0.02
     return (int(round(bw / 2) * 2), int(round(bh / 2) * 2),
             int(round(x / 2) * 2), int(round(y / 2) * 2))
 

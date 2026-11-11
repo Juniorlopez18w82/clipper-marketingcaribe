@@ -186,7 +186,7 @@ def _transcribe_groq_one(wav_path: Path, key: str) -> list[dict] | None:
                  "Content-Type": f"multipart/form-data; boundary={boundary}",
                  # Groq (Cloudflare) 403s Python-urllib's default UA;
                  # a normal UA is required (verified 2026-11-10).
-                 "User-Agent": "ClipViral/1.4.0"})
+                 "User-Agent": "ClipViral/1.5.0"})
     try:
         with urllib.request.urlopen(req, timeout=GROQ_TIMEOUT) as resp:
             payload = json.loads(resp.read().decode("utf-8"))

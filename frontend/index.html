@@ -28,6 +28,7 @@ h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(-
 input[type=text],input[type=url],input[type=email],input[type=password],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #27272a;background:#111113;color:var(--text);font-size:15px}
 input::placeholder,textarea::placeholder{color:#71717a}
 input[type=color]{width:60px;height:40px;padding:2px;background:#111113;border:1px solid #27272a;border-radius:10px}
+input[type=range]{accent-color:var(--red);width:100%}
 button{background:var(--red);color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:700;cursor:pointer;font-size:15px}
 button:disabled{opacity:.5;cursor:wait}
 button.ghost{background:transparent;color:var(--red);border:2px solid var(--red)}
@@ -355,7 +356,19 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <div><label>Inicio (seg)</label><input id="clipStart" type="number" step="0.1"></div>
           <div><label>Fin (seg)</label><input id="clipEnd" type="number" step="0.1"></div>
         </div>
-        <div style="margin-top:14px"><button id="btnRender">Renderizar clip 9:16</button></div>
+        <label>Título de enganche</label>
+        <input id="hookTitle" type="text" maxlength="255" placeholder="El título que se ve en Mis Clips…">
+        <label>Portada</label>
+        <p class="muted">Elige el momento del video que se ve como miniatura en Mis Clips. Mueve el control y la vista previa se pausa en ese fotograma. Solo cambia la miniatura, no el contenido del video.</p>
+        <div class="row">
+          <input id="coverRange" type="range" min="0" max="30" step="0.1" value="0" style="flex:1">
+          <span id="coverVal" class="muted" style="min-width:52px;text-align:right">0.0 s</span>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button id="btnRender">Renderizar clip 9:16</button>
+          <button id="btnSaveMeta" class="ghost" hidden>Guardar título y portada</button>
+          <span id="saveMetaMsg" class="muted"></span>
+        </div>
       </section>
 
       <section class="card" id="resultCard" hidden>
@@ -588,6 +601,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

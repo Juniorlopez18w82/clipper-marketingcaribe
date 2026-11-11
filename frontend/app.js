@@ -2136,14 +2136,34 @@ const CAMERA_HINTS = {
   center: "Centrada: el recorte 9:16 fijo en el centro del video, como siempre.",
   follow_speaker: "La cámara sigue a la persona que está hablando. Si no se ve ninguna cara, queda centrada.",
   follow_person: "Sigue siempre a la persona de la zona que elijas. Si no se la ve, queda centrada.",
-  dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo.",
-  split: "Para videos de gaming con facecam: la cara del creador arriba y el juego abajo, en dos pantallas.",
+  dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo, cada una centrada.",
+  split: "Para videos con una cara en una esquina (reacción, entrevista, juego): la cara arriba y el contenido abajo, en dos pantallas.",
 };
+// Mini diagrama del modo de cámara (2026-11-11, Juan: los textos
+// decían "el juego abajo" y no todo video es un juego; además pidió
+// un icono al lado para ver cómo queda). El dibujo cambia con el modo.
+const CAMERA_PREVIEWS = {
+  center: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#111113"/><circle cx="28" cy="38" r="10" fill="#e4e4e7"/><path d="M12 78 Q28 58 44 78 L44 100 L12 100 Z" fill="#e4e4e7"/></svg>`,
+  follow_speaker: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#111113"/><circle cx="28" cy="34" r="9" fill="#e4e4e7"/><path d="M14 70 Q28 54 42 70 L42 88 L14 88 Z" fill="#e4e4e7"/><path d="M6 94 h12 m-3 -3 l3 3 -3 3 M50 94 h-12 m3 -3 l-3 3 3 3" stroke="#E10600" stroke-width="2" fill="none"/></svg>`,
+  follow_person: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#111113"/><circle cx="28" cy="38" r="12" fill="none" stroke="#E10600" stroke-width="2" stroke-dasharray="4 3"/><circle cx="28" cy="38" r="9" fill="#e4e4e7"/><path d="M13 76 Q28 58 43 76 L43 100 L13 100 Z" fill="#e4e4e7"/></svg>`,
+  dual: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#111113"/><circle cx="28" cy="16" r="7" fill="#e4e4e7"/><path d="M16 38 Q28 26 40 38 L40 50 L16 50 Z" fill="#e4e4e7"/><line x1="0" y1="50" x2="56" y2="50" stroke="#E10600" stroke-width="2"/><circle cx="28" cy="66" r="7" fill="#FADE4C"/><path d="M16 88 Q28 76 40 88 L40 100 L16 100 Z" fill="#FADE4C"/></svg>`,
+  split: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#111113"/><rect x="6" y="6" width="44" height="34" rx="4" fill="#27272a" stroke="#E10600" stroke-width="1.5"/><circle cx="28" cy="18" r="6" fill="#e4e4e7"/><path d="M18 36 Q28 28 38 36 L38 40 L18 40 Z" fill="#e4e4e7"/><rect x="6" y="46" width="44" height="48" rx="4" fill="#1f1f23"/><path d="M24 62 L38 70 L24 78 Z" fill="#E10600"/></svg>`,
+};
+function updateCameraPreview() {
+  const box = $("cameraPreview");
+  if (!box) return;
+  const m = ($("cameraMode") && $("cameraMode").value) || "center";
+  box.innerHTML = CAMERA_PREVIEWS[m] || CAMERA_PREVIEWS.center;
+}
+// Dibuja el mini diagrama al cargar (el select arranca en
+// "Seguir al que habla").
+updateCameraPreview();
 $("cameraMode").onchange = () => {
   const m = $("cameraMode").value;
   $("cameraPersonRow").hidden = m !== "follow_person";
   $("facecamRow").hidden = m !== "split";
   $("cameraHint").textContent = CAMERA_HINTS[m] || CAMERA_HINTS.center;
+  updateCameraPreview();
   // Cambiar el modo mueve el encuadre de la vista previa al instante
   // (si hay un clip elegido).
   if (state.selected) loadCamTrack();

@@ -499,6 +499,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <option value="follow_speaker">Seguir al que habla — la cámara sigue a quien habla</option>
           <option value="follow_person">Elegir una persona — sigue siempre a la misma persona</option>
           <option value="dual">Doble cámara — dos personas, una arriba y otra abajo</option>
+          <option value="split">Pantalla dividida — la cara arriba y el juego abajo</option>
         </select>
         <div id="cameraPersonRow" hidden>
           <label>¿A quién sigo?</label>
@@ -506,6 +507,15 @@ body.panel-open>header,body.panel-open>main{display:none !important}
             <option value="left">Izquierda</option>
             <option value="center" selected>Centro</option>
             <option value="right">Derecha</option>
+          </select>
+        </div>
+        <div id="facecamRow" hidden>
+          <label>¿Dónde está la cara (facecam)?</label>
+          <select id="facecamCorner">
+            <option value="top-left" selected>Arriba a la izquierda</option>
+            <option value="top-right">Arriba a la derecha</option>
+            <option value="bottom-left">Abajo a la izquierda</option>
+            <option value="bottom-right">Abajo a la derecha</option>
           </select>
         </div>
         <p class="muted" id="cameraHint">Centrada: el recorte 9:16 fijo en el centro del video, como siempre.</p>
@@ -918,6 +928,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

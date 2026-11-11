@@ -182,7 +182,11 @@ class RenderRequest(BaseModel):
     # center (recorte fijo en el centro, como siempre) | dual (dos
     # personas, izquierda arriba y derecha abajo) | follow_speaker
     # (sigue a quien habla) | follow_person (sigue a una persona).
-    camera_mode: str = "center"
+    # Default follow_speaker (2026-11-11): en entrevistas/podcasts el
+    # que habla suele estar a un lado (Masha a la derecha) y "center"
+    # lo cortaba; follow_speaker lo centra y, si no hay cara, cae al
+    # centro igual.
+    camera_mode: str = "follow_speaker"
     # left | center | right — solo para follow_person.
     camera_person: str = "center"
     # Esquina de la facecam — solo para camera_mode="split" (pantalla
@@ -2094,6 +2098,69 @@ def api_job_clip_video(job_id: str, start: float, end: float):
     tmp_job = f"{tag}"
     path = download_section(url, start, end, tmp_job)
     return FileResponse(path, media_type="video/mp4", filename=path.name)
+
+
+@app.get("/api/jobs/{job_id}/camera-track")
+def api_job_camera_track(job_id: str, start: float, end: float,
+                         mode: str = "follow_speaker",
+                         person: str = "center"):
+    """Recorrido de cámara (crop-x cada 2 s) para la vista previa.
+
+    La vista previa del panel recorta el video a 9:16 con CSS
+    (object-fit: cover, centrado) y NO refleja el modo de cámara: con
+    "Seguir al que habla" la persona que habla está a un lado y la vista
+    previa la muestra cortada, aunque el clip renderizado sí la encuadra
+    bien (comprobado 2026-11-11 con Masha: el render con follow_speaker
+    la centra completa). Este endpoint devuelve el recorrido que usa el
+    render (app/camera.py analyze_camera) para que el frontend mueva el
+    encuadre de la vista previa con object-position mientras suena el
+    clip. El frontend convierte crop-x a % con x / (width - crop_w).
+    Solo tiene sentido para follow_speaker / follow_person (los modos
+    que desplazan el recorte en horizontal); para el resto devuelve el
+    recorrido centrado (fallback).
+    """
+    if end <= start or (end - start) > 180:
+        raise HTTPException(400, "Rango de clip no válido (máx. 180 s)")
+    mode = (mode or "follow_speaker").strip().lower()
+    person = (person or "center").strip().lower()
+    safe_id = Path(job_id).name
+    job = jobs.get(safe_id)
+    res = (job or {}).get("result") or {}
+    url = res.get("url")
+    if not url:
+        raise HTTPException(400, "Este trabajo no tiene URL de video")
+    tag = f"{safe_id}_clip_{int(start * 10)}_{int(end * 10)}"
+    # Caché del recorrido (por trabajo + rango + modo + persona).
+    track_file = SOURCES_DIR / f"{tag}_track_{mode}_{person}.json"
+    if track_file.exists():
+        try:
+            return json.loads(track_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    # Video del trozo (misma caché que /clip-video).
+    video = None
+    for f in sorted(SOURCES_DIR.glob(f"{tag}.*")):
+        video = f
+        break
+    if video is None:
+        video = download_section(url, start, end, tag)
+    from .camera import analyze_camera, probe_size
+    duration = end - start
+    cam = analyze_camera(video, 0, duration, mode, person)
+    width, height = probe_size(video)
+    crop_w = height * 9 / 16
+    out = {
+        "path": cam["path"],
+        "width": width,
+        "crop_w": crop_w,
+        "fallback": cam["fallback"],
+        "duration": duration,
+    }
+    try:
+        track_file.write_text(json.dumps(out), encoding="utf-8")
+    except Exception:
+        pass
+    return out
 
 
 # Minimal frontend (same origin, no extra server).

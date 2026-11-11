@@ -41,6 +41,9 @@ class LiveSession(Base):
     video_id = Column(String(32), nullable=False, default="")
     title = Column(String(255), nullable=False, default="")
     uploader = Column(String(255), nullable=False, default="")
+    # Cover image URL from the live (yt-dlp thumbnail). Shown on the
+    # session card so the live is recognizable at a glance.
+    thumbnail = Column(String(500), nullable=False, default="")
     # Config (set by the user in the Lives section).
     interval_minutes = Column(Integer, nullable=False, default=10)
     clips_per_round = Column(Integer, nullable=False, default=3)
@@ -61,13 +64,17 @@ class LiveSession(Base):
 
 
 def live_session_out(session: LiveSession, clip_count: int = 0) -> dict:
+    url = session.url or ""
     return {
         "id": session.id,
         "user_id": session.user_id,
-        "url": session.url,
+        "url": url,
+        "platform": ("twitch" if "twitch.tv" in url.lower()
+                     else "youtube"),
         "video_id": session.video_id,
         "title": session.title,
         "uploader": session.uploader,
+        "thumbnail": session.thumbnail or "",
         "interval_minutes": session.interval_minutes,
         "clips_per_round": session.clips_per_round,
         "min_len": session.min_len,

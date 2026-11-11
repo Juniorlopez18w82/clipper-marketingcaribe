@@ -287,13 +287,22 @@ FORMAT_SELECTORS = [
 ]
 
 
-def download_section(url: str, start: float, end: float, job_id: str) -> Path:
+def download_section(url: str, start: float, end: float, job_id: str,
+                     audio_only: bool = False) -> Path:
     """Download only [start, end] (absolute seconds in the original video).
 
     Returns the downloaded file. Format: best video <=1080p + audio, merged
     by ffmpeg (yt-dlp does the merge; the section cut is keyframe-based,
     so the file can be a few seconds longer than requested — render.py
     trims exactly with -ss/-t).
+
+    audio_only (2026-11-11, velocidad): el análisis de clips (Sacar clips)
+    solo necesita el AUDIO para transcribir; bajar el video completo de
+    un video largo (866 s = 14 min a 1080p son cientos de MB) es lo que
+    deja el trabajo atascado en "Descargando" 5-10 min. Con audio_only
+    se baja solo el audio (~14 MB para 866 s) y el análisis termina en
+    segundos; el video se baja después, solo para el trozo del clip
+    (30-60 s), en el render y en la vista previa (clip-video).
 
     Robustness (found in testing 2026-11-10): yt-dlp --download-sections
     OCCASIONALLY truncates the audio stream (one run gave 13.5 s of audio
@@ -312,7 +321,9 @@ def download_section(url: str, start: float, end: float, job_id: str) -> Path:
     errors: list[str] = []
     attempt = 0
     for client in PLAYER_CLIENTS:
-        for fmt in FORMAT_SELECTORS:
+        # Solo audio: un solo formato, no hay video que elegir.
+        formats = ["bestaudio/best"] if audio_only else FORMAT_SELECTORS
+        for fmt in formats:
             attempt += 1
             for old in SOURCES_DIR.glob(f"{job_id}.*"):
                 old.unlink()

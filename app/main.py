@@ -135,6 +135,13 @@ class RenderRequest(BaseModel):
     frame_width: int = DEFAULT_FRAME_WIDTH
     brand_text: str = DEFAULT_BRAND_TEXT
     title_text: str = ""
+    # --- Clip identity for the library: the selected candidate's hook
+    # title + virality score (LLM) or score (heuristic). The frontend
+    # sends these from the chosen candidate; video_title is the source
+    # video's title from /api/video-info.
+    clip_title: str = ""
+    clip_score: float | None = None
+    video_title: str = ""
     # --- Configuración: subtítulos ---
     show_subtitles: bool = True
     subtitle_style: str = "viral"  # viral | plain | yellow
@@ -356,17 +363,25 @@ def _run_render_job(job_id: str, req: RenderRequest):
         try:
             parent = jobs.get(job_id) or {}
             video_url = req.url or ""
-            title = req.title_text or ""
+            # Library card title: the chosen candidate's hook title (LLM),
+            # else the source video's title, else the on-video title text.
+            title = req.clip_title or req.video_title or req.title_text or ""
             uploader = ""
             if req.job_id:
                 src = jobs.get(req.job_id) or {}
                 video_url = (src.get("payload") or {}).get("url", video_url)
             db = SessionLocal()
             try:
+                # job_id guardado = el trabajo de clips del que salió este
+                # clip (su transcripción y su video fuente viven ahí, y el
+                # botón Editar los necesita). Sin trabajo padre (URL o
+                # archivo directo), el propio trabajo de render.
                 create_clip(db, user_id=parent.get("user_id"),
                             video_url=video_url, title=title,
                             uploader=uploader, start=req.start, end=req.end,
-                            job_id=job_id, file=out_name)
+                            job_id=(req.job_id or job_id), file=out_name,
+                            score=req.clip_score,
+                            section_start=section_start)
             finally:
                 db.close()
         except Exception:  # noqa: BLE001 — panel record is best-effort
@@ -963,6 +978,30 @@ def api_download(filename: str):
     if not path.exists():
         raise HTTPException(404, "Archivo no encontrado")
     return FileResponse(path, media_type="video/mp4", filename=path.name)
+
+
+@app.get("/api/jobs/{job_id}/transcript")
+def api_job_transcript(job_id: str):
+    """Transcript of a clips job + the section's absolute start, so the
+    panel can reopen a stored clip in the subtitle editor (Edit button).
+    The transcript JSON lives in data/transcripts/{job_id}.json; the
+    section start comes from the job record on disk (jobs survive
+    restarts — they are JSON files, not memory). 404 if the transcript
+    is gone. Same public-in-v1 posture as /api/download.
+    """
+    safe_id = Path(job_id).name
+    path = TRANSCRIPTS_DIR / f"{safe_id}.json"
+    if not path.exists():
+        raise HTTPException(404, "Transcripción no encontrada")
+    job = jobs.get(safe_id) or {}
+    section_start = (job.get("result") or {}).get("section_start")
+    if section_start is None:
+        # Renders from a raw URL/upload have no section_start in the
+        # result; the requested start is in the job payload.
+        section_start = (job.get("payload") or {}).get("start")
+    return {"job_id": safe_id,
+            "section_start": section_start,
+            "transcript": json.loads(path.read_text(encoding="utf-8"))}
 
 
 @app.get("/api/jobs/{job_id}/source")

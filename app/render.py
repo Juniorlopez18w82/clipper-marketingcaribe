@@ -517,8 +517,28 @@ def _audio_fade_filter(duration: float) -> str:
 TITLE_CARD_SECONDS = 2.0
 
 
+def _hex_to_ffmpeg(hex_str: str | None, default: str = "0xFFFFFF") -> str:
+    """Convierte un color hex del frontend ('#FADE4C', 'FADE4C') al formato
+    que acepta el filtro drawtext de ffmpeg ('0xFADE4C'). Si viene vacío
+    o inválido, devuelve el default."""
+    if not hex_str:
+        return default
+    h = str(hex_str).strip().lstrip("#")
+    if len(h) == 3:  # #RGB -> #RRGGBB
+        h = "".join(c * 2 for c in h)
+    if len(h) != 6 or any(c not in "0123456789abcdefABCDEF" for c in h):
+        return default
+    return "0x" + h.upper()
+
+
 def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
-                out_h: int, scale: float, tmpdir: Path) -> Path:
+                out_h: int, scale: float, tmpdir: Path,
+                title_color: str | None = None,
+                title_border_color: str | None = None,
+                title_border_w: int | None = None,
+                title_bg_color: str | None = None,
+                title_bg: bool = True,
+                title_size: int | None = None) -> Path:
     """Portada del clip (2026-11-11, petición de Juan): un fotograma fijo
     del video (el elegido con el control Portada) a pantalla completa
     9:16, con el título de enganche GRANDE y centrado encima, SIN marco
@@ -543,7 +563,16 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
     title_file = tmpdir / "hook_title.txt"
     title_file.write_text(wrapped, encoding="utf-8")
     card = tmpdir / "card.mp4"
-    size = int(round(96 * scale))
+    # Estilo de la portada (modal Configurar portada, 2026-11-11): el
+    # usuario elige color del texto, borde de la letra (color + grosor),
+    # fondo de las letras (color + si lleva caja) y tamaño. Defaults =
+    # lo que ya se veía: texto blanco, borde negro, caja negra 55%.
+    size = int(round((title_size or 96) * scale))
+    fontcolor = _hex_to_ffmpeg(title_color, "0xFFFFFF")
+    bordercolor = _hex_to_ffmpeg(title_border_color, "0x000000")
+    borderw = 3 if title_border_w is None else max(0, int(title_border_w))
+    bgcolor = _hex_to_ffmpeg(title_bg_color, "0x000000") + "@0.55"
+    box_part = f"box=1:boxcolor={bgcolor}:boxborderw=28:" if title_bg else ""
     # La portada lleva TAMBIÉN 2 s de audio en silencio (anullsrc), para
     # que tenga los mismos streams que el clip y el concat demuxer pueda
     # copiar sin re-codificar (el re-encode del concat filter era
@@ -555,8 +584,9 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
         "-t", str(TITLE_CARD_SECONDS),
         "-vf",
         "drawtext=fontfile=" + FONT_BOLD +
-        f":textfile={title_file}:fontsize={size}:fontcolor=white:"
-        "x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.55:boxborderw=28:"
+        f":textfile={title_file}:fontsize={size}:fontcolor={fontcolor}:"
+        f"borderw={borderw}:bordercolor={bordercolor}:"
+        "x=(w-text_w)/2:y=(h-text_h)/2:" + box_part +
         "line_spacing=12",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-r", "30", "-pix_fmt", "yuv420p",
@@ -651,8 +681,16 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 # (clip_title) se quema GRANDE sobre la portada al inicio
                 # del clip, sin marco ni marca. cover_at es el offset (s)
                 # dentro del clip para el fotograma de portada; None = 0.
+                # Estilo de la portada (modal Configurar portada): color
+                # del texto, borde de la letra, fondo de las letras y tamaño.
                 hook_title: str = "",
-                cover_at: float | None = None) -> Path:
+                cover_at: float | None = None,
+                title_color: str | None = None,
+                title_border_color: str | None = None,
+                title_border_w: int | None = None,
+                title_bg_color: str | None = None,
+                title_bg: bool = True,
+                title_size: int | None = None) -> Path:
     """Render one clip. ``start_in_source`` is seconds into ``source`` file.
 
     ``quality``: "1080p" (1080x1920) or "720p" (720x1280) — marco, nombre
@@ -795,7 +833,13 @@ def render_clip(source: Path, start_in_source: float, duration: float,
             cover_rel = 0.0 if cover_at is None else max(
                 0.0, min(float(cover_at), duration))
             card = _title_card(source, start_in_source + cover_rel, hook,
-                               out_w, out_h, scale, tmpdir)
+                               out_w, out_h, scale, tmpdir,
+                               title_color=title_color,
+                               title_border_color=title_border_color,
+                               title_border_w=title_border_w,
+                               title_bg_color=title_bg_color,
+                               title_bg=title_bg,
+                               title_size=title_size)
             _concat_title_card(card, main_path, output)
         else:
             shutil.copyfile(main_path, output)

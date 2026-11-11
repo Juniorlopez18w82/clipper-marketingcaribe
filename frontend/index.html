@@ -109,9 +109,10 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 /* La tabla de usuarios respira: más alto de fila y aire a la derecha. */
 #adminUsers table td{padding:14px 12px;vertical-align:middle}
 #adminUsers table td:last-child{padding-right:16px;text-align:right}
-.user-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:120;min-width:190px;background:#1a1a1e;border:1px solid #3f3f46;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.55);padding:6px}
+.user-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:120;min-width:210px;background:#1a1a1e;border:1px solid #3f3f46;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.55);padding:6px;display:flex;flex-direction:column;gap:4px}
 .user-menu[hidden]{display:none}
-.user-menu button{display:block;width:100%;text-align:left;background:none;border:0;color:#f4f4f5;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+.user-menu button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:#f4f4f5;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px}
+.user-menu button svg{width:18px;height:18px;flex:none}
 .user-menu button:hover{background:#27272a}
 .user-menu button.danger{color:#f87171}
 .user-menu button.danger:hover{background:rgba(225,6,0,.15)}
@@ -928,6 +929,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

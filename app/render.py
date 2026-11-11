@@ -26,6 +26,39 @@ from .config import DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR, DEFAULT_FRAME_WIDTH
 logger = logging.getLogger(__name__)
 
 
+# --- Plantillas (2026-11-10, Juan: elegir plantilla en Configuración) ---
+# Una plantilla es un preset de look: marco (on/off + color + grosor),
+# marca (tamaño y altura), posición de subtítulos y color de palabra
+# clave. "Gancho grande" es el look aprobado desde el primer día.
+TEMPLATES: dict[str, dict] = {
+    "Gancho grande": {
+        "frame_enabled": True, "frame_color": "#FADE4C", "frame_width": 14,
+        "brand_size": 68, "brand_y": 90,
+        "subtitle_position": "bottom", "highlight_color": "#FADE4C",
+    },
+    "Limpio": {
+        "frame_enabled": False, "frame_color": "#FADE4C", "frame_width": 14,
+        "brand_size": 68, "brand_y": 90,
+        "subtitle_position": "bottom", "highlight_color": "#FADE4C",
+    },
+    "Impacto": {
+        "frame_enabled": True, "frame_color": "#E10600", "frame_width": 18,
+        "brand_size": 84, "brand_y": 80,
+        "subtitle_position": "bottom", "highlight_color": "#E10600",
+    },
+}
+DEFAULT_TEMPLATE = "Gancho grande"
+
+
+def resolve_template(name: str | None) -> tuple[str, dict]:
+    """Nombre canónico + preset de una plantilla. Un nombre desconocido
+    (o vacío) cae a "Gancho grande" — nunca falla un render."""
+    key = (name or "").strip()
+    if key in TEMPLATES:
+        return key, TEMPLATES[key]
+    return DEFAULT_TEMPLATE, TEMPLATES[DEFAULT_TEMPLATE]
+
+
 def hex_to_ffmpeg(hex_color: str) -> str:
     h = hex_color.lstrip("#")
     if len(h) != 6:
@@ -47,16 +80,10 @@ def _fmt(t: float) -> str:
     return f"{h}:{m:02d}:{s:05.2f}"
 
 
-def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
-              style: str = "viral", highlight_color: str = "#FADE4C",
-              width: int = 1080, height: int = 1920) -> str:
-    """ASS subtitles from word timestamps (times relative to clip start).
-
-    Groups of 3 words, split on pauses > 0.8 s (proven in make_clip.py).
-    ``style``: viral = white text + yellow karaoke word;
-               plain = white text, no karaoke; yellow = all-yellow text.
-    ``position``: bottom (MarginV 320) / middle (MarginV 850) / top.
-    """
+def _group_words(words: list[dict]) -> list[list[dict]]:
+    """Agrupa palabras en grupos de 3, cortando en pausas > 0.8 s
+    (probado en make_clip.py). Lo usan build_ass y la medición de
+    cajas de palabra clave."""
     words = [w for w in words if str(w.get("w", "")).strip()]
     groups: list[list[dict]] = []
     cur: list[dict] = []
@@ -70,14 +97,17 @@ def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
             cur = []
     if cur:
         groups.append(cur)
+    return groups
 
-    if style == "yellow":
-        primary = hex_to_ass_bgr(highlight_color)
-        secondary = primary
-    else:
-        primary = "&H00FFFFFF&"
-        secondary = hex_to_ass_bgr(highlight_color)
 
+def _ass_header(size: int, position: str, highlight_color: str,
+                width: int, height: int,
+                extra_styles: list[str] | None = None) -> list[str]:
+    """Cabecera ASS + estilo Viral (texto blanco en mayúsculas, borde
+    negro, palabra que suena en el color de resaltado). ``extra_styles``
+    añade líneas Style (p. ej. ViralBox para las cajas de palabra)."""
+    primary = "&H00FFFFFF&"
+    secondary = hex_to_ass_bgr(highlight_color)
     alignment = 8 if position == "top" else 2
     # Márgenes y tamaño de fuente escalan con la resolución de salida.
     scale = width / 1080.0
@@ -92,6 +122,38 @@ def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
         "Alignment, MarginL, MarginR, MarginV, Encoding",
         f"Style: Viral,DejaVu Sans,{size},{primary},{secondary},&H00000000,"
         f"&H00000000,-1,0,0,0,100,100,0,0,1,4,0,{alignment},80,80,{margin_v},1",
+    ]
+    lines.extend(extra_styles or [])
+    return lines
+
+
+def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
+              style: str = "viral", highlight_color: str = "#FADE4C",
+              width: int = 1080, height: int = 1920,
+              extra_styles: list[str] | None = None,
+              extra_events: list[str] | None = None) -> str:
+    """ASS subtitles from word timestamps (times relative to clip start).
+
+    Groups of 3 words, split on pauses > 0.8 s (proven in make_clip.py).
+    ``style``: viral = white text + yellow karaoke word;
+               plain = white text, no karaoke; yellow = all-yellow text.
+    ``position``: bottom (MarginV 320) / middle (MarginV 850) / top.
+    Every word is uppercased, white, with a black border (Outline 4).
+    The sounding word also gets a coloured BACKGROUND block behind
+    black text (see ``_keyword_box_events``); ``extra_events`` carries
+    those box events and ``extra_styles`` their ViralBox style.
+    """
+    groups = _group_words(words)
+    header = _ass_header(size, position, highlight_color, width, height,
+                         extra_styles=extra_styles)
+    if style == "yellow":
+        # Todo amarillo: el estilo Viral lleva primario = resaltado.
+        hl = hex_to_ass_bgr(highlight_color)
+        for i, ln in enumerate(header):
+            if ln.startswith("Style: Viral,"):
+                header[i] = ln.replace("&H00FFFFFF&", hl, 1)
+                break
+    lines = header + [
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
@@ -108,7 +170,134 @@ def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
         else:
             text = " ".join(w["w"].strip().upper() for w in g)
         lines.append(f"Dialogue: 0,{_fmt(start)},{_fmt(end)},Viral,,0,0,0,,{text}")
+    lines.extend(extra_events or [])
     return "\n".join(lines) + "\n"
+
+
+def _ass_escape(text: str) -> str:
+    """Escape ASS special chars in a word (braces/backslash)."""
+    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+
+
+def _keyword_box_events(words: list[dict], *, size: int, position: str,
+                        highlight_color: str, width: int, height: int,
+                        tmpdir: Path) -> tuple[list[str], list[str]]:
+    """Per-word highlight BACKGROUND behind the sounding word.
+
+    Returns (style_lines, event_lines) to append to the ASS file.
+    Method: render every 3-word group once (plain text, same style) to
+    raw frames with ffmpeg, measure each word's ink box with numpy,
+    then emit one Layer-1 Dialogue per word — black text with a thick
+    outline in the highlight colour, positioned with \\pos at the
+    measured box — visible only while that word sounds. The outline
+    merges into a solid block, so it reads as a coloured background
+    behind black text (not just coloured text).
+
+    Vertical placement is exact, no font metrics needed: the main
+    event's bounding-box edge is known from MarginV (bottom/middle:
+    box bottom = height - MarginV; top: box top = MarginV), so the box
+    event uses \\an2/\\an8 + \\pos at the word's measured horizontal
+    centre. Word splitting uses the N-1 widest ink gaps in the line
+    (a space is ~30 px at size 76; inter-letter gaps are ~13 px).
+
+    Best-effort by design: on ANY failure (no ffmpeg, no numpy, no
+    ink found) it returns ([], []) and the render keeps the plain
+    karaoke colours — the highlight box must never fail a render.
+    """
+    groups = _group_words(words)
+    if not groups:
+        return [], []
+    try:
+        import numpy as np
+    except Exception:
+        return [], []
+    try:
+        scale = width / 1080.0
+        eff_size = max(20, int(round(size * scale)))
+        margin_v = int(round((850 if position == "middle" else 320)
+                             * (height / 1920.0)))
+        # Probe ASS: one plain event per group, 1 s each, same style.
+        probe_lines = _ass_header(size, position, highlight_color,
+                                  width, height) + [
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        ]
+        for i, g in enumerate(groups):
+            text = " ".join(w["w"].strip().upper() for w in g)
+            probe_lines.append(
+                f"Dialogue: 0,{_fmt(i)},{_fmt(i + 1)},Viral,,0,0,0,,{text}")
+        probe_file = tmpdir / "probe.ass"
+        probe_file.write_text("\n".join(probe_lines) + "\n", encoding="utf-8")
+        n = len(groups)
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error",
+             "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:r=1:d={n}",
+             "-vf", f"ass={probe_file}", "-frames:v", str(n),
+             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+            capture_output=True, timeout=180)
+        if proc.returncode != 0 or not proc.stdout:
+            raise RuntimeError("probe render failed")
+        frames = np.frombuffer(proc.stdout, dtype=np.uint8)
+        frame_bytes = width * height * 3
+        if frames.size < n * frame_bytes:
+            raise RuntimeError("probe render short")
+        frames = frames[:n * frame_bytes].reshape(n, height, width, 3)
+        hl_bgr = hex_to_ass_bgr(highlight_color)
+        style_line = (
+            f"Style: ViralBox,DejaVu Sans,{eff_size},&H00000000&,&H00000000&,"
+            f"{hl_bgr},&H00000000&,-1,0,0,0,100,100,0,0,1,12,0,2,0,0,0,1")
+        min_gap = max(6, int(round(8 * scale)))
+        if position == "top":
+            an, y_pos = 8, margin_v
+        else:  # bottom / middle: box bottom = height - MarginV
+            an, y_pos = 2, height - margin_v
+        events: list[str] = []
+        for i, g in enumerate(groups):
+            gray = frames[i].max(axis=2)
+            ink_cols = np.where(gray.max(axis=0) > 80)[0]
+            if ink_cols.size == 0:
+                continue
+            # Ink runs (consecutive columns with ink).
+            col_list = ink_cols.tolist()
+            runs: list[tuple[int, int]] = []
+            start_c = prev_c = col_list[0]
+            for c in col_list[1:]:
+                if c - prev_c > 2:
+                    runs.append((start_c, prev_c))
+                    start_c = c
+                prev_c = c
+            runs.append((start_c, prev_c))
+            if len(runs) < len(g):
+                continue
+            if len(g) == 1:
+                word_boxes = runs
+            else:
+                # The N-1 widest gaps between runs are the word spaces.
+                gaps = [(runs[j + 1][0] - runs[j][1], j)
+                        for j in range(len(runs) - 1)]
+                gaps.sort(reverse=True)
+                splits = sorted(j for _gap, j in gaps[:len(g) - 1])
+                if any(gap < min_gap for gap, _j in gaps[:len(g) - 1]):
+                    continue
+                word_boxes = []
+                prev = 0
+                for j in splits:
+                    word_boxes.append((runs[prev][0], runs[j][1]))
+                    prev = j + 1
+                word_boxes.append((runs[prev][0], runs[-1][1]))
+            for w, (x0, x1) in zip(g, word_boxes):
+                cx = (x0 + x1) // 2
+                text = _ass_escape(w["w"].strip().upper())
+                events.append(
+                    f"Dialogue: 1,{_fmt(w['s'])},{_fmt(w['e'] + 0.05)},"
+                    f"ViralBox,,0,0,0,,{{\\an{an}\\pos({cx},{y_pos})}}"
+                    f"{text}")
+        if not events:
+            return [], []
+        return [style_line], events
+    except Exception as e:  # noqa: BLE001 — highlight box is best-effort
+        logger.warning("keyword highlight boxes skipped (%s)", e)
+        return [], []
 
 
 def _dual_crop(w: int, h: int) -> tuple[int, int, int, int, int]:
@@ -149,11 +338,14 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
                    brand_text: str, title_text: str, show_subtitles: bool,
                    words: list[dict] | None, subtitle_style: str,
                    subtitle_size: int, subtitle_position: str,
-                   frame_color: str) -> str:
+                   highlight_color: str = "#FADE4C",
+                   brand_size: int = 68, brand_y: int = 90) -> str:
     """Filter chain from [vid] to [out]: frame + brand + title + ASS.
 
     Identical for every camera mode — the overlays always apply on top
-    of the already-framed 9:16 video.
+    of the already-framed 9:16 video. The keyword highlight colour is
+    its own setting (it used to follow the frame colour); the template
+    preset supplies both.
     """
     chain = "[vid]"
     # --- Frame + brand name: ONLY when frame_enabled is True. ---
@@ -165,8 +357,8 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
             brand_file.write_text(brand_text.strip(), encoding="utf-8")
             chain += (
                 "drawtext=fontfile=" + FONT_BOLD +
-                f":textfile={brand_file}:fontsize={int(round(68 * scale))}:fontcolor={frame_hex}:"
-                f"x=(w-text_w)/2:y={int(round(90 * scale))}:box=1:boxcolor=black@0.55:boxborderw=20,"
+                f":textfile={brand_file}:fontsize={int(round(brand_size * scale))}:fontcolor={frame_hex}:"
+                f"x=(w-text_w)/2:y={int(round(brand_y * scale))}:box=1:boxcolor=black@0.55:boxborderw=20,"
             )
         if title_text and title_text.strip():
             title_file = tmpdir / "title.txt"
@@ -174,14 +366,19 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
             chain += (
                 "drawtext=fontfile=" + FONT_BOLD +
                 f":textfile={title_file}:fontsize={int(round(30 * scale))}:fontcolor=white:"
-                f"x=(w-text_w)/2:y={int(round(180 * scale))}:box=1:boxcolor=black@0.55:boxborderw=14,"
+                f"x=(w-text_w)/2:y={int(round((brand_y + 90) * scale))}:box=1:boxcolor=black@0.55:boxborderw=14,"
             )
     if show_subtitles and words:
+        box_styles, box_events = _keyword_box_events(
+            words, size=subtitle_size, position=subtitle_position,
+            highlight_color=highlight_color, width=out_w, height=out_h,
+            tmpdir=tmpdir)
         ass_file = tmpdir / "clip.ass"
         ass_file.write_text(
             build_ass(words, size=subtitle_size, position=subtitle_position,
-                      style=subtitle_style, highlight_color=frame_color,
-                      width=out_w, height=out_h),
+                      style=subtitle_style, highlight_color=highlight_color,
+                      width=out_w, height=out_h,
+                      extra_styles=box_styles, extra_events=box_events),
             encoding="utf-8",
         )
         chain += f"ass={ass_file}[out]"
@@ -243,15 +440,19 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
 
 def render_clip(source: Path, start_in_source: float, duration: float,
                 output: Path, words: list[dict] | None = None, *,
-                frame_enabled: bool = True,
-                frame_color: str = DEFAULT_FRAME_COLOR,
-                frame_width: int = DEFAULT_FRAME_WIDTH,
+                frame_enabled: bool | None = None,
+                frame_color: str | None = None,
+                frame_width: int | None = None,
                 brand_text: str = DEFAULT_BRAND_TEXT,
                 title_text: str = "",
                 subtitle_style: str = "viral",
                 subtitle_size: int = 76,
-                subtitle_position: str = "bottom",
+                subtitle_position: str | None = None,
                 show_subtitles: bool = True,
+                highlight_color: str | None = None,
+                template: str | None = None,
+                brand_size: int | None = None,
+                brand_y: int | None = None,
                 quality: str = "1080p",
                 camera_mode: str = "center",
                 camera_person: str = "center") -> Path:
@@ -259,6 +460,14 @@ def render_clip(source: Path, start_in_source: float, duration: float,
 
     ``quality``: "1080p" (1080x1920) or "720p" (720x1280) — marco, nombre
     y subtítulos escalan con la resolución.
+
+    ``template``: nombre de plantilla ("Gancho grande" / "Limpio" /
+    "Impacto"). Cuando viene, sus valores (marco, color, posición de
+    subtítulos, color de palabra clave, tamaño de marca) aplican para
+    cada parámetro que se dejó en None. Cuando es None, el render es
+    personalizado: cada parámetro usa su propio valor o el default
+    histórico (marco amarillo, subtítulos abajo, resaltado amarillo).
+    Un nombre desconocido cae a "Gancho grande".
 
     ``camera_mode``: "center" (default, the approved center crop),
     "dual" (left half on top, right half below, for two-person
@@ -276,6 +485,25 @@ def render_clip(source: Path, start_in_source: float, duration: float,
     person = (camera_person or "center").strip().lower()
     if person not in ("left", "center", "right"):
         person = "center"
+    # Plantilla: preset para los parámetros que quedaron en None.
+    preset = TEMPLATES.get((template or "").strip()) if template else None
+    if template and preset is None:
+        preset = TEMPLATES[DEFAULT_TEMPLATE]
+
+    def _pick(value, key, default):
+        if value is not None:
+            return value
+        if preset is not None and key in preset:
+            return preset[key]
+        return default
+
+    frame_enabled = _pick(frame_enabled, "frame_enabled", True)
+    frame_color = _pick(frame_color, "frame_color", DEFAULT_FRAME_COLOR)
+    frame_width = _pick(frame_width, "frame_width", DEFAULT_FRAME_WIDTH)
+    subtitle_position = _pick(subtitle_position, "subtitle_position", "bottom")
+    highlight_color = _pick(highlight_color, "highlight_color", DEFAULT_FRAME_COLOR)
+    brand_size = _pick(brand_size, "brand_size", 68)
+    brand_y = _pick(brand_y, "brand_y", 90)
     out_w, out_h = (720, 1280) if str(quality).strip() == "720p" else (1080, 1920)
     scale = out_w / 1080.0
     frame_hex = hex_to_ffmpeg(frame_color)
@@ -288,7 +516,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
             title_text=title_text, show_subtitles=show_subtitles,
             words=words, subtitle_style=subtitle_style,
             subtitle_size=subtitle_size, subtitle_position=subtitle_position,
-            frame_color=frame_color,
+            highlight_color=highlight_color,
+            brand_size=brand_size, brand_y=brand_y,
         )
         if mode in ("follow_speaker", "follow_person"):
             cam = analyze_camera(source, start_in_source, duration, mode, person)

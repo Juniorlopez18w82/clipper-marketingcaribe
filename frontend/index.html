@@ -515,13 +515,16 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         </div>
         <p style="margin:8px 0 0"><button class="small ghost" id="btnCoverModal" type="button">🖼 Configurar portada (vista previa + colores)</button></p>
         <label>Cámara</label>
-        <select id="cameraMode">
-          <option value="center">Centrada — encuadre fijo en el centro</option>
-          <option value="follow_speaker" selected>Seguir al que habla — la cámara sigue a quien habla</option>
-          <option value="follow_person">Elegir una persona — sigue siempre a la misma persona</option>
-          <option value="dual">Doble cámara — dos personas, una arriba y otra abajo</option>
-          <option value="split">Pantalla dividida — la cara arriba y el juego abajo</option>
-        </select>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <select id="cameraMode" style="flex:1">
+            <option value="center">Centrada — encuadre fijo en el centro del video</option>
+            <option value="follow_speaker" selected>Seguir al que habla — la cámara sigue a quien está hablando</option>
+            <option value="follow_person">Elegir una persona — sigue siempre a la misma persona</option>
+            <option value="dual">Doble cámara — dos personas: una arriba y otra abajo, cada una centrada</option>
+            <option value="split">Pantalla dividida — la cara arriba y el contenido abajo</option>
+          </select>
+          <div id="cameraPreview" title="Así queda el clip con este modo" style="flex:0 0 auto;width:56px;height:100px;border:2px solid #E10600;border-radius:10px;overflow:hidden;background:#000"></div>
+        </div>
         <div id="cameraPersonRow" hidden>
           <label>¿A quién sigo?</label>
           <select id="cameraPerson">
@@ -1015,6 +1018,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=47"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>

@@ -58,6 +58,9 @@ button.ghost{background:transparent;color:var(--red);border:2px solid var(--red)
 .phone .brand{position:absolute;top:22px;left:0;right:0;text-align:center;color:var(--yellow);font-weight:800;font-size:20px;background:rgba(0,0,0,.55);padding:6px 8px;margin:0 18px}
 .phone .subs{position:absolute;left:12px;right:12px;bottom:70px;text-align:center;color:#fff;font-weight:800;font-size:22px;text-shadow:0 2px 0 #000,0 0 8px #000}
 .phone .subs span{color:#000;background:var(--yellow);padding:1px 8px;border-radius:6px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.phone .cover-title{position:absolute;left:16px;right:16px;top:50%;transform:translateY(-50%);text-align:center;color:#fff;font-weight:800;font-size:24px;line-height:1.3;background:rgba(0,0,0,.55);padding:10px 12px;border-radius:8px;pointer-events:none;white-space:pre-line}
+.phone.cover-mode .frame,.phone.cover-mode .brand,.phone.cover-mode .subs{display:none}
+.phone.cover-mode .cover-title{display:block}
 video#result{width:100%;border-radius:12px;background:#000}
 /* Takeover del panel: cuando el panel está abierto, la landing desaparece.
    (El atributo hidden NO bastaba: header{display:flex} y main{display:grid}
@@ -552,8 +555,9 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <div class="frame" id="pvFrame"></div>
           <div class="brand" id="pvBrand">@marketingcaribe</div>
           <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
+          <div class="cover-title" id="pvCoverTitle" hidden></div>
         </div>
-        <p style="text-align:center;margin:10px 0 0"><button class="small ghost" id="pvSoundBtn" type="button">🔊 Sonido activado</button></p>
+        <p style="text-align:center;margin:10px 0 0"><button class="small ghost" id="pvSoundBtn" type="button">🔊 Sonido activado</button> <button class="small ghost" id="pvCoverBtn" type="button">🖼 Ver portada</button></p>
         <p class="muted" style="text-align:center" id="pvNote">9:16 · 1080×1920 · Reels / TikTok / Shorts</p>
       </section>
 
@@ -929,6 +933,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

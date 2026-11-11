@@ -211,7 +211,44 @@ def _groq_chat(prompt: str) -> str | None:
             # 2026-11-10 en el video de la entrevista: los dos modelos
             # fallaron y el selector cayó al heurístico).
             "max_tokens": 4000,
-            "response_format": {"type": "json_object"},
+            # Structured Outputs con esquema ESTRICTO (2026-11-11): antes
+            # era json_object (solo "JSON válido", sin garantía de forma)
+            # y a veces Groq devolvía 400 json_validate_failed. Con
+            # strict:true la generación está restringida al esquema, así
+            # que la respuesta SIEMPRE trae {clips:[{start,end,title,
+            # reason}]} en el formato exacto. En modo estricto todos los
+            # campos deben ser required y todo objeto additionalProperties
+            # false. Funciona en gpt-oss-120b y gpt-oss-20b (los dos
+            # modelos de este selector).
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "clips",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "clips": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "start": {"type": "number"},
+                                        "end": {"type": "number"},
+                                        "title": {"type": "string"},
+                                        "reason": {"type": "string"},
+                                    },
+                                    "required": ["start", "end",
+                                                 "title", "reason"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["clips"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
         }, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
             GROQ_CHAT_URL, data=body, method="POST",

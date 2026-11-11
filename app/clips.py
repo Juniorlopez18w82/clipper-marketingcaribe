@@ -58,11 +58,40 @@ def build_candidates(segments: list[dict], min_len: float = 20.0,
         clip_end = win_words[-1]["e"]
         # Terminar en final de frase cuando sea posible, para no cortar
         # la idea a mitad de frase (el corte por max_len cae donde caiga).
+        # Mejor aún si tras esa frase el hablante hace una pausa.
+        # (La búsqueda del índice es por identidad: hay palabras repetidas
+        # con el mismo texto y tiempos, y words.index() devolvería la primera.)
+        def _idx_of(target):
+            return next((i for i, w in enumerate(words) if w is target), -1)
+
+        paused_end = None
+        last_sent_end = None
         for w in reversed(win_words):
             if _is_sentence_end(w["w"]) and w["e"] - start >= min_len:
-                win_words = [x for x in win_words if x["e"] <= w["e"]]
-                clip_end = w["e"]
-                break
+                if last_sent_end is None:
+                    last_sent_end = w
+                idx = _idx_of(w)
+                gap = (words[idx + 1]["s"] - w["e"]) if 0 <= idx < len(words) - 1 else 99.0
+                if gap >= PAUSE_SECONDS:
+                    paused_end = w
+                    break
+        end_word = paused_end or last_sent_end
+        if end_word is not None:
+            # Cortar por posición (no por tiempo de fin): con los solapes
+            # de Whisper, palabras de la frase siguiente pueden terminar
+            # antes que la última palabra de la frase y colarse en el texto.
+            _ew = next((i for i, x in enumerate(win_words) if x is end_word), -1)
+            if _ew >= 0:
+                win_words = win_words[:_ew + 1]
+            else:
+                win_words = [x for x in win_words if x["e"] <= end_word["e"]]
+            clip_end = end_word["e"]
+        # Si la palabra siguiente empieza antes de que termine la última
+        # (los tiempos de Whisper se solapan), cortar ahí para no incluir
+        # el inicio de la frase siguiente ni en el audio ni en subtítulos.
+        _idx = _idx_of(win_words[-1])
+        if 0 <= _idx < len(words) - 1 and words[_idx + 1]["s"] < clip_end:
+            clip_end = words[_idx + 1]["s"]
         if clip_end - start < min_len:
             continue
         text = " ".join(w["w"].strip() for w in win_words).strip()
@@ -142,7 +171,9 @@ def _llm_prompt(segments: list[dict], max_clips: int,
         "- Cada clip debe empezar EXACTAMENTE donde empieza la idea o la frase, "
         "y terminar EXACTAMENTE donde termina la idea. Nunca cortes a mitad de "
         "una frase ni a mitad de una palabra. El final debe ser un punto "
-        "final (.), nunca una coma.\n"
+        "final (.), nunca una coma. Prefiere terminar donde el hablante hace "
+        "una pausa o la idea concluye: si la frase siguiente continúa la misma "
+        "idea sin pausa, extiende el clip hasta que la idea quede completa.\n"
         f"- Duración entre {min_len:.0f} y {max_len:.0f} segundos por clip.\n"
         "- El clip debe tener un gancho en los primeros 3 segundos: algo "
         "sorprendente, una pregunta o una frase fuerte.\n"
@@ -255,6 +286,11 @@ def _snap_range(start: float, end: float, words: list[dict]):
 
 _SENTENCE_END = (".", "!", "?", "…")
 
+# Pausa mínima tras el final de frase para que el corte suene limpio
+# (el hablante respira). Por debajo de esto el hablante sigue hablando
+# y el corte suena a mitad de pensamiento.
+PAUSE_SECONDS = 0.4
+
 
 def _is_sentence_end(word: str) -> bool:
     """True when the word ends a sentence (final ., !, ? or …)."""
@@ -282,13 +318,32 @@ def _snap_to_sentences(first: int, last: int, words: list[dict],
             if end_t - words[new_first]["s"] <= max_seconds:
                 first = new_first
             break
-    # End: forward to the next sentence end, if it fits.
+    # End: forward to the next sentence end, preferring one followed by
+    # a real pause (the speaker breathes there, so the cut sounds clean).
+    # A period with no pause after it (gap ~0, or negative because
+    # Whisper word times overlap) sounds cut off mid-thought — seen
+    # 2026-11-10: a clip ending at 'exponencial.' (gap -0.42 s) cut
+    # into 'Y todo por una razón...' and the viewer heard the next
+    # sentence start and stop. If no paused end fits, keep the first
+    # sentence end (the audio fade in the render softens it).
     start_t = words[first]["s"]
+    first_sent_end = None
+    paused_end = None
     for i in range(last, len(words)):
-        if _is_sentence_end(words[i]["w"]):
-            if words[i]["e"] - start_t <= max_seconds:
-                last = i
+        if not _is_sentence_end(words[i]["w"]):
+            continue
+        if words[i]["e"] - start_t > max_seconds:
             break
+        if first_sent_end is None:
+            first_sent_end = i
+        gap = (words[i + 1]["s"] - words[i]["e"]) if i + 1 < len(words) else 99.0
+        if gap >= PAUSE_SECONDS:
+            paused_end = i
+            break
+    if paused_end is not None:
+        last = paused_end
+    elif first_sent_end is not None:
+        last = first_sent_end
     # If the end is still not a sentence end, fall back to the last
     # sentence end at or before it (only if the clip stays long enough).
     if not _is_sentence_end(words[last]["w"]):
@@ -334,6 +389,13 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
         first, last = _snap_to_sentences(first, last, words,
                                          LLM_MIN_SECONDS, LLM_MAX_SECONDS)
         s, e = words[first]["s"], words[last]["e"]
+        # Si la palabra siguiente empieza antes de que termine la última
+        # (los tiempos de Whisper se solapan), cortar ahí: si no, el audio
+        # y los subtítulos incluyen el inicio de la frase siguiente
+        # (visto 2026-11-10: un clip que terminaba en 'contratado.' 60.26
+        # incluía 'Hasta' 59.56, primera palabra de la frase siguiente).
+        if last + 1 < len(words) and words[last + 1]["s"] < e:
+            e = words[last + 1]["s"]
         duration = e - s
         if duration < LLM_MIN_SECONDS or duration > LLM_MAX_SECONDS:
             continue

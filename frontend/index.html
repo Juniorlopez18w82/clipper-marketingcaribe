@@ -365,8 +365,14 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <div class="stat"><b id="stMonth">0</b><span>Clips este mes</span></div>
         <div class="stat red"><b id="stProcessing">0</b><span>Videos en proceso</span></div>
         <div class="stat"><b id="stTotalClips">0</b><span>Total de clips</span></div>
+        <div class="stat"><b id="stVideos">0</b><span>Videos generados</span></div>
+        <div class="stat"><b id="stMinutes">0</b><span>Minutos generados</span></div>
+        <div class="stat red"><b id="stLives">0</b><span>Lives activos</span></div>
       </div>
-      <div class="card"><p class="muted" style="margin:0">Tus clips quedan listos para descargar apenas se renderizan. Sin aprobaciones ni esperas.</p></div>
+      <h4 style="margin:20px 0 4px">Últimos videos generados</h4>
+      <div id="homeRecent" class="live-clips"><p class="muted">Cargando…</p></div>
+      <p style="margin:10px 0 0"><button class="small ghost" onclick="document.querySelector('[data-tab=clips]').click()">Ver todos mis clips →</button></p>
+      <div class="card" style="margin-top:16px"><p class="muted" style="margin:0">Tus clips quedan listos para descargar apenas se renderizan. Sin aprobaciones ni esperas.</p></div>
       </div>
     </div>
 

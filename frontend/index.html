@@ -95,6 +95,13 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .modal-card{position:relative;background:#1a1a1e;border:1px solid #27272a;border-radius:16px;width:min(460px,94vw);max-height:88vh;overflow:auto;padding:22px;box-shadow:0 16px 48px rgba(0,0,0,.6)}
 .modal-card h3{margin:0 0 4px;font-size:20px}
 .modal-x{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:#27272a;color:#f4f4f5;font-size:18px;line-height:1;cursor:pointer}
+/* Botón flotante "+" para añadir usuarios (solo visible en Panel Admin > Usuarios:
+   vive dentro de #adminPane-users, que se oculta con las demás pestañas). */
+.fab-add-user{position:fixed;right:24px;bottom:24px;z-index:150;width:56px;height:56px;border-radius:50%;border:0;background:#E10600;color:#fff;font-size:30px;line-height:1;cursor:pointer;box-shadow:0 8px 24px rgba(225,6,0,.45);display:flex;align-items:center;justify-content:center}
+.fab-add-user:hover{background:#c20500}
+.role-pills{display:flex;gap:8px;margin-top:6px}
+.role-pills label{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:1px solid #3f3f46;border-radius:10px;cursor:pointer;font-size:14px}
+.role-pills label:has(input:checked){border-color:#E10600;background:rgba(225,6,0,.12)}
 .assign-plan-row{display:flex;gap:10px;align-items:flex-start;border:1px solid #27272a;border-radius:12px;padding:12px 14px;margin-top:10px;cursor:pointer}
 .assign-plan-row:hover{border-color:#3f3f46}
 .assign-plan-row.selected{border-color:#E10600;background:rgba(225,6,0,.08)}
@@ -713,6 +720,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <h4>Usuarios</h4>
           <div id="adminUsers"><p class="muted">Cargando…</p></div>
         </div>
+        <button id="fabAddUser" class="fab-add-user" title="Añadir usuario" aria-label="Añadir usuario">+</button>
       </div>
       <div class="admin-pane" id="adminPane-clips" hidden>
         <div class="card">
@@ -794,6 +802,29 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       </div>
     </div>
   </div>
+  <div id="addUserModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addUserTitle">
+      <button class="modal-x" id="addUserClose" aria-label="Cerrar">×</button>
+      <h3 id="addUserTitle">Añadir usuario</h3>
+      <p class="muted">Crea un cliente o un administrador. El usuario entra con este correo y contraseña.</p>
+      <label>Nombre</label>
+      <input id="addUserName" type="text" placeholder="Nombre completo" autocomplete="off" style="width:100%">
+      <label style="margin-top:10px">Correo</label>
+      <input id="addUserEmail" type="email" placeholder="correo@ejemplo.com" autocomplete="off" style="width:100%">
+      <label style="margin-top:10px">Contraseña</label>
+      <input id="addUserPassword" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" style="width:100%">
+      <label style="margin-top:10px">Rol</label>
+      <div class="role-pills">
+        <label><input type="radio" name="addUserRole" value="client" checked> Cliente</label>
+        <label><input type="radio" name="addUserRole" value="admin"> Administrador</label>
+      </div>
+      <p id="addUserMsg" class="muted" style="margin:10px 0 0"></p>
+      <div class="modal-actions">
+        <button id="addUserCancel" class="ghost">Cancelar</button>
+        <button id="addUserConfirm">Crear usuario</button>
+      </div>
+    </div>
+  </div>
   <div id="clipModal" class="modal-backdrop" hidden>
     <div class="modal-card viewer" role="dialog" aria-modal="true" aria-labelledby="clipModalTitle">
       <button class="modal-x" id="clipModalClose" aria-label="Cerrar">×</button>
@@ -834,6 +865,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

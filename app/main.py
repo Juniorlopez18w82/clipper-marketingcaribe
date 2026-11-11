@@ -315,7 +315,8 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         # a bad LLM day can never fail a clips job. No key = heuristic.
         candidates = build_candidates_llm(transcript["segments"],
                                           max_clips=max_clips,
-                                          min_len=min_len, max_len=max_len)
+                                          min_len=min_len, max_len=max_len,
+                                          abs_start=start)
         selector = "llm"
         if candidates is None:
             selector = "heuristic"

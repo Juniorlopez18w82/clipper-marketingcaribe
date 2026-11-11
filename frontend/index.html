@@ -146,6 +146,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel-nav{width:248px;flex:none;background:#18181b;border-right:1px solid #27272a;padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:60px;height:calc(100vh - 60px)}
 .panel-nav .nav-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#71717a;padding:6px 12px 8px}
 .panel-nav .tab{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;color:#f4f4f5;border:0;border-radius:10px;padding:11px 14px;font-size:15px;font-weight:600;cursor:pointer;text-transform:none}
+.panel-nav .tab .soon-lock{margin-left:auto;font-size:13px;opacity:.85}
 .panel-nav .tab svg{flex:none;width:19px;height:19px}
 .panel-nav .tab:hover{background:#27272a}
 .panel-nav .tab.on{background:#E10600;color:#fff}
@@ -449,7 +450,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <h3>Mis Clips</h3>
       <p class="sub">Todos tus clips renderizados, listos para descargar.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
-      <div class="pane-body"><div id="myClips"><p class="muted">Cargando…</p></div></div>
+      <div class="pane-body"><div id="myClips"><p class="muted">Cargando…</p></div><div id="clipsPagination" style="display:flex;gap:12px;justify-content:center;margin-top:18px"></div></div>
     </div>
 
     <div class="pane" id="pane-create" hidden>
@@ -744,6 +745,11 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <p class="sub">Tu nombre y el nombre que saldrá en el marco de tus clips.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
+      <div class="mini-tabs" id="accTabs">
+        <button class="mini-tab on" data-acc="profile">Perfil</button>
+        <button class="mini-tab" data-acc="config">Configuración</button>
+      </div>
+      <div id="accPane-profile">
       <div class="card">
       <label>Nombre</label>
       <input id="accName" type="text">
@@ -766,6 +772,15 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <input id="pwConfirm" type="password" autocomplete="new-password" style="width:100%">
       <div style="margin-top:14px"><button id="btnChangePassword">Cambiar contraseña</button></div>
       <p id="pwMsg" class="muted"></p>
+      </div>
+      </div>
+      <div id="accPane-config" hidden>
+      <div class="card">
+      <h4 style="margin:0 0 4px">Mi membresía</h4>
+      <p class="muted" style="margin:0 0 12px">Tu plan actual y cuándo se vence.</p>
+      <div id="accPlanBox"><p class="muted">Cargando…</p></div>
+      <div style="margin-top:14px"><button id="btnUpgradePlan">Actualizar plan</button></div>
+      </div>
       </div>
       </div>
     </div>
@@ -873,6 +888,30 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <div class="modal-actions">
         <button id="assignCancel" class="ghost">Cancelar</button>
         <button id="assignConfirm">Asignar</button>
+      </div>
+    </div>
+  </div>
+  <!-- Modal: confirmar eliminación de un clip -->
+  <div id="confirmDeleteModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmDeleteTitle">
+      <button class="modal-x" id="confirmDeleteClose" aria-label="Cerrar">×</button>
+      <h3 id="confirmDeleteTitle">Eliminar clip</h3>
+      <p class="muted" id="confirmDeleteText">¿Seguro que quieres eliminar este clip? Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button id="confirmDeleteCancel" class="ghost">Cancelar</button>
+        <button id="confirmDeleteOk" style="background:#E10600">Eliminar</button>
+      </div>
+    </div>
+  </div>
+  <!-- Modal: función próximamente (Video IA / Imagen IA, solo admin) -->
+  <div id="soonModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="soonTitle" style="text-align:center">
+      <button class="modal-x" id="soonClose" aria-label="Cerrar">×</button>
+      <div style="font-size:44px">🔒</div>
+      <h3 id="soonTitle" style="margin-top:8px">Próximamente</h3>
+      <p class="muted" id="soonText">Esta función estará disponible próximamente.</p>
+      <div class="modal-actions" style="justify-content:center">
+        <button id="soonOk">Entendido</button>
       </div>
     </div>
   </div>
@@ -1021,6 +1060,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=49"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>

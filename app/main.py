@@ -878,6 +878,47 @@ def api_patch_my_clip(clip_id: int, req: ClipPatchRequest,
     return clip_out(clip)
 
 
+@app.delete("/api/me/clips/{clip_id}")
+def api_delete_my_clip(clip_id: int,
+                       db: Session = Depends(get_db),
+                       user: User = Depends(get_current_user)):
+    """Delete a generated clip: the DB row and its rendered mp4 in
+    data/outputs/. Owner or admin only. The file removal is best
+    effort — a missing file does not fail the delete."""
+    clip = db.query(Clip).filter(Clip.id == clip_id).first()
+    if not clip or (clip.user_id != user.id and not user.is_admin):
+        raise HTTPException(404, "Clip no encontrado")
+    if clip.file:
+        try:
+            (OUTPUTS_DIR / clip.file).unlink(missing_ok=True)
+        except OSError:
+            pass
+    db.delete(clip)
+    db.commit()
+    return {"deleted": clip_id}
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@app.post("/api/auth/change-password")
+def api_change_password(req: ChangePasswordRequest,
+                        db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """Change your own password from Mi Cuenta. The current password
+    must match; the new one needs at least 6 characters."""
+    if not auth.verify_password(req.current_password, user.password_hash):
+        raise HTTPException(400, "La contraseña actual no es correcta")
+    if len(req.new_password) < 6:
+        raise HTTPException(
+            400, "La contraseña nueva debe tener al menos 6 caracteres")
+    user.password_hash = auth.hash_password(req.new_password)
+    db.commit()
+    return {"changed": True}
+
+
 # ---------------------------------------------------------------- panel admin
 def require_admin(user: User = Depends(get_current_user)) -> User:
     if not user.is_admin:

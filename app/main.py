@@ -52,7 +52,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from . import auth, billing, clips_db, jobs, settings
+from . import auth, billing, clips_db, jobs, lives, settings
 from .auth import User, get_current_user, get_optional_user
 from .billing import (PaymentMethod, PaymentRequest, Plan, UserSubscription,
                       approve_request, assign_plan, get_active_subscription,
@@ -65,6 +65,9 @@ from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
                      MAX_WORKERS, OUTPUTS_DIR, RECEIPTS_DIR, SOURCES_DIR,
                      TRANSCRIPTS_DIR, UPLOADS_DIR, VIDEOS_DIR)
 from .db import SessionLocal, db_backend, get_db, init_db
+from .lives import (EDGE_SAFETY_SECONDS, STATUS_ACTIVE, STATUS_ENDED,
+                    STATUS_PAUSED, STATUS_STOPPED, LiveSession,
+                    live_session_out)
 from .images import (ASPECTS, GeneratedImage, create_image,
                      fetch_image_models, get_model as get_image_model,
                      image_out, refresh_image, submit_image,
@@ -75,7 +78,7 @@ from .videos import (AIVideoJob, build_fal_payload, create_job,
 from .render import DEFAULT_TEMPLATE, TEMPLATES, render_clip, resolve_template
 from .settings import get_setting, set_setting
 from .transcribe import transcribe_file, transcription_engine
-from .video import download_section, probe, video_info
+from .video import download_section, live_status, probe, video_info
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +86,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()  # crea la tabla users si no existe (Postgres o SQLite)
+    _start_lives_monitor()  # hilo del monitor de Lives (sesiones activas)
     yield
 
 
-app = FastAPI(title="ClipViral", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="ClipViral", version="1.5.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -149,6 +153,10 @@ class RenderRequest(BaseModel):
     clip_title: str = ""
     clip_score: float | None = None
     video_title: str = ""
+    # Live session this render belongs to (Lives monitor only): the
+    # clip record is then linked to the session so the Lives section
+    # lists it. None = normal clip from Crear Clip.
+    live_session_id: int | None = None
     # Cover offset (s, relative to the clip start) chosen in the editor.
     # Stored on the clip; only changes the thumbnail in Mis Clips.
     cover_at: float | None = None
@@ -522,7 +530,8 @@ def _run_render_job(job_id: str, req: RenderRequest):
                             job_id=(req.job_id or job_id), file=out_name,
                             score=req.clip_score,
                             section_start=section_start,
-                            cover_at=req.cover_at)
+                            cover_at=req.cover_at,
+                            live_session_id=req.live_session_id)
             finally:
                 db.close()
         except Exception:  # noqa: BLE001 — panel record is best-effort
@@ -531,10 +540,176 @@ def _run_render_job(job_id: str, req: RenderRequest):
         jobs.update(job_id, status="error", error=str(e), message="Falló el render.")
 
 
+# ---------------------------------------------------------------- lives
+# Lives monitor (2026-11-10, Juan): a background thread that, every
+# 30 s, checks the active live sessions and processes one round for
+# each session that is due (now - last_run_at >= interval). A round
+# takes the most recent window (ending EDGE_SAFETY_SECONDS before the
+# live edge), extracts clips with the same pipeline as /api/clips,
+# renders them, and links them to the session. One round at a time,
+# sequential — renders are CPU-heavy and the in-process job queue is
+# max 2, so the monitor never runs two rounds in parallel. A failed
+# round (bot check, live edge unknown) only records last_error and
+# retries at the next interval — never a tight retry loop (bursts
+# trigger YouTube's bot check).
+_LIVES_MONITOR_STARTED = False
+
+
+def _live_round(session_id: int) -> None:
+    """Process one extraction round for a live session. Synchronous;
+    runs in the monitor thread."""
+    db = SessionLocal()
+    try:
+        session = db.get(LiveSession, session_id)
+        if session is None or session.status != STATUS_ACTIVE:
+            return
+        st = live_status(session.url)
+        if st is None:
+            session.last_error = ("YouTube bloqueó la lectura del live, "
+                                  "se reintenta en el próximo intervalo.")
+            session.last_run_at = datetime.now(timezone.utc)
+            db.commit()
+            return
+        if not st.get("is_live"):
+            # The live ended: stop monitoring (clips stay). The user can
+            # still clip the replay from Crear Clip.
+            session.status = STATUS_ENDED
+            session.last_error = ""
+            session.last_run_at = datetime.now(timezone.utc)
+            db.commit()
+            logger.info("live session %s ended (%s)", session.id, session.title)
+            return
+        edge = st.get("edge")
+        if edge is None:
+            session.last_error = ("No se pudo leer hasta dónde va el live, "
+                                  "se reintenta en el próximo intervalo.")
+            session.last_run_at = datetime.now(timezone.utc)
+            db.commit()
+            return
+        interval_s = float(session.interval_minutes) * 60.0
+        end = float(edge) - EDGE_SAFETY_SECONDS
+        start = end - interval_s
+        if session.last_end is not None:
+            # Never re-process old content, and never a huge backlog
+            # (e.g. after a pause): only the most recent interval.
+            start = max(float(session.last_end), start)
+        if end - start < 15:
+            # Not enough new content aired yet; keep last_end so the
+            # next round accumulates it.
+            session.last_run_at = datetime.now(timezone.utc)
+            db.commit()
+            return
+        # --- Same pipeline as /api/clips, but synchronous in this thread.
+        clips_job = jobs.create("clips", {
+            "url": session.url, "start": start, "end": end,
+            "model": "base", "max_clips": session.clips_per_round,
+            "min_len": session.min_len, "max_len": session.max_len})
+        jobs.update(clips_job["id"], user_id=session.user_id)
+        _run_clips_job(clips_job["id"], session.url, start, end, "base",
+                       None, session.clips_per_round, session.min_len,
+                       session.max_len)
+        done = jobs.get(clips_job["id"]) or {}
+        result = done.get("result") or {}
+        candidates = result.get("candidates") or []
+        # The user's brand (for the frame), else the default.
+        user = db.get(User, session.user_id) if session.user_id else None
+        brand = (getattr(user, "brand_text", None) or DEFAULT_BRAND_TEXT)
+        rendered = 0
+        for c in candidates[:max(1, session.clips_per_round)]:
+            try:
+                rjob = jobs.create("render", {
+                    "job_id": clips_job["id"],
+                    "start": c["abs_start"], "end": c["abs_end"],
+                    "clip_title": c.get("title") or "",
+                    "clip_score": c.get("score"),
+                    "video_title": st.get("title") or session.title,
+                    "live_session_id": session.id})
+                jobs.update(rjob["id"], user_id=session.user_id)
+                req = RenderRequest(
+                    job_id=clips_job["id"],
+                    start=float(c["abs_start"]), end=float(c["abs_end"]),
+                    clip_title=c.get("title") or "",
+                    clip_score=c.get("score"),
+                    video_title=st.get("title") or session.title,
+                    brand_text=brand,
+                    live_session_id=session.id)
+                _run_render_job(rjob["id"], req)
+                rdone = jobs.get(rjob["id"]) or {}
+                if rdone.get("status") == "done":
+                    rendered += 1
+            except Exception:
+                logger.warning("live render failed (session %s)",
+                               session.id, exc_info=True)
+                continue
+        session.last_end = end
+        session.last_run_at = datetime.now(timezone.utc)
+        session.total_clips = int(session.total_clips or 0) + rendered
+        session.last_error = ""
+        db.commit()
+        logger.info("live session %s round: %s-%s -> %d clips",
+                    session.id, round(start, 1), round(end, 1), rendered)
+    except Exception as e:
+        logger.warning("live round failed (session %s): %s",
+                       session_id, e, exc_info=True)
+        try:
+            db.rollback()
+            session = db.get(LiveSession, session_id)
+            if session is not None:
+                session.last_error = str(e)[:400]
+                session.last_run_at = datetime.now(timezone.utc)
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+def _lives_monitor_loop() -> None:
+    """Daemon thread: every 30 s, process one round per due session."""
+    import time as _time
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                now = datetime.now(timezone.utc)
+                sessions = (db.query(LiveSession)
+                            .filter(LiveSession.status == STATUS_ACTIVE)
+                            .order_by(LiveSession.id).all())
+                due = []
+                for s in sessions:
+                    if s.last_run_at is None:
+                        due.append(s.id)
+                    else:
+                        last = s.last_run_at
+                        if last.tzinfo is None:
+                            last = last.replace(tzinfo=timezone.utc)
+                        if (now - last).total_seconds() >= s.interval_minutes * 60:
+                            due.append(s.id)
+            finally:
+                db.close()
+            for sid in due:
+                _live_round(sid)
+        except Exception:
+            logger.warning("lives monitor tick failed", exc_info=True)
+        _time.sleep(30)
+
+
+def _start_lives_monitor() -> None:
+    global _LIVES_MONITOR_STARTED
+    if _LIVES_MONITOR_STARTED:
+        return
+    _LIVES_MONITOR_STARTED = True
+    import threading
+    t = threading.Thread(target=_lives_monitor_loop, daemon=True,
+                         name="lives-monitor")
+    t.start()
+    logger.info("lives monitor started")
+
+
 # ---------------------------------------------------------------- routes
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "ClipViral", "version": "1.4.0",
+    return {"ok": True, "service": "ClipViral", "version": "1.5.0",
             "warp": os.environ.get("WARP_STATUS", "not_configured"),
             "proxy": bool(os.environ.get("YTDLP_PROXY")),
             "transcription": transcription_engine(),
@@ -1085,6 +1260,163 @@ def api_render(req: RenderRequest, background: BackgroundTasks,
     return {"job_id": job["id"], "status": job["status"]}
 
 
+# ---------------------------------------------------------------- lives API
+class LiveCreateRequest(BaseModel):
+    url: str
+    interval_minutes: int = 10
+    clips_per_round: int = 3
+    min_len: float = 20.0
+    max_len: float = 45.0
+
+
+def _require_live_plan(db: Session, user: User | None) -> None:
+    """Lives are a Full/Pro feature (Básico: 'Sin clips de Lives').
+    Admin bypasses plan gating entirely."""
+    if user is None:
+        return
+    if getattr(user, "is_admin", False):
+        return
+    _require_plan(db, user)
+    sub = get_active_subscription(db, user.id)
+    if sub is None:
+        raise HTTPException(403, "Debes contratar un plan para usar el clipper")
+    plan = db.get(Plan, sub.plan_id) if sub.plan_id else None
+    name = (plan.name if plan else "") or ""
+    # "Básico" (con o sin acento) no tiene clips de Lives.
+    norm = (name.strip().lower().replace("á", "a").replace("é", "e")
+            .replace("í", "i").replace("ó", "o").replace("ú", "u"))
+    if norm == "basico":
+        raise HTTPException(
+            403, "Los clips de Lives están en los planes Pro y Full")
+
+
+def _live_owner(db: Session, user: User | None, session_id: int) -> LiveSession:
+    session = db.get(LiveSession, session_id)
+    if session is None:
+        raise HTTPException(404, "Live no encontrado")
+    if user is not None and not getattr(user, "is_admin", False):
+        if session.user_id != user.id:
+            raise HTTPException(403, "No tienes acceso a este live")
+    return session
+
+
+@app.post("/api/lives")
+def api_lives_create(req: LiveCreateRequest,
+                     user: User | None = Depends(get_optional_user),
+                     db: Session = Depends(get_db)):
+    _require_live_plan(db, user)
+    url = (req.url or "").strip()
+    if not url:
+        raise HTTPException(400, "Pega el link del live")
+    interval = max(2, min(60, int(req.interval_minutes or 10)))
+    per_round = max(1, min(5, int(req.clips_per_round or 3)))
+    min_len = max(5.0, min(120.0, float(req.min_len or 20.0)))
+    max_len = max(min_len, min(180.0, float(req.max_len or 45.0)))
+    st = live_status(url)
+    if st is None:
+        raise HTTPException(
+            502, "YouTube bloqueó la lectura del live, inténtalo de nuevo")
+    if not st.get("is_live"):
+        raise HTTPException(400, "Ese link no es un live en curso")
+    session = LiveSession(
+        user_id=(user.id if user is not None else None), url=url,
+        video_id=st.get("video_id") or "", title=st.get("title") or "",
+        uploader=st.get("uploader") or "", interval_minutes=interval,
+        clips_per_round=per_round, min_len=min_len, max_len=max_len,
+        status=STATUS_ACTIVE)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return live_session_out(session, 0)
+
+
+@app.get("/api/lives")
+def api_lives_list(user: User | None = Depends(get_optional_user),
+                   db: Session = Depends(get_db)):
+    _require_plan(db, user)
+    q = db.query(LiveSession)
+    if user is not None and not getattr(user, "is_admin", False):
+        q = q.filter(LiveSession.user_id == user.id)
+    sessions = q.order_by(LiveSession.id.desc()).all()
+    out = []
+    for s in sessions:
+        n = db.query(Clip).filter(Clip.live_session_id == s.id).count()
+        out.append(live_session_out(s, n))
+    return out
+
+
+@app.get("/api/lives/{session_id}")
+def api_lives_get(session_id: int,
+                  user: User | None = Depends(get_optional_user),
+                  db: Session = Depends(get_db)):
+    _require_plan(db, user)
+    session = _live_owner(db, user, session_id)
+    clips = (db.query(Clip).filter(Clip.live_session_id == session.id)
+             .order_by(Clip.id.desc()).all())
+    d = live_session_out(session, len(clips))
+    d["clips"] = [clip_out(c) for c in clips]
+    return d
+
+
+@app.get("/api/lives/{session_id}/clips")
+def api_lives_clips(session_id: int,
+                    user: User | None = Depends(get_optional_user),
+                    db: Session = Depends(get_db)):
+    _require_plan(db, user)
+    session = _live_owner(db, user, session_id)
+    clips = (db.query(Clip).filter(Clip.live_session_id == session.id)
+             .order_by(Clip.id.desc()).all())
+    return [clip_out(c) for c in clips]
+
+
+def _live_set_status(session_id: int, status: str,
+                     user: User | None, db: Session) -> dict:
+    _require_plan(db, user)
+    session = _live_owner(db, user, session_id)
+    if status == STATUS_ACTIVE and session.status == STATUS_PAUSED:
+        # On resume, restart from the live edge (don't process the
+        # backlog that aired while paused).
+        session.last_end = None
+    session.status = status
+    session.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(session)
+    n = db.query(Clip).filter(Clip.live_session_id == session.id).count()
+    return live_session_out(session, n)
+
+
+@app.post("/api/lives/{session_id}/pause")
+def api_lives_pause(session_id: int,
+                    user: User | None = Depends(get_optional_user),
+                    db: Session = Depends(get_db)):
+    return _live_set_status(session_id, STATUS_PAUSED, user, db)
+
+
+@app.post("/api/lives/{session_id}/resume")
+def api_lives_resume(session_id: int,
+                     user: User | None = Depends(get_optional_user),
+                     db: Session = Depends(get_db)):
+    return _live_set_status(session_id, STATUS_ACTIVE, user, db)
+
+
+@app.post("/api/lives/{session_id}/stop")
+def api_lives_stop(session_id: int,
+                   user: User | None = Depends(get_optional_user),
+                   db: Session = Depends(get_db)):
+    return _live_set_status(session_id, STATUS_STOPPED, user, db)
+
+
+@app.delete("/api/lives/{session_id}")
+def api_lives_delete(session_id: int,
+                     user: User | None = Depends(get_optional_user),
+                     db: Session = Depends(get_db)):
+    _require_plan(db, user)
+    session = _live_owner(db, user, session_id)
+    db.delete(session)
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/jobs/{job_id}")
 def api_job(job_id: str):
     job = jobs.get(job_id)
@@ -1354,8 +1686,9 @@ _frontend = BASE_DIR / "frontend"
 # recarga o un enlace directo a /mis-clips debe servir el panel; sin
 # estas rutas StaticFiles devolvería 404. Solo las secciones conocidas:
 # cualquier otra ruta sigue cayendo al StaticFiles de abajo.
-_PANEL_ROUTES = ("/inicio", "/mis-clips", "/crear-clip", "/imagenes-ia",
-                 "/videos-ia", "/planes", "/mi-cuenta", "/admin")
+_PANEL_ROUTES = ("/inicio", "/mis-clips", "/crear-clip", "/lives",
+                 "/imagenes-ia", "/videos-ia", "/planes", "/mi-cuenta",
+                 "/admin")
 
 
 def _panel_index():

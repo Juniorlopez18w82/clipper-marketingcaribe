@@ -314,8 +314,12 @@ def download_section(url: str, start: float, end: float, job_id: str,
     """
     if end <= start:
         raise ValueError("end must be greater than start")
-    if end - start > 900:
-        raise ValueError("section too long (max 15 min per job in v1)")
+    # Límite 60 min (2026-11-11): antes era 15 min (900 s) porque bajar
+    # el video completo era lento; ahora el análisis baja solo el audio
+    # (itag 250, rápido), así que un video de 43 min (2611 s) cabe. Más
+    # de 60 min: el usuario lo analiza por partes con Desde/Hasta.
+    if end - start > 3600:
+        raise ValueError("El rango es muy largo (máx. 60 min por análisis). Analiza el video por partes con Desde/Hasta.")
     out_tmpl = str(SOURCES_DIR / f"{job_id}.%(ext)s")
     section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
     errors: list[str] = []

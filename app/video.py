@@ -321,8 +321,15 @@ def download_section(url: str, start: float, end: float, job_id: str,
     errors: list[str] = []
     attempt = 0
     for client in PLAYER_CLIENTS:
-        # Solo audio: un solo formato, no hay video que elegir.
-        formats = ["bestaudio/best"] if audio_only else FORMAT_SELECTORS
+        # Solo audio: itag 250 (Opus ~70 kbps) ANTES que bestaudio.
+        # Medido 2026-11-11 (180 s del video de Juan, tv_embedded, WARP):
+        # bestaudio (itag 251, Opus ~160 kbps, 3.2 MB) tarda 96-97 s
+        # (~33 KB/s: YouTube limita ESE flujo); itag 250 (1.6 MB) tarda
+        # 6 s, y el cliente android también baja rápido (6 s). El límite
+        # no es de YouTube en general, es por flujo/cliente. 70 kbps
+        # Opus es más que suficiente para transcribir voz con Whisper.
+        # Si 250 no existe en un video, cae a 251 y luego a bestaudio.
+        formats = ["250/251/bestaudio/best"] if audio_only else FORMAT_SELECTORS
         for fmt in formats:
             attempt += 1
             for old in SOURCES_DIR.glob(f"{job_id}.*"):

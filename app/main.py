@@ -54,10 +54,11 @@ from sqlalchemy.orm import Session
 
 from . import auth, billing, clips_db, jobs, lives, settings
 from .auth import User, get_current_user, get_optional_user
-from .billing import (PaymentMethod, PaymentRequest, Plan, UserSubscription,
-                      approve_request, assign_plan, get_active_subscription,
-                      has_active_subscription, method_out, plan_out,
-                      reject_request, request_out, subscription_out)
+from .billing import (PaymentMethod, PaymentRequest, Plan, REQ_APPROVED,
+                      UserSubscription, approve_request, assign_plan,
+                      get_active_subscription, has_active_subscription,
+                      method_out, plan_out, reject_request, request_out,
+                      subscription_out)
 from .clips import build_candidates, build_candidates_llm
 from .clips_db import Clip, clip_out, create_clip
 from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
@@ -752,6 +753,9 @@ def api_login(req: LoginRequest, db: Session = Depends(get_db)):
     user = auth.authenticate_user(db, req.email, req.password)
     if user is None:
         raise HTTPException(401, "Correo o contraseña incorrectos")
+    if getattr(user, "is_suspended", False) and not user.is_admin:
+        raise HTTPException(403, "Tu cuenta está suspendida. "
+                                 "Contacta al administrador.")
     out = auth.user_out(user)
     out["plan_expires"] = _plan_expires_for(db, user)
     return {"access_token": auth.create_access_token(user.id), "user": out}
@@ -935,6 +939,7 @@ def api_admin_users(db: Session = Depends(get_db),
         row = auth.user_out(u)
         sub = get_active_subscription(db, u.id)
         row["plan_expires"] = sub.ends_at.isoformat() if sub else None
+        row["plan_started"] = sub.starts_at.isoformat() if sub else None
         out.append(row)
     return out
 
@@ -965,6 +970,196 @@ def api_admin_create_user(req: CreateUserRequest,
     row = auth.user_out(user)
     row["plan_expires"] = None
     return row
+
+
+class EditUserRequest(BaseModel):
+    name: str | None = None
+    email: str | None = None
+
+
+@app.patch("/api/admin/users/{user_id}")
+def api_admin_edit_user(user_id: int, req: EditUserRequest,
+                        db: Session = Depends(get_db),
+                        _admin: User = Depends(require_admin)):
+    """Admin edits a user's name and/or email (Panel Admin > Usuarios
+    > menú ⋮ > Editar). The email must stay unique and valid."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(404, "Usuario no encontrado")
+    if req.name is not None:
+        if not req.name.strip():
+            raise HTTPException(400, "El nombre es obligatorio")
+        user.name = req.name.strip()
+    if req.email is not None:
+        email = req.email.strip().lower()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise HTTPException(400, "Correo no válido")
+        clash = (db.query(User).filter(User.email == email,
+                                       User.id != user_id).first())
+        if clash:
+            raise HTTPException(400, "Ese correo ya está registrado")
+        user.email = email
+    db.commit()
+    db.refresh(user)
+    row = auth.user_out(user)
+    sub = get_active_subscription(db, user.id)
+    row["plan_expires"] = sub.ends_at.isoformat() if sub else None
+    row["plan_started"] = sub.starts_at.isoformat() if sub else None
+    return row
+
+
+@app.delete("/api/admin/users/{user_id}")
+def api_admin_delete_user(user_id: int,
+                          db: Session = Depends(get_db),
+                          admin: User = Depends(require_admin)):
+    """Admin deletes a user (menú ⋮ > Eliminar): removes their clips
+    (+ mp4 files), live sessions, subscriptions and payment requests,
+    then the user. Cannot delete yourself, and cannot delete the last
+    remaining admin (to avoid locking the panel)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(404, "Usuario no encontrado")
+    if user.id == admin.id:
+        raise HTTPException(400, "No puedes eliminar tu propia cuenta")
+    if user.is_admin:
+        others = (db.query(User).filter(User.is_admin == True,  # noqa: E712
+                                        User.id != user.id).count())
+        if others == 0:
+            raise HTTPException(
+                400, "No puedes eliminar al único administrador")
+    # Clips (+ mp4 files).
+    for clip in db.query(Clip).filter(Clip.user_id == user_id).all():
+        if clip.file:
+            try:
+                (OUTPUTS_DIR / clip.file).unlink(missing_ok=True)
+            except OSError:
+                pass
+        db.delete(clip)
+    db.query(LiveSession).filter(LiveSession.user_id == user_id).delete()
+    db.query(UserSubscription).filter(
+        UserSubscription.user_id == user_id).delete()
+    db.query(PaymentRequest).filter(
+        PaymentRequest.user_id == user_id).delete()
+    db.delete(user)
+    db.commit()
+    return {"deleted": user_id}
+
+
+@app.post("/api/admin/users/{user_id}/suspend")
+def api_admin_suspend_user(user_id: int,
+                           db: Session = Depends(get_db),
+                           admin: User = Depends(require_admin)):
+    """Suspend a user (menú ⋮ > Suspender cuenta): they cannot log in
+    or use the panel until reactivated. Cannot suspend yourself."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(404, "Usuario no encontrado")
+    if user.id == admin.id:
+        raise HTTPException(400, "No puedes suspender tu propia cuenta")
+    user.is_suspended = True
+    db.commit()
+    db.refresh(user)
+    return auth.user_out(user)
+
+
+@app.post("/api/admin/users/{user_id}/unsuspend")
+def api_admin_unsuspend_user(user_id: int,
+                             db: Session = Depends(get_db),
+                             _admin: User = Depends(require_admin)):
+    """Reactivate a suspended user (menú ⋮ > Reactivar cuenta)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(404, "Usuario no encontrado")
+    user.is_suspended = False
+    db.commit()
+    db.refresh(user)
+    return auth.user_out(user)
+
+
+@app.get("/api/admin/earnings")
+def api_admin_earnings(db: Session = Depends(get_db),
+                       _admin: User = Depends(require_admin)):
+    """Ganancias (Panel Admin > Ganancias): totals from APPROVED
+    payment requests (a sale = an approved receipt, priced at the
+    plan's RD$ price), upcoming renewals (active subscriptions ending
+    within 7 days), active/suspended user counts, users by plan and
+    recent sales."""
+    from sqlalchemy import func as _func
+
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0,
+                              microsecond=0)
+    approved = (db.query(PaymentRequest)
+                .filter(PaymentRequest.status == REQ_APPROVED))
+    total_sales = 0
+    total_count = 0
+    month_sales = 0
+    recent = []
+    for req in approved.order_by(PaymentRequest.decided_at.desc()).all():
+        plan = db.query(Plan).filter(Plan.id == req.plan_id).first()
+        amount = int(plan.price_dop) if plan else 0
+        total_sales += amount
+        total_count += 1
+        if req.decided_at and req.decided_at >= month_start:
+            month_sales += amount
+        if len(recent) < 5:
+            u = db.query(User).filter(User.id == req.user_id).first()
+            recent.append({
+                "user_name": u.name if u else "",
+                "user_email": u.email if u else "",
+                "plan_name": plan.name if plan else "",
+                "amount_dop": amount,
+                "decided_at": (req.decided_at.isoformat()
+                               if req.decided_at else None),
+            })
+    # Upcoming renewals: active subscriptions ending within 7 days.
+    soon = now + timedelta(days=7)
+    upcoming = []
+    for sub in (db.query(UserSubscription)
+                .filter(UserSubscription.status == "active",
+                        UserSubscription.ends_at > now,
+                        UserSubscription.ends_at <= soon)
+                .order_by(UserSubscription.ends_at.asc()).all()):
+        u = db.query(User).filter(User.id == sub.user_id).first()
+        plan = db.query(Plan).filter(Plan.id == sub.plan_id).first()
+        upcoming.append({
+            "user_name": u.name if u else "",
+            "user_email": u.email if u else "",
+            "plan_name": plan.name if plan else "",
+            "amount_dop": int(plan.price_dop) if plan else 0,
+            "ends_at": sub.ends_at.isoformat(),
+        })
+    # Active users: non-admin, not suspended, with a live subscription.
+    active_users = 0
+    users_by_plan: dict[str, int] = {}
+    for sub in (db.query(UserSubscription)
+                .filter(UserSubscription.status == "active",
+                        UserSubscription.ends_at > now).all()):
+        u = db.query(User).filter(User.id == sub.user_id).first()
+        if u is None or u.is_admin or getattr(u, "is_suspended", False):
+            continue
+        active_users += 1
+        plan = db.query(Plan).filter(Plan.id == sub.plan_id).first()
+        key = plan.name if plan else "Sin plan"
+        users_by_plan[key] = users_by_plan.get(key, 0) + 1
+    suspended = (db.query(User)
+                 .filter(User.is_suspended == True)  # noqa: E712
+                 .order_by(User.name.asc()).all())
+    total_users = db.query(User).filter(User.is_admin == False).count()  # noqa: E712
+    return {
+        "total_sales_dop": total_sales,
+        "total_sales_count": total_count,
+        "month_sales_dop": month_sales,
+        "upcoming_renewals": upcoming,
+        "active_users": active_users,
+        "suspended_count": len(suspended),
+        "suspended_users": [{
+            "id": u.id, "name": u.name, "email": u.email,
+            "plan": u.plan} for u in suspended],
+        "users_by_plan": users_by_plan,
+        "total_users": total_users,
+        "recent_sales": recent,
+    }
 
 
 class AssignPlanRequest(BaseModel):

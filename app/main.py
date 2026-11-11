@@ -165,6 +165,15 @@ class RenderRequest(BaseModel):
     # Cover offset (s, relative to the clip start) chosen in the editor.
     # Stored on the clip; only changes the thumbnail in Mis Clips.
     cover_at: float | None = None
+    # --- Estilo de la portada (modal Configurar portada, 2026-11-11) ---
+    # Color del texto, borde de la letra (color + grosor), fondo de las
+    # letras (color + si lleva caja) y tamaño del título de enganche.
+    title_color: str | None = None
+    title_border_color: str | None = None
+    title_border_w: int | None = None
+    title_bg_color: str | None = None
+    title_bg: bool = True
+    title_size: int | None = None
     # --- Configuración: cámara (paso 3) ---
     # center (recorte fijo en el centro, como siempre) | dual (dos
     # personas, izquierda arriba y derecha abajo) | follow_speaker
@@ -521,9 +530,15 @@ def _run_render_job(job_id: str, req: RenderRequest):
             facecam_corner=req.facecam_corner,
             # Portada / título de enganche: el título gancho se quema
             # grande sobre la portada al inicio del clip, sin marco ni
-            # marca (2026-11-11).
+            # marca (2026-11-11). Estilo desde el modal Configurar portada.
             hook_title=req.clip_title or "",
             cover_at=req.cover_at,
+            title_color=req.title_color,
+            title_border_color=req.title_border_color,
+            title_border_w=req.title_border_w,
+            title_bg_color=req.title_bg_color,
+            title_bg=req.title_bg,
+            title_size=req.title_size,
         )
         info = probe(out_path)
         jobs.update(job_id, status="done", progress=100, message="Clip listo.",

@@ -144,6 +144,25 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel #candidates{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 @media(max-width:1000px){.panel #candidates{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.panel #candidates{grid-template-columns:1fr}}
+/* Mis Clips / Biblioteca: 4 columnas (3 ≤1200px, 2 ≤800px, 1 ≤560px) de
+   tarjetas verticales 9:16 con el video real, badge verde de viralidad
+   y duración sobre la miniatura, título y botones Descargar / Editar. */
+.panel #myClips,.panel #adminClips{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.panel #myClips>p,.panel #adminClips>p{grid-column:1/-1}
+@media(max-width:1200px){.panel #myClips,.panel #adminClips{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:800px){.panel #myClips,.panel #adminClips{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.panel #myClips,.panel #adminClips{grid-template-columns:1fr}}
+.panel .clip-card{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.panel .clip-thumb{position:relative;aspect-ratio:9/16;background:#000}
+.panel .clip-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.panel .clip-thumb-empty{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#71717a}
+.panel .clip-badges{position:absolute;left:8px;right:8px;bottom:8px;display:flex;gap:6px;align-items:center}
+.panel .viral-badge{background:#16a34a;color:#fff;font-weight:700;font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap}
+.panel .dur-badge{margin-left:auto;background:rgba(0,0,0,.72);color:#fff;font-weight:600;font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap}
+.panel .clip-card .clip-body{padding:12px}
+.panel .clip-card .clip-title{font-weight:700;font-size:15px;color:#f4f4f5;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:4px}
+.panel .clip-card .clip-actions{display:flex;gap:8px;margin-top:10px}
+.panel .clip-card .clip-actions a{display:contents}
 .panel .clip{margin:0;padding:0;overflow:hidden;display:flex;flex-direction:column}
 .panel .clip video{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000}
 .panel .clip .clip-body{padding:10px 12px 12px}
@@ -568,6 +587,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

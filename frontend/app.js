@@ -1566,6 +1566,13 @@ $("btnClips").onclick = async () => {
     body.max_clips = parseInt($("cfgMaxClips").value || "5", 10);
     body.min_len = parseFloat($("cfgMinClip").value || "20");
     body.max_len = parseFloat($("cfgMaxClip").value || "45");
+    // El rango debe dar para al menos un clip: si es más corto que la
+    // duración mínima del clip no sale ningún candidato y el trabajo se
+    // pierde. Se avisa ANTES de arrancar, no con el error genérico.
+    if (!(body.end > body.start) || (body.end - body.start) < body.min_len) {
+      showJobError(`El rango es muy corto: de ${body.start} s a ${body.end} s son ${Math.max(0, body.end - body.start)} s y cada clip dura al menos ${body.min_len} s. Pon un Hasta mayor (por defecto se analiza el video completo).`);
+      return;
+    }
     const d = await apiFetch("/api/clips", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     const job = await pollJob(d.job_id, (j) => {
       setJobProgress(j.progress || 0);

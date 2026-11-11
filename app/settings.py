@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_SETTINGS = {
     "default_brand_text": "@marketingcaribe",
     "default_frame_enabled": "true",
+    # Plantilla que usan por defecto los videos (2026-11-10, Juan:
+    # "en configuración salga como tipos de plantillas"): Gancho
+    # grande | Limpio | Impacto.
+    "default_template": "Gancho grande",
+    # Color de fondo de la palabra clave en los subtítulos.
+    "subtitle_highlight_color": "#FADE4C",
 }
 
 

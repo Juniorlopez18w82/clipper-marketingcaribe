@@ -206,6 +206,29 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 @media(max-width:1200px){.panel #myClips,.panel #adminClips,.panel .live-clips{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:800px){.panel #myClips,.panel #adminClips,.panel .live-clips{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.panel #myClips,.panel #adminClips,.panel .live-clips{grid-template-columns:1fr}}
+/* Tarjeta de live: miniatura a la izquierda + info a la derecha. */
+.panel .live-card{background:#1a1a1e;border:1px solid #2e2e33;border-radius:16px;padding:14px;margin-bottom:16px;overflow:hidden}
+.panel .live-head{display:flex;gap:14px;align-items:flex-start}
+.panel .live-thumb{position:relative;flex:0 0 168px;width:168px;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#000}
+.panel .live-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.panel .live-thumb-empty{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#71717a}
+.panel .live-onair{position:absolute;left:8px;top:8px;background:#E10600;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;letter-spacing:.5px}
+.panel .live-info{flex:1;min-width:0}
+.panel .live-title{font-weight:700;font-size:15px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.panel .live-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}
+.panel .live-badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.panel .live-badge.active{background:rgba(34,197,94,.18);color:#4ade80}
+.panel .live-badge.paused{background:rgba(250,204,21,.15);color:#facc15}
+.panel .live-badge.stopped{background:rgba(248,113,113,.15);color:#f87171}
+.panel .live-badge.ended{background:rgba(96,165,250,.15);color:#60a5fa}
+.panel .live-platform{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.panel .live-platform.youtube{background:rgba(255,0,0,.18);color:#ff6b6b}
+.panel .live-platform.twitch{background:rgba(145,70,255,.22);color:#c4a5ff}
+.panel .live-url{display:block;margin-top:8px;font-size:12px;color:#a1a1aa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.panel .live-url:hover{color:#fff}
+.panel .live-meta{font-size:12px;color:#a1a1aa;margin:10px 0 0}
+.panel .live-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+@media(max-width:640px){.panel .live-head{flex-direction:column}.panel .live-thumb{flex:none;width:100%}}
 .panel .clip-card{background:#000;border:3px solid #2e2e33;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 .panel .clip-thumb{position:relative;aspect-ratio:9/16;background:#000;border-radius:22px;overflow:hidden}
 .panel .clip-thumb video{width:100%;height:100%;object-fit:cover;display:block}
@@ -560,12 +583,12 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
     <div class="pane" id="pane-lives" hidden>
       <h3>Lives</h3>
-      <p class="sub">Saca clips de un live en curso, automáticamente: pega el link, elige cuántos clips y cada cuánto, y van apareciendo aquí solos. Función de los planes Pro y Full.</p>
+      <p class="sub">Saca clips de un live en curso, automáticamente: pega el link, elige cuántos clips y cada cuánto, y van apareciendo aquí solos. Funciona con YouTube y con Twitch. Función de los planes Pro y Full.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
         <div class="card">
-          <label>Link del live (YouTube)</label>
-          <input id="liveUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." style="width:100%">
+          <label>Link del live (YouTube o Twitch)</label>
+          <input id="liveUrl" type="url" placeholder="https://www.youtube.com/watch?v=... o https://www.twitch.tv/..." style="width:100%">
           <div class="row">
             <div><label>Clips cada vez (máx.)</label><input id="liveClipsPerRound" type="number" value="3" min="1" max="5"></div>
             <div><label>Cada cuánto (minutos)</label><input id="liveInterval" type="number" value="10" min="2" max="60"></div>
@@ -811,6 +834,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

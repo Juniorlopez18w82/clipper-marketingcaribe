@@ -354,6 +354,55 @@ def _dual_crop(w: int, h: int) -> tuple[int, int, int, int, int]:
     return cw, ch, y, xl, xr
 
 
+def _cover_in_zone(zone_x: float, zone_y: float, zone_w: float,
+                   zone_h: float, aspect: float) -> tuple[int, int, int, int]:
+    """Crop de 'cover' dentro de una zona: el rectángulo más grande con
+    el aspecto dado que cabe en la zona, centrado en ella. Devuelve
+    (w, h, x, y) en píxeles, pares (yuv420-safe)."""
+    if zone_w / zone_h >= aspect:
+        cw, ch = zone_h * aspect, zone_h
+        cx = zone_x + (zone_w - cw) / 2
+        cy = zone_y
+    else:
+        cw, ch = zone_w, zone_w / aspect
+        cx = zone_x
+        cy = zone_y + (zone_h - ch) / 2
+    return (int(round(cw / 2) * 2), int(round(ch / 2) * 2),
+            int(round(cx / 2) * 2), int(round(cy / 2) * 2))
+
+
+def _split_crop(w: int, h: int, corner: str = "top-left") -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+    """Pantalla dividida (2026-11-11, petición de Juan): la cara del
+    creador (facecam, típicamente en una esquina) arriba y el juego
+    abajo. Cada panel es 1080x960 (aspecto 9/8).
+
+    La facecam ocupa ~32% del ancho y ~38% del alto en su esquina
+    (RDjavi: arriba a la izquierda). El juego se recorta del lado
+    opuesto (ancho completo en alto) para no mostrar la facecam dos
+    veces. Devuelve ((fcw, fch, fcx, fcy), (gw, gh, gx, gy)).
+    """
+    corner = (corner or "top-left").strip().lower()
+    if corner not in ("top-left", "top-right", "bottom-left", "bottom-right"):
+        corner = "top-left"
+    panel_aspect = 9 / 8
+    fw, fh = w * 0.32, h * 0.38
+    if corner == "top-left":
+        fzone = (0.0, 0.0, fw, fh)
+        gzone = (fw, 0.0, w - fw, float(h))
+    elif corner == "top-right":
+        fzone = (w - fw, 0.0, fw, fh)
+        gzone = (0.0, 0.0, w - fw, float(h))
+    elif corner == "bottom-left":
+        fzone = (0.0, h - fh, fw, fh)
+        gzone = (fw, 0.0, w - fw, float(h))
+    else:  # bottom-right
+        fzone = (w - fw, h - fh, fw, fh)
+        gzone = (0.0, 0.0, w - fw, float(h))
+    fc = _cover_in_zone(*fzone, panel_aspect)
+    gm = _cover_in_zone(*gzone, panel_aspect)
+    return fc, gm
+
+
 def _path_x_at(path: list, t: float) -> float:
     """Crop-x of the follow path nearest to time t (path is smoothed)."""
     best = path[0][1]
@@ -566,6 +615,10 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 quality: str = "1080p",
                 camera_mode: str = "center",
                 camera_person: str = "center",
+                # Pantalla dividida (2026-11-11): esquina donde está la
+                # facecam ("top-left" | "top-right" | "bottom-left" |
+                # "bottom-right"). Solo se usa con camera_mode="split".
+                facecam_corner: str = "top-left",
                 # Portada / título de enganche (2026-11-11): el título gancho
                 # (clip_title) se quema GRANDE sobre la portada al inicio
                 # del clip, sin marco ni marca. cover_at es el offset (s)
@@ -587,16 +640,17 @@ def render_clip(source: Path, start_in_source: float, duration: float,
 
     ``camera_mode``: "center" (default, the approved center crop),
     "dual" (left half on top, right half below, for two-person
-    interviews), "follow_speaker" (9:16 crop follows whoever is
-    speaking, face detection + mouth-movement score) or "follow_person"
-    (follows the face in the requested zone: ``camera_person`` left /
+    interviews), "split" (facecam on top, game below — pantalla
+    dividida para videos de gaming), "follow_speaker" (9:16 crop
+    follows whoever is speaking, face detection + mouth-movement score)
+    or "follow_person" (follows the face in the requested zone: ``camera_person`` left /
     center / right). Follow modes fall back to the center crop when no
     face is found, so tracking can never fail a render.
     """
     if duration <= 0:
         raise ValueError("duration must be > 0")
     mode = (camera_mode or "center").strip().lower()
-    if mode not in ("center", "dual", "follow_speaker", "follow_person"):
+    if mode not in ("center", "dual", "split", "follow_speaker", "follow_person"):
         mode = "center"
     person = (camera_person or "center").strip().lower()
     if person not in ("left", "center", "right"):
@@ -666,6 +720,17 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                     f"[0:v]split=2[l][r];"
                     f"[l]crop={cw}:{ch}:{xl}:{cy},scale={out_w}:{out_h // 2}[top];"
                     f"[r]crop={cw}:{ch}:{xr}:{cy},scale={out_w}:{out_h // 2}[bot];"
+                    f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
+                )
+            elif mode == "split":
+                # Pantalla dividida: facecam arriba, juego abajo.
+                vw, vh = probe_size(source)
+                (fcw, fch, fcx, fcy), (gw, gh, gx, gy) = _split_crop(
+                    vw, vh, facecam_corner)
+                base = (
+                    f"[0:v]split=2[fc][gm];"
+                    f"[fc]crop={fcw}:{fch}:{fcx}:{fcy},scale={out_w}:{out_h // 2}[top];"
+                    f"[gm]crop={gw}:{gh}:{gx}:{gy},scale={out_w}:{out_h // 2}[bot];"
                     f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
                 )
             else:  # center — exactly the approved behavior

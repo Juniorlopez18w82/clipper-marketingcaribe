@@ -36,6 +36,15 @@ class Clip(Base):
     status = Column(String(20), nullable=False, default=STATUS_PENDIENTE)
     job_id = Column(String(32), nullable=True)
     file = Column(String(255), nullable=True)  # rendered mp4 in data/outputs/
+    # Virality score (0-100) from the candidate that produced this clip
+    # (LLM title/score or heuristic score). NULL for clips rendered before
+    # the score was wired through — the card then shows no badge instead
+    # of an invented number.
+    score = Column(Float, nullable=True)
+    # Absolute start (s) of the downloaded section the clip came from —
+    # needed to reopen the clip in the subtitle editor (words in the
+    # transcript are relative to the section).
+    section_start = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 
@@ -52,16 +61,21 @@ def clip_out(clip: Clip) -> dict:
         "status": clip.status,
         "job_id": clip.job_id,
         "file": clip.file,
+        "score": clip.score,
+        "section_start": clip.section_start,
         "download_url": f"/api/download/{clip.file}" if clip.file else None,
         "created_at": clip.created_at.isoformat() if clip.created_at else None,
     }
 
 
 def create_clip(db, *, user_id, video_url, title, uploader, start, end,
-                job_id, file) -> Clip:
+                job_id, file, score=None, section_start=None) -> Clip:
     clip = Clip(user_id=user_id, video_url=video_url or "", title=title or "",
                 uploader=uploader or "", start=float(start), end=float(end),
-                status=STATUS_LISTO, job_id=job_id, file=file)
+                status=STATUS_LISTO, job_id=job_id, file=file,
+                score=(float(score) if score is not None else None),
+                section_start=(float(section_start)
+                               if section_start is not None else None))
     db.add(clip)
     db.commit()
     db.refresh(clip)

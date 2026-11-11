@@ -482,16 +482,19 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
 
 
 def _concat_title_card(card: Path, clip: Path, output: Path) -> None:
-    """Antepone la portada (2 s, sin audio) al clip. El audio es solo
-    el del clip, así que empieza cuando termina la portada."""
+    """Antepone la portada (2 s, sin audio) al clip. El audio del clip
+    se retrasa 2 s (adelay) para que siga en sync con su video, y se
+    rellena con silencio (apad) hasta la duración del video. Sin
+    -shortest: el audio recortaría el final del video."""
     _run([
         "ffmpeg", "-y", "-v", "error",
         "-i", str(card), "-i", str(clip),
         "-filter_complex",
-        "[0:v][1:v]concat=n=2:v=1:a=0[vout];[1:a]anull[aout]",
+        "[0:v][1:v]concat=n=2:v=1:a=0[vout];"
+        f"[1:a]adelay={int(TITLE_CARD_SECONDS * 1000)}:all=1,apad[aout]",
         "-map", "[vout]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
+        "-c:a", "aac", "-b:a", "128k", str(output),
     ], "title card concat")
 
 

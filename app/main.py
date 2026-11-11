@@ -172,6 +172,9 @@ class RenderRequest(BaseModel):
     camera_mode: str = "center"
     # left | center | right — solo para follow_person.
     camera_person: str = "center"
+    # Esquina de la facecam — solo para camera_mode="split" (pantalla
+    # dividida): "top-left" | "top-right" | "bottom-left" | "bottom-right".
+    facecam_corner: str = "top-left"
     # --- Configuración: subtítulos ---
     show_subtitles: bool = True
     subtitle_style: str = "viral"  # viral | plain | yellow
@@ -514,6 +517,7 @@ def _run_render_job(job_id: str, req: RenderRequest):
             brand_size=look["brand_size"], brand_y=look["brand_y"],
             quality=req.quality,
             camera_mode=req.camera_mode, camera_person=req.camera_person,
+            facecam_corner=req.facecam_corner,
             # Portada / título de enganche: el título gancho se quema
             # grande sobre la portada al inicio del clip, sin marco ni
             # marca (2026-11-11).

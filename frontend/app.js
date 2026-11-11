@@ -1229,6 +1229,14 @@ $("pvVideo").addEventListener("timeupdate", () => {
   if (t >= 0) updatePreviewSubs(t);
 });
 
+// Sonido de la vista previa: suena por defecto (Juan lo pidió); el botón
+// la silencia y la vuelve a activar sin tocar el resto.
+$("pvSoundBtn").onclick = () => {
+  const pv = $("pvVideo");
+  pv.muted = !pv.muted;
+  $("pvSoundBtn").textContent = pv.muted ? "🔇 Sonido silenciado" : "🔊 Sonido activado";
+};
+
 function selectClip(c, el) {
   document.querySelectorAll(".clip").forEach((x) => x.classList.remove("sel"));
   if (el) el.classList.add("sel");

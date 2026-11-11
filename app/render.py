@@ -16,8 +16,10 @@ NEW REQUIREMENT (Juan 2026-11-10, Configuración):
   "Nombre que saldrá en el marco". Empty string = frame kept, name omitted.
 """
 import logging
+import shutil
 import subprocess
 import tempfile
+import textwrap
 from pathlib import Path
 
 from .camera import analyze_camera, probe_size
@@ -434,6 +436,65 @@ def _audio_fade_filter(duration: float) -> str:
             f"afade=t=out:st={out_start:.2f}:d=0.4[aout]")
 
 
+# Duración de la portada/título de enganche al inicio del clip.
+TITLE_CARD_SECONDS = 2.0
+
+
+def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
+                out_h: int, scale: float, tmpdir: Path) -> Path:
+    """Portada del clip (2026-11-11, petición de Juan): un fotograma fijo
+    del video (el elegido con el control Portada) a pantalla completa
+    9:16, con el título de enganche GRANDE y centrado encima, SIN marco
+    amarillo, SIN marca @, SIN subtítulos — solo la portada y el texto,
+    para que se vea limpio y enganche. Dura TITLE_CARD_SECONDS (2 s) y
+    es silenciosa; el audio del clip empieza después. Devuelve el mp4
+    de la portada (sin audio)."""
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("title is empty")
+    cover = tmpdir / "cover.png"
+    # Fotograma de portada, recorte 9:16 centrado (como el clip).
+    _run([
+        "ffmpeg", "-y", "-v", "error",
+        "-ss", str(max(0.0, cover_abs)), "-i", str(source),
+        "-frames:v", "1",
+        "-vf", f"crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h}",
+        str(cover),
+    ], "title card frame")
+    # Título envuelto en líneas cortas para que se lea grande.
+    wrapped = "\n".join(textwrap.wrap(title, width=18))
+    title_file = tmpdir / "hook_title.txt"
+    title_file.write_text(wrapped, encoding="utf-8")
+    card = tmpdir / "card.mp4"
+    size = int(round(96 * scale))
+    _run([
+        "ffmpeg", "-y", "-v", "error",
+        "-loop", "1", "-i", str(cover), "-t", str(TITLE_CARD_SECONDS),
+        "-vf",
+        "drawtext=fontfile=" + FONT_BOLD +
+        f":textfile={title_file}:fontsize={size}:fontcolor=white:"
+        "x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.55:boxborderw=28:"
+        "line_spacing=12",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-r", "30", "-pix_fmt", "yuv420p", "-an", str(card),
+    ], "title card video")
+    return card
+
+
+def _concat_title_card(card: Path, clip: Path, output: Path) -> None:
+    """Antepone la portada (2 s, sin audio) al clip. El audio es solo
+    el del clip, así que empieza cuando termina la portada."""
+    _run([
+        "ffmpeg", "-y", "-v", "error",
+        "-i", str(card), "-i", str(clip),
+        "-filter_complex",
+        "[0:v][1:v]concat=n=2:v=1:a=0[vout];[1:a]anull[aout]",
+        "-map", "[vout]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
+    ], "title card concat")
+
+
 def _render_follow(source: Path, start_in_source: float, duration: float,
                    output: Path, cam_path: list, *, out_w: int, out_h: int,
                    tmpdir: Path, overlay_kwargs: dict) -> Path:
@@ -496,7 +557,13 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 brand_y: int | None = None,
                 quality: str = "1080p",
                 camera_mode: str = "center",
-                camera_person: str = "center") -> Path:
+                camera_person: str = "center",
+                # Portada / título de enganche (2026-11-11): el título gancho
+                # (clip_title) se quema GRANDE sobre la portada al inicio
+                # del clip, sin marco ni marca. cover_at es el offset (s)
+                # dentro del clip para el fotograma de portada; None = 0.
+                hook_title: str = "",
+                cover_at: float | None = None) -> Path:
     """Render one clip. ``start_in_source`` is seconds into ``source`` file.
 
     ``quality``: "1080p" (1080x1920) or "720p" (720x1280) — marco, nombre
@@ -560,6 +627,10 @@ def render_clip(source: Path, start_in_source: float, duration: float,
             highlight_color=highlight_color,
             brand_size=brand_size, brand_y=brand_y,
         )
+        # El clip principal se renderiza a un temporal; la portada (si
+        # hay título de enganche) se antepone después.
+        main_path = tmpdir / "main.mp4"
+        rendered = False
         if mode in ("follow_speaker", "follow_person"):
             cam = analyze_camera(source, start_in_source, duration, mode, person)
             if not cam["fallback"]:
@@ -569,36 +640,51 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                             cam["stats"]["samples"],
                             cam["stats"]["x_min"], cam["stats"]["x_max"],
                             cam["stats"]["switches"])
-                return _render_follow(source, start_in_source, duration,
-                                      output, cam["path"],
-                                      out_w=out_w, out_h=out_h,
-                                      tmpdir=tmpdir,
-                                      overlay_kwargs=overlay_kwargs)
-            logger.warning("camera %s: no faces found, using center crop",
-                           mode)
-            mode = "center"
-        if mode == "dual":
-            vw, vh = probe_size(source)
-            cw, ch, cy, xl, xr = _dual_crop(vw, vh)
-            base = (
-                f"[0:v]split=2[l][r];"
-                f"[l]crop={cw}:{ch}:{xl}:{cy},scale={out_w}:{out_h // 2}[top];"
-                f"[r]crop={cw}:{ch}:{xr}:{cy},scale={out_w}:{out_h // 2}[bot];"
-                f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
-            )
-        else:  # center — exactly the approved behavior
-            base = (
-                f"[0:v]crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},"
-                "setpts=PTS-STARTPTS[vid]"
-            )
-        chain = _overlay_chain(tmpdir, out_w=out_w, out_h=out_h,
-                               **overlay_kwargs)
-        _run([
-            "ffmpeg", "-y", "-v", "error",
-            "-ss", str(start_in_source), "-i", str(source), "-t", str(duration),
-            "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
-            "-map", "[out]", "-map", "[aout]",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-r", "30",
-            "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
-        ], "render")
+                _render_follow(source, start_in_source, duration,
+                               main_path, cam["path"],
+                               out_w=out_w, out_h=out_h,
+                               tmpdir=tmpdir,
+                               overlay_kwargs=overlay_kwargs)
+                rendered = True
+            else:
+                logger.warning("camera %s: no faces found, using center crop",
+                               mode)
+                mode = "center"
+        if not rendered:
+            if mode == "dual":
+                vw, vh = probe_size(source)
+                cw, ch, cy, xl, xr = _dual_crop(vw, vh)
+                base = (
+                    f"[0:v]split=2[l][r];"
+                    f"[l]crop={cw}:{ch}:{xl}:{cy},scale={out_w}:{out_h // 2}[top];"
+                    f"[r]crop={cw}:{ch}:{xr}:{cy},scale={out_w}:{out_h // 2}[bot];"
+                    f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
+                )
+            else:  # center — exactly the approved behavior
+                base = (
+                    f"[0:v]crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},"
+                    "setpts=PTS-STARTPTS[vid]"
+                )
+            chain = _overlay_chain(tmpdir, out_w=out_w, out_h=out_h,
+                                   **overlay_kwargs)
+            _run([
+                "ffmpeg", "-y", "-v", "error",
+                "-ss", str(start_in_source), "-i", str(source), "-t", str(duration),
+                "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
+                "-map", "[out]", "-map", "[aout]",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-r", "30",
+                "-c:a", "aac", "-b:a", "128k", "-shortest", str(main_path),
+            ], "render")
+        # --- Portada / título de enganche (2026-11-11) ---
+        # Si hay título gancho, el clip empieza con la portada (fotograma
+        # elegido + título grande, sin marco ni marca) y luego el clip.
+        hook = (hook_title or "").strip()
+        if hook:
+            cover_rel = 0.0 if cover_at is None else max(
+                0.0, min(float(cover_at), duration))
+            card = _title_card(source, start_in_source + cover_rel, hook,
+                               out_w, out_h, scale, tmpdir)
+            _concat_title_card(card, main_path, output)
+        else:
+            shutil.copyfile(main_path, output)
     return output

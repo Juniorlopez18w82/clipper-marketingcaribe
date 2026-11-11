@@ -4,7 +4,8 @@ const state = { clipsJob: null, transcript: null, selected: null, words: null,
   user: null, uploadedFile: null, busy: false, pvClip: null,
   editingClipId: null, coverAt: 0, canImages: false, canVideos: false,
   videoModels: null, vidPollTimer: null, imageModels: null, imgPollTimer: null,
-  userTemplate: "Gancho grande", templateTouched: false };
+  userTemplate: "Gancho grande", templateTouched: false,
+  rangeEndTouched: false };
 
 // Plantillas (mismo preset que app/render.py: TEMPLATES). El editor
 // aplica la plantilla a los controles; si el usuario toca un control de
@@ -1478,11 +1479,34 @@ function resetCreateFlow() {
 // Cambiar el link o subir otro archivo esconde la vista previa: ya no hay
 // un clip que mostrar hasta elegir uno nuevo.
 $("url").addEventListener("input", hidePreview);
+// "Hasta" lo escribe el usuario a mano: si lo toca, no lo pisamos al
+// cargar un video; si pega otro link o sube otro archivo, se resetea
+// para que el nuevo video ponga su duración completa.
+$("url").addEventListener("input", () => { state.rangeEndTouched = false; });
+$("rangeEnd").addEventListener("input", () => { state.rangeEndTouched = true; });
 $("btnUpload").onclick = () => $("uploadFile").click();
 $("uploadFile").onchange = async () => {
   const file = $("uploadFile").files[0];
   if (!file) return;
   hidePreview();
+  // Archivo nuevo: el "Hasta" viejo no vale; se resetea para que se
+  // ponga la duración real de este archivo (antes quedaba en 120 s
+  // porque la rama de subida nunca tocaba el campo).
+  state.rangeEndTouched = false;
+  state.uploadedFile = null;
+  // Duración real del archivo, leída en el navegador sin subir nada
+  // extra: un <video> temporal con el archivo como fuente.
+  const probe = document.createElement("video");
+  probe.preload = "metadata";
+  probe.src = URL.createObjectURL(file);
+  probe.onloadedmetadata = () => {
+    URL.revokeObjectURL(probe.src);
+    if (!state.rangeEndTouched && isFinite(probe.duration) && probe.duration > 0) {
+      $("rangeEnd").value = Math.floor(probe.duration);
+      const mins = `${Math.floor(probe.duration / 60)}:${String(Math.floor(probe.duration % 60)).padStart(2, "0")}`;
+      $("videoMeta").textContent = `${file.name} · ${mins}`;
+    }
+  };
   const mb = (file.size / (1024 * 1024)).toFixed(1);
   const info = $("uploadInfo");
   info.hidden = false;
@@ -1522,15 +1546,17 @@ $("btnClips").onclick = async () => {
       const mins = info.duration ? `${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}` : "live";
       $("videoMeta").textContent = `${info.title} · ${info.uploader || ""} · ${mins}`;
       state.videoTitle = info.title || "";
-      // No pisar el "Hasta" que el usuario ya escribió: solo poner el
-      // valor por defecto si está vacío, y recortarlo a la duración real.
-      const userEnd = parseFloat($("rangeEnd").value);
-      if (!userEnd || userEnd <= 0) {
+      // No pisar el "Hasta" que el usuario escribió a mano: solo poner
+      // la duración completa si no lo ha tocado, y recortarlo a la
+      // duración real si lo tocó. Antes se usaba "si está vacío", pero
+      // el campo trae 120 por defecto y no se distinguía del 120
+      // escrito por el usuario, así que quedaba capado en 120 s.
+      if (!state.rangeEndTouched && info.duration) {
         // Sin límite de 300 s: por defecto se analiza el video completo
         // (la transcripción se hace por trozos en el servidor).
-        $("rangeEnd").value = info.duration || 120;
-      } else if (info.duration) {
-        $("rangeEnd").value = Math.min(userEnd, info.duration);
+        $("rangeEnd").value = info.duration;
+      } else if (state.rangeEndTouched && info.duration) {
+        $("rangeEnd").value = Math.min(parseFloat($("rangeEnd").value || 0), info.duration);
       }
       body = { url };
     }

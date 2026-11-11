@@ -393,6 +393,17 @@ def _run(cmd: list[str], what: str) -> None:
         raise RuntimeError(f"ffmpeg {what} failed: {proc.stderr[-2000:]}")
 
 
+def _audio_fade_filter(duration: float) -> str:
+    """Short audio fades so a cut never ends abruptly. Fast speech has
+    almost no pause at sentence ends (seen 2026-11-10: a clip ending at
+    'exponencial.' cut into 'Y todo por una razón...' with speech at full
+    volume right up to the cut), so the fade makes the ending sound
+    intentional instead of chopped."""
+    out_start = max(0.0, duration - 0.4)
+    return (f"[0:a]afade=t=in:st=0:d=0.15,"
+            f"afade=t=out:st={out_start:.2f}:d=0.4[aout]")
+
+
 def _render_follow(source: Path, start_in_source: float, duration: float,
                    output: Path, cam_path: list, *, out_w: int, out_h: int,
                    tmpdir: Path, overlay_kwargs: dict) -> Path:
@@ -430,8 +441,8 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
     _run([
         "ffmpeg", "-y", "-v", "error",
         "-f", "concat", "-safe", "0", "-i", str(concat_file),
-        "-filter_complex", base + ";" + chain,
-        "-map", "[out]", "-map", "0:a",
+        "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
+        "-map", "[out]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-r", "30",
         "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
     ], "follow final pass")
@@ -555,8 +566,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
         _run([
             "ffmpeg", "-y", "-v", "error",
             "-ss", str(start_in_source), "-i", str(source), "-t", str(duration),
-            "-filter_complex", base + ";" + chain,
-            "-map", "[out]", "-map", "0:a",
+            "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
+            "-map", "[out]", "-map", "[aout]",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-r", "30",
             "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
         ], "render")

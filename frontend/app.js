@@ -462,10 +462,12 @@ async function loadAdminUsers() {
       users.map((u) => {
         const susp = u.is_suspended ? ` <span class="susp-badge">⛔ Suspendida</span>` : "";
         const adminTag = u.is_admin ? " <small>· Admin</small>" : "";
+        // Si ya tiene plan, el menú dice "Cambiar plan"; si no, "Asignar plan".
+        const hasPlan = u.plan && u.plan !== "free";
         return `<tr><td>${esc(u.name)}${susp}${adminTag}</td><td>${esc(u.email)}</td><td>${esc(u.plan)}</td><td>${fmtDate(u.plan_started)}</td><td>${fmtDate(u.plan_expires)}</td>
-        <td><div class="user-menu-wrap"><button class="small ghost user-menu-btn" data-menu="${u.id}" title="Opciones" aria-label="Opciones">⋮</button>
+        <td><div class="user-menu-wrap"><button class="small ghost user-menu-btn" data-menu="${u.id}" title="Opciones" aria-label="Opciones">${MENU_SVG}</button>
         <div class="user-menu" id="user-menu-${u.id}" hidden>
-          ${u.is_admin ? "" : `<button data-assign="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">Asignar plan</button>`}
+          ${u.is_admin ? "" : `<button data-assign="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">${hasPlan ? "Cambiar plan" : "Asignar plan"}</button>`}
           ${u.is_admin ? "" : `<button data-imp="${u.id}" data-name="${esc(u.name)}">Entrar como usuario</button>`}
           <button data-edit="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">Editar</button>
           <button data-susp="${u.id}" data-name="${esc(u.name)}" data-suspended="${u.is_suspended ? "1" : "0"}">${u.is_suspended ? "Reactivar cuenta" : "Suspender cuenta"}</button>
@@ -774,6 +776,7 @@ $("btnSaveSettings").onclick = async () => {
 const DL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/></svg>';
 const EDIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
 const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const MENU_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 const TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 function fmtDur(s) {
   s = Math.max(0, Math.round(s || 0));

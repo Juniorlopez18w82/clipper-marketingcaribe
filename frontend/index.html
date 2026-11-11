@@ -968,6 +968,15 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           </div>
           <label>Tamaño del texto <span id="coverSizeVal" class="muted">96</span></label>
           <input id="coverSize" type="range" min="60" max="140" step="4" value="96" style="width:100%">
+          <label>Posición del texto</label>
+          <div class="row">
+            <label style="flex:1">Arriba / Abajo <span id="coverPosYVal" class="muted">Centro</span></label>
+            <input id="coverPosY" type="range" min="0" max="100" step="5" value="50" style="flex:1">
+          </div>
+          <div class="row">
+            <label style="flex:1">Izquierda / Derecha <span id="coverPosXVal" class="muted">Centro</span></label>
+            <input id="coverPosX" type="range" min="0" max="100" step="5" value="50" style="flex:1">
+          </div>
         </div>
       </div>
       <div class="modal-actions">
@@ -1004,6 +1013,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=37"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>

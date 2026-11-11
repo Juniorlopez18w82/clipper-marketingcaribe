@@ -2,7 +2,30 @@
 const $ = (id) => document.getElementById(id);
 const state = { clipsJob: null, transcript: null, selected: null, words: null,
   user: null, uploadedFile: null, busy: false, pvClip: null,
-  editingClipId: null, coverAt: 0 };
+  editingClipId: null, coverAt: 0, canImages: false, canVideos: false,
+  videoModels: null, vidPollTimer: null, imageModels: null, imgPollTimer: null,
+  userTemplate: "Gancho grande", templateTouched: false };
+
+// Plantillas (mismo preset que app/render.py: TEMPLATES). El editor
+// aplica la plantilla a los controles; si el usuario toca un control de
+// la plantilla (marco, color, grosor, posición), el render es
+// personalizado y se envía template=null.
+const TEMPLATES_JS = {
+  "Gancho grande": { frameEnabled: true, frameColor: "#FADE4C", frameWidth: 14, subPos: "bottom", hlColor: "#FADE4C" },
+  "Limpio": { frameEnabled: false, frameColor: "#FADE4C", frameWidth: 14, subPos: "bottom", hlColor: "#FADE4C" },
+  "Impacto": { frameEnabled: true, frameColor: "#E10600", frameWidth: 18, subPos: "bottom", hlColor: "#E10600" },
+};
+function applyTemplateToControls(name) {
+  const t = TEMPLATES_JS[name] || TEMPLATES_JS["Gancho grande"];
+  $("frameEnabled").checked = t.frameEnabled;
+  $("frameEnabledVideo").checked = t.frameEnabled;
+  $("frameColor").value = t.frameColor;
+  $("frameWidth").value = t.frameWidth;
+  $("subPos").value = t.subPos;
+  $("hlColor").value = t.hlColor;
+  state.templateTouched = false;
+  updatePreview();
+}
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[m]));
 const FRIENDLY_ERROR = "El servidor está despertando o se está actualizando, espera un minuto e inténtalo de nuevo";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -57,13 +80,41 @@ function closePanel() {
   document.querySelector("main").hidden = false;
   document.querySelector("header").hidden = false;
 }
+// Cuenta atrás del plan en la barra superior (2026-11-10, Juan: en
+// vez de "Hola, nombre", el tiempo que le queda a su plan). El admin
+// tiene plan_expires = created_at + 30 días; un usuario sin plan tiene
+// plan_expires null y NUNCA se le inventa una fecha.
+function planCountdownText(expiresIso) {
+  if (!expiresIso) return null;
+  const ms = new Date(expiresIso).getTime() - Date.now();
+  if (Number.isNaN(ms) || ms <= 0) return "Plan vencido";
+  const days = Math.floor(ms / 86400000);
+  if (days >= 1) return `⏳ Quedan ${days} día${days === 1 ? "" : "s"}`;
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return `⏳ Quedan ${h} h ${m} min`;
+}
 function updateTopBar() {
   const u = state.user;
   if (!u) return;
-  // Barra superior: nombre real + insignia. El ADMIN siempre es "Admin"
-  // (roja), aunque su campo plan sea "free"; un usuario normal sin plan
-  // ve "Sin plan", y con plan ve el nombre de su plan.
-  $("panelUserName").textContent = u.name || "";
+  // Barra superior: cuenta atrás del plan + insignia. El ADMIN siempre
+  // es "Admin" (roja), aunque su campo plan sea "free"; un usuario
+  // normal sin plan ve "Sin plan", y con plan ve el nombre de su plan.
+  const cd = planCountdownText(u.plan_expires);
+  const el = $("panelCountdown");
+  if (cd) {
+    el.textContent = cd;
+    el.classList.toggle("expired", cd === "Plan vencido");
+    el.classList.remove("no-plan");
+    el.onclick = null;
+    el.title = "";
+  } else {
+    el.textContent = "Sin plan activo";
+    el.classList.remove("expired");
+    el.classList.add("no-plan");
+    el.title = "Ver planes";
+    el.onclick = () => document.querySelector('[data-tab="plans"]').click();
+  }
   $("panelUserPlan").textContent = u.is_admin ? "Admin" : (u.plan && u.plan !== "free" ? u.plan : "Sin plan");
   $("panelUserPlan").classList.toggle("admin", !!u.is_admin);
   // Banner de impersonación (el admin entró a la cuenta de un usuario).
@@ -71,6 +122,9 @@ function updateTopBar() {
   $("impBanner").hidden = !imp;
   if (imp) $("impName").textContent = localStorage.getItem("clipper_impersonating") || u.name || "";
 }
+// La cuenta atrás se actualiza sola cada minuto (de "29 días" a
+// "23 h 59 min" sin recargar).
+setInterval(() => { if (state.user) updateTopBar(); }, 60000);
 function doLogout() {
   localStorage.removeItem("clipper_token");
   localStorage.removeItem("clipper_admin_token");
@@ -164,6 +218,8 @@ document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
     document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
     $("pane-" + btn.dataset.tab).hidden = false;
     if (btn.dataset.tab === "clips") loadMyClips();
+    if (btn.dataset.tab === "images") { loadImageModels(); loadMyImages(); }
+    if (btn.dataset.tab === "videos") { loadVideoModels(); loadMyVideos(); }
     if (btn.dataset.tab === "admin") loadAdmin();
   };
 });
@@ -193,27 +249,58 @@ document.querySelectorAll(".panel [data-cfg]").forEach((btn) => {
 });
 
 function fillConfig(u) {
-  $("cfgTemplate").value = u.template || "Gancho grande";
+  // La plantilla guardada manda: aplica su preset a los controles del
+  // editor (marco, color, grosor, posición, resaltado). Un nombre
+  // viejo o desconocido cae a "Gancho grande".
+  const tpl = (u.template && TEMPLATES_JS[u.template]) ? u.template : "Gancho grande";
+  $("cfgTemplate").value = tpl;
+  state.userTemplate = tpl;
+  applyTemplateToControls(tpl);
   $("cfgMaxClips").value = u.max_clips ?? 5;
   $("cfgMinClip").value = u.min_clip_secs ?? 20;
   $("cfgMaxClip").value = u.max_clip_secs ?? 45;
   $("cfgQuality").value = u.quality || "1080p";
 }
+// Cambiar la plantilla en Mi Cuenta aplica su preset al editor al
+// momento (el render que sigue ya la usa; "Guardar configuración" la
+// deja guardada en la cuenta).
+$("cfgTemplate").addEventListener("change", () => {
+  const tpl = $("cfgTemplate").value;
+  state.userTemplate = tpl;
+  applyTemplateToControls(tpl);
+});
+// Si el usuario toca un control de la plantilla (marco, color, grosor,
+// posición), el render deja de seguir la plantilla y es personalizado
+// (template=null). El color de palabra clave NO desengancha la
+// plantilla: es una elección por render.
+["frameEnabled", "frameColor", "frameWidth", "subPos"]
+  .forEach((id) => $(id).addEventListener("input", () => { state.templateTouched = true; }));
 
 async function loadPanel() {
   // ¿Tiene plan activo? Si no, se bloquean Inicio / Mis Clips / Crear / Cuenta.
   // El ADMIN nunca se bloquea: no necesita plan para usar la plataforma.
   let hasPlan = !!(state.user && state.user.is_admin), activePlanId = null;
+  // Imágenes IA: solo plan Full (o admin). El backend es la autoridad
+  // (403); esto solo decide qué candado se muestra.
+  state.canImages = !!(state.user && state.user.is_admin);
+  // Videos IA: planes Pro y Full (o admin).
+  state.canVideos = !!(state.user && state.user.is_admin);
   try {
     const d = await apiFetch("/api/subscriptions/mine", { headers: authHeaders() });
     hasPlan = hasPlan || !!d.active_subscription;
     activePlanId = d.active_subscription ? d.active_subscription.plan_id : null;
+    if (d.active_subscription && d.active_subscription.plan_name === "Full") state.canImages = true;
+    if (d.active_subscription && ["Full", "Pro"].includes(d.active_subscription.plan_name)) state.canVideos = true;
     renderMyRequests(d.requests || []);
   } catch { /* sin plan */ }
-  ["home", "clips", "create", "account"].forEach((t) => {
+  ["home", "clips", "create", "account", "images", "videos"].forEach((t) => {
     const pane = $("pane-" + t);
     if (pane) pane.classList.toggle("is-locked", !hasPlan);
   });
+  const imgPane = $("pane-images");
+  if (imgPane) imgPane.classList.toggle("is-locked-full", hasPlan && !state.canImages);
+  const vidPane = $("pane-videos");
+  if (vidPane) vidPane.classList.toggle("is-locked-full", hasPlan && !state.canVideos);
   try {
     const s = await apiFetch("/api/me/stats", { headers: authHeaders() });
     $("stMonth").textContent = s.clips_this_month ?? 0;
@@ -306,28 +393,65 @@ async function loadAdminUsers() {
       apiFetch("/api/admin/users", { headers: authHeaders() }),
       apiFetch("/api/plans"),
     ]);
-    const planOpts = plans.map((p) => `<option value="${p.id}">${p.name} · RD$ ${p.price_dop.toLocaleString("es-DO")} · ${p.duration_days} días</option>`).join("");
+    // Tabla limpia: sin selects dentro de las celdas. Cada usuario
+    // (no admin) tiene UN botón "Asignar plan" que abre el modal.
     $("adminUsers").innerHTML = "<table><tr><th>Nombre</th><th>Correo</th><th>Plan</th><th>Admin</th><th></th></tr>" +
       users.map((u) => {
         const exp = u.plan_expires ? ` <small>· hasta ${u.plan_expires.slice(0, 10)}</small>` : "";
-        const assign = u.is_admin ? "" : ` <select data-plan-sel="${u.id}">${planOpts}</select> <button class="small" data-assign="${u.id}">Asignar plan</button>`;
         return `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.plan}${exp}</td><td>${u.is_admin ? "SÍ" : "No"}</td>
-        <td>${u.is_admin ? "" : `<button class="small" data-imp="${u.id}" data-name="${u.name}">Entrar como usuario</button>`}${assign}</td></tr>`;
+        <td>${u.is_admin ? "" : `<button class="small" data-imp="${u.id}" data-name="${u.name}">Entrar como usuario</button> <button class="small" data-assign="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">Asignar plan</button>`}</td></tr>`;
       }).join("") + "</table><p id=\"usersMsg\" class=\"muted\"></p>";
     $("adminUsers").querySelectorAll("[data-imp]").forEach((b) => b.onclick = () => impersonateUser(b.dataset.imp, b.dataset.name));
-    $("adminUsers").querySelectorAll("[data-assign]").forEach((b) => b.onclick = async () => {
-      const sel = $("adminUsers").querySelector(`[data-plan-sel="${b.dataset.assign}"]`);
-      const planId = parseInt(sel.value, 10);
-      const msg = $("usersMsg");
-      try {
-        const r = await apiFetch(`/api/admin/users/${b.dataset.assign}/assign-plan`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ plan_id: planId }) });
-        await loadAdminUsers();
-        const m2 = $("usersMsg");
-        if (m2) m2.textContent = `Plan ${r.subscription.plan_name} asignado hasta ${r.subscription.ends_at.slice(0, 10)}.`;
-      } catch (e) { if (msg) msg.textContent = "Error: " + e.message; }
-    });
+    $("adminUsers").querySelectorAll("[data-assign]").forEach((b) => b.onclick = () => openAssignModal(b.dataset.assign, b.dataset.name, b.dataset.email, plans));
   } catch { $("adminUsers").innerHTML = "<p class='muted'>No se pudieron cargar los usuarios.</p>"; }
 }
+// Modal "Asignar plan": una tarjeta centrada con el usuario arriba y
+// los planes como filas seleccionables (nombre, precio, duración, ⭐).
+// Cierra con Cancelar, la ×, clic en el fondo o Escape.
+let assignTarget = null;
+function openAssignModal(userId, name, email, plans) {
+  assignTarget = { userId, name };
+  $("assignUserLine").textContent = `${name} · ${email}`;
+  $("assignPlanList").innerHTML = plans.map((p, i) =>
+    `<label class="assign-plan-row${i === 0 ? " selected" : ""}">
+      <input type="radio" name="assignPlan" value="${p.id}"${i === 0 ? " checked" : ""}>
+      <span><span class="ap-name">${esc(p.name)}</span>${p.is_popular ? '<span class="ap-pop">⭐ Popular</span>' : ""}<br>
+      <span class="ap-meta">RD$ ${p.price_dop.toLocaleString("es-DO")} · ${p.duration_days} días</span></span>
+    </label>`).join("") || "<p class='muted'>No hay planes. Crea uno en la pestaña Planes.</p>";
+  $("assignPlanList").querySelectorAll(".assign-plan-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      $("assignPlanList").querySelectorAll(".assign-plan-row").forEach((r) => r.classList.remove("selected"));
+      row.classList.add("selected");
+    });
+  });
+  $("assignModal").hidden = false;
+}
+function closeAssignModal() {
+  $("assignModal").hidden = true;
+  assignTarget = null;
+}
+$("assignClose").onclick = closeAssignModal;
+$("assignCancel").onclick = closeAssignModal;
+$("assignModal").addEventListener("click", (e) => { if (e.target === $("assignModal")) closeAssignModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("assignModal").hidden) closeAssignModal(); });
+$("assignConfirm").onclick = async () => {
+  if (!assignTarget) return;
+  const sel = $("assignPlanList").querySelector('input[name="assignPlan"]:checked');
+  if (!sel) return;
+  const planId = parseInt(sel.value, 10);
+  try {
+    const r = await apiFetch(`/api/admin/users/${assignTarget.userId}/assign-plan`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ plan_id: planId }) });
+    const name = assignTarget.name;
+    closeAssignModal();
+    await loadAdminUsers();
+    const m2 = $("usersMsg");
+    if (m2) m2.textContent = `Plan ${r.subscription.plan_name} asignado a ${name} hasta ${r.subscription.ends_at.slice(0, 10)}.`;
+  } catch (e) {
+    const msg = $("usersMsg");
+    if (msg) msg.textContent = "Error: " + e.message;
+    closeAssignModal();
+  }
+};
 async function impersonateUser(userId, name) {
   try {
     const d = await apiFetch(`/api/admin/impersonate/${userId}`, { method: "POST", headers: authHeaders() });
@@ -409,22 +533,26 @@ async function loadAdminSettings() {
     const s = await apiFetch("/api/admin/settings", { headers: authHeaders() });
     $("setBrand").value = s.default_brand_text || "@marketingcaribe";
     $("setFrame").checked = String(s.default_frame_enabled).toLowerCase() === "true";
+    $("setTemplate").value = (s.default_template && TEMPLATES_JS[s.default_template])
+      ? s.default_template : "Gancho grande";
+    $("setHighlight").value = s.subtitle_highlight_color || "#FADE4C";
   } catch { $("setMsg").textContent = "No se pudo cargar la configuración."; }
 }
 $("btnSaveSettings").onclick = async () => {
   try {
     await apiFetch("/api/admin/settings", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ settings: { default_brand_text: $("setBrand").value.trim() || "@marketingcaribe", default_frame_enabled: $("setFrame").checked ? "true" : "false" } }) });
+      body: JSON.stringify({ settings: { default_brand_text: $("setBrand").value.trim() || "@marketingcaribe", default_frame_enabled: $("setFrame").checked ? "true" : "false", default_template: $("setTemplate").value, subtitle_highlight_color: $("setHighlight").value } }) });
     $("setMsg").textContent = "Configuración guardada. Los usuarios nuevos recibirán estos valores.";
   } catch (e) { $("setMsg").textContent = "Error: " + e.message; }
 };
 
-// Mis Clips: tarjetas verticales 9:16 estilo Biblioteca — video real,
-// badge verde de viralidad + duración sobre la miniatura, título,
-// Descargar y Editar. Los clips ya NO necesitan aprobación del admin:
-// se descargan apenas se renderizan. El badge de viralidad solo sale
-// cuando el clip tiene score guardado; los viejos (sin score) no
-// muestran un número inventado.
+// Mis Clips como TELÉFONOS: la tarjeta es el celular (marco redondeado
+// con bisel + isla dinámica), el video llena la pantalla 9:16, arriba
+// el fuego + % de viralidad a la izquierda y la duración a la derecha,
+// y abajo el título + dos botones de icono (descargar rojo, lápiz
+// oscuro). Sin score guardado no se inventa ningún %: no sale fuego.
+const DL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/></svg>';
+const EDIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
 function fmtDur(s) {
   s = Math.max(0, Math.round(s || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -433,8 +561,8 @@ function clipRow(c, admin) {
   const div = document.createElement("div");
   div.className = "clip-card";
   const dur = fmtDur((c.end || 0) - (c.start || 0));
-  const badge = (typeof c.score === "number")
-    ? `<span class="viral-badge">${Math.round(c.score)}% viralidad</span>` : "";
+  const fire = (typeof c.score === "number")
+    ? `<span class="fire-badge">🔥 ${Math.round(c.score)}%</span>` : "";
   const thumb = c.download_url
     ? `<video muted playsinline preload="metadata" src="${c.download_url}${typeof c.cover_at === "number" ? "#t=" + c.cover_at : ""}"></video>`
     : `<div class="clip-thumb-empty">Sin video</div>`;
@@ -443,18 +571,18 @@ function clipRow(c, admin) {
   const who = admin
     ? `<div class="muted small">${esc(c.user_name || "")} · ${esc(c.user_email || "")}</div>` : "";
   div.innerHTML = `<div class="clip-thumb">${thumb}
-      <div class="clip-badges">${badge}<span class="dur-badge">${dur}</span></div>
+      <div class="clip-top">${fire}<span class="dur-badge">${dur}</span></div>
     </div>
     <div class="clip-body">
       <div class="clip-title">${esc(c.title || "Clip")}</div>
       ${meta ? `<div class="muted small">${esc(meta)}</div>` : ""}
       ${who}
       <div class="clip-actions">
-        ${c.download_url ? `<a href="${c.download_url}" download><button class="small">Descargar</button></a>` : ""}
-        <button class="small ghost">Editar</button>
+        ${c.download_url ? `<a class="icon-btn dl" href="${c.download_url}" download title="Descargar">${DL_SVG}</a>` : ""}
+        <button class="icon-btn edit" title="Editar">${EDIT_SVG}</button>
       </div>
     </div>`;
-  div.querySelector(".ghost").onclick = () => editClip(c);
+  div.querySelector(".icon-btn.edit").onclick = () => editClip(c);
   return div;
 }
 
@@ -499,6 +627,234 @@ async function loadMyClips() {
     list.forEach((c) => box.appendChild(clipRow(c, false)));
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
 }
+
+// ---------- Imágenes IA (fal.ai, plan Full) ----------
+const IMG_STYLE_SUFFIX = {
+  "Realista": ", estilo realista, fotografía de alta calidad",
+  "Dibujo": ", estilo dibujo, ilustración dibujada a mano",
+  "3D": ", estilo 3D, render tridimensional",
+};
+async function loadImageModels() {
+  if (state.imageModels) return;
+  try {
+    state.imageModels = await apiFetch("/api/images/models");
+  } catch {
+    $("imgModel").innerHTML = "<option value=''>No se pudieron cargar los modelos</option>";
+    return;
+  }
+  $("imgModel").innerHTML = state.imageModels.map((m) =>
+    `<option value="${m.id}">${m.name} — ~$${m.price_per_image.toFixed(3)}/imagen</option>`).join("");
+  const first = state.imageModels[0];
+  $("imgPriceNote").textContent = first && first.approximate ? "Precios aproximados (fal.ai no respondió)." : "";
+}
+function imgSelectedModel() {
+  if (!state.imageModels) return null;
+  return state.imageModels.find((m) => m.id === $("imgModel").value) || state.imageModels[0];
+}
+function stopImgPolling() {
+  if (state.imgPollTimer) { clearInterval(state.imgPollTimer); state.imgPollTimer = null; }
+}
+async function loadMyImages() {
+  const box = $("myImages");
+  if (!box) return;
+  try {
+    const list = await apiFetch("/api/images", { headers: authHeaders() });
+    box.innerHTML = "";
+    if (!list.length) { box.innerHTML = "<p class='muted'>Aún no tienes imágenes. Describe una arriba y genera la primera.</p>"; return; }
+    list.forEach((im) => {
+      const div = document.createElement("div");
+      div.className = "img-card";
+      const done = im.status === "completed" && im.file_url;
+      const costTxt = (im.estimated_cost_usd === null || im.estimated_cost_usd === undefined)
+        ? "" : ` · ~$${im.estimated_cost_usd.toFixed(3)}`;
+      div.innerHTML = `${done ? `<img src="${im.file_url}" alt="" loading="lazy">`
+        : `<div class="img-pending">${im.status === "failed" ? "Falló" : "Generando…"}</div>`}
+        <div class="img-body"><div class="img-prompt">${esc(im.prompt || "")}</div>
+        <div class="img-meta">${esc(imgModelName(im.model))} · ${esc(im.aspect || "")}${costTxt}</div>
+        ${im.error ? `<div class="muted" style="font-size:12px">${esc(im.error)}</div>` : ""}
+        ${done ? `<a href="${im.file_url}" download><button class="small">⬇ Descargar</button></a>` : ""}</div>`;
+      box.appendChild(div);
+    });
+  } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus imágenes.</p>"; }
+}
+function imgModelName(id) {
+  if (state.imageModels) {
+    const m = state.imageModels.find((x) => x.id === id);
+    if (m) return m.name;
+  }
+  return (id || "").split("/").pop() || id || "";
+}
+$("btnGenImage").onclick = async () => {
+  const prompt = $("imgPrompt").value.trim();
+  if (!prompt) { $("imgMsg").textContent = "Escribe qué imagen quieres crear."; return; }
+  const m = imgSelectedModel();
+  if (!m) { $("imgMsg").textContent = "Primero tienen que cargar los modelos."; return; }
+  const style = $("imgStyle").value;
+  const fullPrompt = prompt + (IMG_STYLE_SUFFIX[style] || "");
+  const btn = $("btnGenImage");
+  btn.disabled = true;
+  btn.textContent = "Generando…";
+  $("imgMsg").textContent = "Enviando a fal.ai…";
+  $("imgResult").hidden = true;
+  stopImgPolling();
+  try {
+    const d = await apiFetch("/api/images/generate", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ prompt: fullPrompt, model: m.id, aspect: $("imgAspect").value }) });
+    $("imgMsg").textContent = `Generando… esto tarda unos segundos. Costo estimado: ~$${m.price_per_image.toFixed(3)}.`;
+    loadMyImages();
+    // Poll cada 5 s hasta que fal.ai termine (las imágenes tardan segundos).
+    state.imgPollTimer = setInterval(async () => {
+      try {
+        const j = await apiFetch(`/api/images/${d.id}`, { headers: authHeaders() });
+        if (j.status === "completed" && j.file_url) {
+          stopImgPolling();
+          $("imgPreview").src = j.file_url;
+          $("imgDownload").href = j.file_url;
+          $("imgDownload").download = `imagen-${j.id}.png`;
+          $("imgResult").hidden = false;
+          $("imgMsg").textContent = "Imagen lista ✓";
+          loadMyImages();
+        } else if (j.status === "failed") {
+          stopImgPolling();
+          $("imgMsg").textContent = "Error: " + (j.error || "No se pudo generar la imagen");
+          loadMyImages();
+        }
+      } catch (e) { /* el próximo poll reintenta */ }
+    }, 5000);
+  } catch (e) {
+    $("imgMsg").textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Generar imagen";
+  }
+};
+
+// ---------- Videos IA (fal.ai, planes Pro/Full) ----------
+// Cada generación es UN clip corto (4-15 s según el modelo), no un
+// video largo. El costo estimado se muestra ANTES de generar
+// ($/s del modelo × duración); el estado final, después.
+async function loadVideoModels() {
+  if (state.videoModels) { syncVidOptions(); return; }
+  try {
+    state.videoModels = await apiFetch("/api/videos/models");
+  } catch {
+    $("vidModel").innerHTML = "<option value=''>No se pudieron cargar los modelos</option>";
+    return;
+  }
+  $("vidModel").innerHTML = state.videoModels.map((m) => {
+    const maxDur = Math.max(...m.durations);
+    return `<option value="${m.id}">${m.name} — $${m.price_per_second.toFixed(2)}/s · máx. ${maxDur} s${m.audio ? " · con audio" : ""}</option>`;
+  }).join("");
+  syncVidOptions();
+}
+function vidSelectedModel() {
+  if (!state.videoModels) return null;
+  return state.videoModels.find((m) => m.id === $("vidModel").value) || state.videoModels[0];
+}
+function syncVidOptions() {
+  const m = vidSelectedModel();
+  if (!m) return;
+  $("vidDuration").innerHTML = m.durations.map((d) => `<option value="${d}">${d} s</option>`).join("");
+  $("vidDuration").value = String(m.durations.includes(8) ? 8 : m.durations[0]);
+  $("vidAspect").innerHTML = m.aspect_ratios.map((a) => `<option value="${a}">${a}</option>`).join("");
+  $("vidAspect").value = m.aspect_ratios.includes("9:16") ? "9:16" : m.aspect_ratios[0];
+  $("vidAudioRow").style.display = m.audio_param ? "" : "none";
+  if (!m.audio_param) $("vidAudio").value = m.audio ? "1" : "0";
+  updateVidCost();
+}
+function updateVidCost() {
+  const m = vidSelectedModel();
+  if (!m) { $("vidCost").textContent = "Costo estimado: —"; return; }
+  const dur = parseInt($("vidDuration").value || "8", 10);
+  const rate = m.price_per_second;
+  if (rate === null || rate === undefined) {
+    $("vidCost").textContent = "Costo estimado: no disponible para este modelo.";
+  } else {
+    const cost = (rate * dur).toFixed(2);
+    $("vidCost").textContent = `Costo estimado: ~$${cost} (${dur} s × $${rate.toFixed(2)}/s)`;
+  }
+  $("vidPriceNote").textContent = m.approximate ? "Precios aproximados (fal.ai no respondió)." : "";
+}
+$("vidModel").addEventListener("change", syncVidOptions);
+$("vidDuration").addEventListener("change", updateVidCost);
+$("vidAspect").addEventListener("change", updateVidCost);
+$("vidAudio").addEventListener("change", updateVidCost);
+function vidStatusLabel(s) {
+  return { processing: "Generando… esto tarda unos minutos",
+    completed: "Listo ✓", failed: "Falló" }[s] || s;
+}
+async function loadMyVideos() {
+  const box = $("myVideos");
+  if (!box) return;
+  try {
+    const list = await apiFetch("/api/videos", { headers: authHeaders() });
+    box.innerHTML = "";
+    if (!list.length) { box.innerHTML = "<p class='muted'>Aún no tienes videos. Describe uno arriba y genera el primero.</p>"; return; }
+    list.forEach((v) => {
+      const div = document.createElement("div");
+      div.className = "vid-card";
+      const done = v.status === "completed" && v.file_url;
+      const bad = v.status === "failed";
+      const costTxt = (v.estimated_cost_usd === null || v.estimated_cost_usd === undefined)
+        ? "" : `~$${v.estimated_cost_usd.toFixed(2)}`;
+      div.innerHTML = `${done ? `<video src="${v.file_url}" controls playsinline preload="metadata"></video>` : ""}
+        <div class="vid-body"><div class="vid-prompt">${esc(v.prompt || "")}</div>
+        <div class="vid-meta">${esc(v.model || "")} · ${v.duration} s · ${esc(v.aspect_ratio || "")} · ${costTxt}</div>
+        <span class="vid-status ${done ? "done" : bad ? "bad" : ""}">${vidStatusLabel(v.status)}</span>
+        ${v.error ? `<div class="muted" style="font-size:12px">${esc(v.error)}</div>` : ""}
+        ${done ? `<p style="margin:10px 0 0"><a href="${v.file_url}" download><button class="small">⬇ Descargar</button></a></p>` : ""}</div>`;
+      box.appendChild(div);
+    });
+  } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus videos.</p>"; }
+}
+function stopVidPolling() {
+  if (state.vidPollTimer) { clearInterval(state.vidPollTimer); state.vidPollTimer = null; }
+}
+$("btnGenVideo").onclick = async () => {
+  const prompt = $("vidPrompt").value.trim();
+  if (!prompt) { $("vidMsg").textContent = "Escribe qué video quieres crear."; return; }
+  const m = vidSelectedModel();
+  if (!m) { $("vidMsg").textContent = "Primero tienen que cargar los modelos."; return; }
+  const btn = $("btnGenVideo");
+  btn.disabled = true;
+  btn.textContent = "Generando…";
+  $("vidMsg").textContent = "Enviando a fal.ai…";
+  $("vidResult").hidden = true;
+  stopVidPolling();
+  try {
+    const d = await apiFetch("/api/videos/generate", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ prompt, model: m.id, duration: parseInt($("vidDuration").value, 10),
+        aspect_ratio: $("vidAspect").value, audio: $("vidAudio").value === "1" }) });
+    const costTxt = `~$${d.estimated_cost_usd.toFixed(2)}`;
+    $("vidMsg").textContent = `Generando… esto tarda unos minutos. Costo estimado: ${costTxt}.`;
+    loadMyVideos();
+    // Poll cada 30 s (lo que tarda fal.ai en generarlo) hasta el estado final.
+    state.vidPollTimer = setInterval(async () => {
+      try {
+        const j = await apiFetch(`/api/videos/${d.id}`, { headers: authHeaders() });
+        $("vidMsg").textContent = vidStatusLabel(j.status);
+        if (j.status === "completed" && j.file_url) {
+          stopVidPolling();
+          $("vidPreview").src = j.file_url;
+          $("vidDownload").href = j.file_url;
+          $("vidDownload").download = `video-${j.id}.mp4`;
+          $("vidResult").hidden = false;
+          $("vidMsg").textContent = "Video listo ✓";
+          loadMyVideos();
+        } else if (j.status === "failed") {
+          stopVidPolling();
+          $("vidMsg").textContent = "Error: " + (j.error || vidStatusLabel(j.status));
+          loadMyVideos();
+        }
+      } catch (e) { /* el próximo poll reintenta */ }
+    }, 30000);
+  } catch (e) {
+    $("vidMsg").textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Generar video";
+  }
+};
 async function loadAdminClips() {
   try {
     const clips = await apiFetch("/api/admin/clips", { headers: authHeaders() });
@@ -579,6 +935,7 @@ function updatePreview() {
   .forEach((id) => $(id).addEventListener("input", updatePreview));
 $("frameEnabledVideo").addEventListener("change", () => {
   $("frameEnabled").checked = $("frameEnabledVideo").checked;
+  state.templateTouched = true;
   updatePreview();
 });
 $("frameEnabled").addEventListener("change", () => {
@@ -820,11 +1177,23 @@ function updatePreviewSubs(t) {
   let g = groups.find((gr) => t >= gr[0].s && t <= gr[gr.length - 1].e + 0.15);
   if (!g) g = groups[0];
   if (!g) return;
+  // La palabra que suena lleva el color de palabra clave como FONDO
+  // (letra negra), igual que en el render; el resto queda en blanco.
+  const hl = ($("hlColor") && $("hlColor").value) || "#FADE4C";
   el.innerHTML = g.map((w) => {
     const txt = w.w.trim().toUpperCase();
-    return (t >= w.s && t < w.e) ? `<span>${esc(txt)}</span>` : esc(txt);
+    return (t >= w.s && t < w.e)
+      ? `<span style="background:${hl};color:#000;padding:1px 8px;border-radius:6px">${esc(txt)}</span>`
+      : esc(txt);
   }).join(" ");
 }
+// Cambiar el color actualiza la vista previa al momento (sin esperar
+// al siguiente fotograma del video).
+$("hlColor").addEventListener("input", () => {
+  if (state.pvClip && $("pvVideo")) {
+    updatePreviewSubs(Math.max(0, $("pvVideo").currentTime - state.pvClip.start));
+  }
+});
 
 // Reproduce el trozo del clip elegido en la vista previa 9:16 (sin sonido).
 function playPreviewClip(c) {
@@ -908,6 +1277,8 @@ $("btnSaveConfig").onclick = async () => {
   try {
     const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     state.user = d;
+    state.userTemplate = $("cfgTemplate").value;
+    applyTemplateToControls(state.userTemplate);
     updateTopBar();
     $("cfgMsg").textContent = "Configuración guardada.";
   } catch (e) { $("cfgMsg").textContent = "Error: " + e.message; }
@@ -997,6 +1368,11 @@ $("btnRender").onclick = async () => {
       subtitle_style: $("subStyle").value,
       subtitle_size: parseInt($("subSize").value || "76", 10),
       subtitle_position: $("subPos").value,
+      // Plantilla: null = el usuario tocó un control (render
+      // personalizado con sus valores); si no, su plantilla guardada.
+      // Color de palabra clave: la elección del editor para este render.
+      template: state.templateTouched ? null : (state.userTemplate || "Gancho grande"),
+      highlight_color: $("hlColor").value,
       edited_words: edited,
     };
     const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });

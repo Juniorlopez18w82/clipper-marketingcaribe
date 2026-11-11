@@ -186,6 +186,7 @@ class RenderRequest(BaseModel):
     # render personalizado con sus valores, sin preset. Un nombre
     # desconocido cae a la plantilla guardada del usuario → la
     # plantilla por defecto de la plataforma → "Gancho grande".
+    template: str | None = None
     # Edited subtitle words (relative to clip start): [{w, s, e}] — the
     # frontend sends these when Juan corrects the auto-transcription.
     edited_words: list[dict] | None = None

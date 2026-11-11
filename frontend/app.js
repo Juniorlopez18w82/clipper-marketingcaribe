@@ -1089,7 +1089,9 @@ $("btnClips").onclick = async () => {
       // valor por defecto si está vacío, y recortarlo a la duración real.
       const userEnd = parseFloat($("rangeEnd").value);
       if (!userEnd || userEnd <= 0) {
-        $("rangeEnd").value = Math.min(info.duration || 120, 300);
+        // Sin límite de 300 s: por defecto se analiza el video completo
+        // (la transcripción se hace por trozos en el servidor).
+        $("rangeEnd").value = info.duration || 120;
       } else if (info.duration) {
         $("rangeEnd").value = Math.min(userEnd, info.duration);
       }

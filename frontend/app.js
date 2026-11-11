@@ -422,17 +422,73 @@ $("btnSaveSettings").onclick = async () => {
   } catch (e) { $("setMsg").textContent = "Error: " + e.message; }
 };
 
-// Los clips ya NO necesitan aprobación del admin: se descargan apenas
-// se renderizan. clipRow muestra siempre el botón de descarga.
+// Mis Clips: tarjetas verticales 9:16 estilo Biblioteca — video real,
+// badge verde de viralidad + duración sobre la miniatura, título,
+// Descargar y Editar. Los clips ya NO necesitan aprobación del admin:
+// se descargan apenas se renderizan. El badge de viralidad solo sale
+// cuando el clip tiene score guardado; los viejos (sin score) no
+// muestran un número inventado.
+function fmtDur(s) {
+  s = Math.max(0, Math.round(s || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 function clipRow(c, admin) {
   const div = document.createElement("div");
-  div.className = "rowline";
-  const dl = c.download_url ? `<a href="${c.download_url}" download><button class="small">Descargar MP4</button></a>` : "";
-  const who = admin ? `<br><small>${c.user_name || ""} · ${c.user_email || ""}</small>` : "";
+  div.className = "clip-card";
+  const dur = fmtDur((c.end || 0) - (c.start || 0));
+  const badge = (typeof c.score === "number")
+    ? `<span class="viral-badge">${Math.round(c.score)}% viralidad</span>` : "";
+  const thumb = c.download_url
+    ? `<video muted playsinline preload="metadata" src="${c.download_url}"></video>`
+    : `<div class="clip-thumb-empty">Sin video</div>`;
   const date = c.created_at ? c.created_at.slice(0, 10) : "";
-  div.innerHTML = `<div><b>${(c.title || "Clip").slice(0, 60) || "Clip"}</b> · ${c.start}s – ${c.end}s<br><small>${(c.video_url || "").slice(0, 70)} · ${date}</small>${who}</div>
-    <div>${dl}</div>`;
+  const meta = [c.uploader || "", date].filter(Boolean).join(" · ");
+  const who = admin
+    ? `<div class="muted small">${esc(c.user_name || "")} · ${esc(c.user_email || "")}</div>` : "";
+  div.innerHTML = `<div class="clip-thumb">${thumb}
+      <div class="clip-badges">${badge}<span class="dur-badge">${dur}</span></div>
+    </div>
+    <div class="clip-body">
+      <div class="clip-title">${esc(c.title || "Clip")}</div>
+      ${meta ? `<div class="muted small">${esc(meta)}</div>` : ""}
+      ${who}
+      <div class="clip-actions">
+        ${c.download_url ? `<a href="${c.download_url}" download><button class="small">Descargar</button></a>` : ""}
+        <button class="small ghost">Editar</button>
+      </div>
+    </div>`;
+  div.querySelector(".ghost").onclick = () => editClip(c);
   return div;
+}
+
+// Editar: reabre el clip en el editor de subtítulos del creador
+// (paso 3), con su transcripción y su rango, para corregir subtítulos
+// y volver a renderizar. Re-renderizar crea un clip nuevo en Mis Clips
+// (el original queda intacto).
+async function editClip(c) {
+  if (!c.job_id) return alert("Este clip no tiene su trabajo original para editar.");
+  try {
+    const d = await apiFetch(`/api/jobs/${c.job_id}/transcript`, { headers: authHeaders() });
+    const sec = (typeof c.section_start === "number") ? c.section_start
+      : (typeof d.section_start === "number" ? d.section_start : null);
+    if (sec === null || !d.transcript || !Array.isArray(d.transcript.segments)) {
+      return alert("No se pudo cargar la transcripción de este clip.");
+    }
+    state.clipsJob = { id: c.job_id, result: { section_start: sec } };
+    state.transcript = d.transcript;
+    const words = clipWords(c.start, c.end);
+    const cand = {
+      start: +(c.start - sec).toFixed(2), end: +(c.end - sec).toFixed(2),
+      abs_start: c.start, abs_end: c.end,
+      text: words.map((w) => w.w.trim()).join(" ").trim() || c.title || "",
+      title: c.title || "",
+      score: (typeof c.score === "number" ? c.score : null),
+    };
+    document.querySelector('[data-tab="create"]').click();
+    selectClip(cand, null);
+  } catch (e) {
+    alert("No se pudo abrir el editor: " + (e.message || "error"));
+  }
 }
 
 async function loadMyClips() {
@@ -674,6 +730,7 @@ $("btnClips").onclick = async () => {
   $("btnClips").disabled = true;
   $("btnUpload").disabled = true;
   resetCreateFlow();
+  state.videoTitle = "";
   try {
     let body;
     if (state.uploadedFile) {
@@ -684,6 +741,7 @@ $("btnClips").onclick = async () => {
       const info = await apiFetch("/api/video-info", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ url }) });
       const mins = info.duration ? `${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}` : "live";
       $("videoMeta").textContent = `${info.title} · ${info.uploader || ""} · ${mins}`;
+      state.videoTitle = info.title || "";
       // No pisar el "Hasta" que el usuario ya escribió: solo poner el
       // valor por defecto si está vacío, y recortarlo a la duración real.
       const userEnd = parseFloat($("rangeEnd").value);
@@ -883,6 +941,13 @@ $("btnRender").onclick = async () => {
       frame_width: parseInt($("frameWidth").value || "14", 10),
       brand_text: $("brandText").value,
       title_text: $("titleText").value,
+      // Identidad del clip en la biblioteca: título gancho + viralidad
+      // del candidato elegido (LLM) o su score (regla); el título del
+      // video original como respaldo.
+      clip_title: (state.selected && state.selected.title) || "",
+      clip_score: (state.selected && typeof state.selected.score === "number")
+        ? state.selected.score : null,
+      video_title: state.videoTitle || "",
       show_subtitles: $("showSubs").value === "1",
       subtitle_style: $("subStyle").value,
       subtitle_size: parseInt($("subSize").value || "76", 10),

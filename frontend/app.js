@@ -251,6 +251,15 @@ function tabFromUrl() {
   return ROUTE_TABS[p] || "home";
 }
 function goTab(tab, { push = false } = {}) {
+  // Video IA e Imagen IA: solo el admin entra directo (2026-11-11,
+  // Juan: "Próximamente" para los usuarios). Al resto se le muestra
+  // la ventana de Próximamente y no se abre la sección.
+  if ((tab === "images" || tab === "videos") && !(state.user && state.user.is_admin)) {
+    const name = tab === "images" ? "Las imágenes con IA" : "Los videos con IA";
+    $("soonText").textContent = `${name} estarán disponibles próximamente.`;
+    $("soonModal").hidden = false;
+    return false;
+  }
   // Una pestaña no disponible (p. ej. admin para un usuario normal)
   // cae a Inicio y su URL.
   let btn = document.querySelector(`.panel .tab[data-tab="${tab}"]`);
@@ -349,19 +358,33 @@ async function loadPanel() {
   // ¿Tiene plan activo? Si no, se bloquean Inicio / Mis Clips / Crear / Cuenta.
   // El ADMIN nunca se bloquea: no necesita plan para usar la plataforma.
   let hasPlan = !!(state.user && state.user.is_admin), activePlanId = null;
-  // Imágenes IA: solo plan Full (o admin). El backend es la autoridad
-  // (403); esto solo decide qué candado se muestra.
+  // Imágenes IA y Videos IA: SOLO admin (2026-11-11, Juan:
+  // "Próximamente" para los usuarios; solo el admin entra directo).
+  // El backend es la autoridad (403); esto solo decide qué candado
+  // se muestra.
   state.canImages = !!(state.user && state.user.is_admin);
-  // Videos IA: planes Pro y Full (o admin).
   state.canVideos = !!(state.user && state.user.is_admin);
   try {
     const d = await apiFetch("/api/subscriptions/mine", { headers: authHeaders() });
     hasPlan = hasPlan || !!d.active_subscription;
     activePlanId = d.active_subscription ? d.active_subscription.plan_id : null;
-    if (d.active_subscription && d.active_subscription.plan_name === "Full") state.canImages = true;
-    if (d.active_subscription && ["Full", "Pro"].includes(d.active_subscription.plan_name)) state.canVideos = true;
     renderMyRequests(d.requests || []);
   } catch { /* sin plan */ }
+  // Candado "Próximamente" en el menú para los no-admin (2026-11-11).
+  ["images", "videos"].forEach((t) => {
+    const btn = document.querySelector(`.panel .tab[data-tab="${t}"]`);
+    if (btn) {
+      const locked = !(state.user && state.user.is_admin);
+      btn.classList.toggle("soon", locked);
+      if (locked && !btn.querySelector(".soon-lock")) {
+        const s = document.createElement("span");
+        s.className = "soon-lock";
+        s.textContent = "🔒";
+        btn.appendChild(s);
+      }
+      if (!locked) btn.querySelector(".soon-lock")?.remove();
+    }
+  });
   ["home", "clips", "create", "account", "images", "videos"].forEach((t) => {
     const pane = $("pane-" + t);
     if (pane) pane.classList.toggle("is-locked", !hasPlan);
@@ -850,27 +873,10 @@ function clipRow(c, admin) {
       </div>
     </div>`;
   div.querySelector(".icon-btn.edit").onclick = () => editClip(c);
-  // Eliminar: dos toques para confirmar (sin diálogo nativo). Al
-  // confirmar se borra el clip (fila + mp4) y la tarjeta desaparece.
+  // Eliminar: abre una ventana de confirmación (2026-11-11, Juan).
+  // Al confirmar se borra el clip (fila + mp4) y la tarjeta desaparece.
   const delBtn = div.querySelector(".icon-btn.del");
-  delBtn.onclick = async () => {
-    if (delBtn.dataset.confirm !== "1") {
-      delBtn.dataset.confirm = "1";
-      delBtn.classList.add("confirm");
-      delBtn.title = "Toca de nuevo para confirmar";
-      setTimeout(() => { delBtn.dataset.confirm = ""; delBtn.classList.remove("confirm"); delBtn.title = "Eliminar"; }, 4000);
-      return;
-    }
-    try {
-      await apiFetch(`/api/me/clips/${c.id}`, { method: "DELETE", headers: authHeaders() });
-      div.remove();
-    } catch (e) {
-      delBtn.dataset.confirm = "";
-      delBtn.classList.remove("confirm");
-      delBtn.title = "Eliminar";
-      alert("No se pudo eliminar: " + e.message);
-    }
-  };
+  delBtn.onclick = () => openConfirmDelete(c, div);
   const playBtn = div.querySelector(".clip-play");
   if (playBtn) playBtn.onclick = (e) => { e.stopPropagation(); openClipModal(c); };
   div.querySelector(".clip-thumb").onclick = () => openClipModal(c);
@@ -907,6 +913,39 @@ $("clipModal").addEventListener("click", (e) => { if (e.target === $("clipModal"
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("clipModal").hidden) closeClipModal(); });
 $("clipModalEdit").onclick = () => { const c = clipModalClip; closeClipModal(); if (c) editClip(c); };
 
+// ---------- Confirmar eliminación de un clip (ventana, 2026-11-11) ----------
+let _confirmDeleteTarget = null; // {clip, cardEl}
+function openConfirmDelete(c, cardEl) {
+  _confirmDeleteTarget = { clip: c, cardEl };
+  $("confirmDeleteText").textContent = `¿Seguro que quieres eliminar "${c.title || "este clip"}"? Esta acción no se puede deshacer.`;
+  $("confirmDeleteModal").hidden = false;
+}
+function closeConfirmDelete() {
+  $("confirmDeleteModal").hidden = true;
+  _confirmDeleteTarget = null;
+}
+$("confirmDeleteClose").onclick = closeConfirmDelete;
+$("confirmDeleteCancel").onclick = closeConfirmDelete;
+$("confirmDeleteModal").addEventListener("click", (e) => { if (e.target === $("confirmDeleteModal")) closeConfirmDelete(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("confirmDeleteModal").hidden) closeConfirmDelete(); });
+$("confirmDeleteOk").onclick = async () => {
+  const t = _confirmDeleteTarget;
+  if (!t) return closeConfirmDelete();
+  closeConfirmDelete();
+  try {
+    await apiFetch(`/api/me/clips/${t.clip.id}`, { method: "DELETE", headers: authHeaders() });
+    if (t.cardEl) t.cardEl.remove();
+  } catch (e) {
+    alert("No se pudo eliminar: " + e.message);
+  }
+};
+
+// ---------- Ventana "Próximamente" (Video IA / Imagen IA) ----------
+$("soonClose").onclick = () => { $("soonModal").hidden = true; };
+$("soonOk").onclick = () => { $("soonModal").hidden = true; };
+$("soonModal").addEventListener("click", (e) => { if (e.target === $("soonModal")) $("soonModal").hidden = true; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("soonModal").hidden) $("soonModal").hidden = true; });
+
 // Editar: reabre el clip en el editor de subtítulos del creador
 // (paso 3), con su transcripción y su rango, para corregir subtítulos
 // y volver a renderizar. Re-renderizar crea un clip nuevo en Mis Clips
@@ -939,13 +978,51 @@ async function editClip(c) {
   }
 }
 
+// ---------- Mis Clips (con paginación, 2026-11-11, Juan) ----------
+const CLIPS_PER_PAGE = 12;
+let _myClips = [], _myClipsPage = 0;
+function renderMyClipsPage() {
+  const box = $("myClips");
+  const pages = Math.max(1, Math.ceil(_myClips.length / CLIPS_PER_PAGE));
+  if (_myClipsPage >= pages) _myClipsPage = pages - 1;
+  if (_myClipsPage < 0) _myClipsPage = 0;
+  box.innerHTML = "";
+  const start = _myClipsPage * CLIPS_PER_PAGE;
+  _myClips.slice(start, start + CLIPS_PER_PAGE).forEach((c) => box.appendChild(clipRow(c, false)));
+  const pg = $("clipsPagination");
+  if (pg) {
+    pg.innerHTML = "";
+    if (_myClips.length > CLIPS_PER_PAGE) {
+      const prev = document.createElement("button");
+      prev.className = "small ghost";
+      prev.textContent = "← Anterior";
+      prev.disabled = _myClipsPage === 0;
+      prev.onclick = () => { _myClipsPage--; renderMyClipsPage(); };
+      const info = document.createElement("span");
+      info.className = "muted";
+      info.style.cssText = "align-self:center;font-size:13px";
+      info.textContent = `Página ${_myClipsPage + 1} de ${pages} · ${_myClips.length} clips`;
+      const next = document.createElement("button");
+      next.className = "small ghost";
+      next.textContent = "Siguiente →";
+      next.disabled = _myClipsPage >= pages - 1;
+      next.onclick = () => { _myClipsPage++; renderMyClipsPage(); };
+      pg.append(prev, info, next);
+    }
+  }
+}
 async function loadMyClips() {
   const box = $("myClips");
   try {
-    const list = await apiFetch("/api/me/clips", { headers: authHeaders() });
-    box.innerHTML = "";
-    if (!list.length) { box.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>"; return; }
-    list.forEach((c) => box.appendChild(clipRow(c, false)));
+    _myClips = await apiFetch("/api/me/clips", { headers: authHeaders() });
+    if (!_myClips.length) {
+      box.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>";
+      const pg = $("clipsPagination");
+      if (pg) pg.innerHTML = "";
+      return;
+    }
+    _myClipsPage = 0;
+    renderMyClipsPage();
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
 }
 
@@ -1331,6 +1408,42 @@ $("btnSaveAccount").onclick = async () => {
     showUser(d);
   } catch (e) { $("accMsg").textContent = "Error: " + e.message; }
 };
+
+// Pestañas de Mi Cuenta: Perfil / Configuración (2026-11-11, Juan).
+// En Configuración sale la membresía que tiene, cuándo se vence y el
+// botón para actualizarla ahora mismo.
+document.querySelectorAll("#accTabs .mini-tab").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll("#accTabs .mini-tab").forEach((b) => b.classList.toggle("on", b === btn));
+    $("accPane-profile").hidden = btn.dataset.acc !== "profile";
+    $("accPane-config").hidden = btn.dataset.acc !== "config";
+    if (btn.dataset.acc === "config") renderAccPlan();
+  };
+});
+$("btnUpgradePlan").onclick = () => goTab("plans", { push: true });
+async function renderAccPlan() {
+  const box = $("accPlanBox");
+  if (!box) return;
+  try {
+    const d = await apiFetch("/api/subscriptions/mine", { headers: authHeaders() });
+    const sub = d.active_subscription;
+    const u = state.user || {};
+    if (u.is_admin) {
+      box.innerHTML = `<div class="rowline"><div><b>Admin</b><br><small class="muted">Acceso total, sin vencimiento.</small></div><span class="badge aprobado">Admin</span></div>`;
+      return;
+    }
+    if (!sub) {
+      box.innerHTML = `<div class="rowline"><div><b>Sin plan activo</b><br><small class="muted">Contrata un plan para usar ClipViral.</small></div><span class="badge">Sin plan</span></div>`;
+      return;
+    }
+    const exp = sub.ends_at ? new Date(sub.ends_at) : null;
+    const days = exp ? Math.max(0, Math.ceil((exp - Date.now()) / 86400000)) : null;
+    const when = exp ? exp.toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) : "—";
+    box.innerHTML = `<div class="rowline"><div><b>Plan ${esc(sub.plan_name || "")}</b><br><small class="muted">Se vence el ${when}${days !== null ? ` · quedan ${days} día${days === 1 ? "" : "s"}` : ""}</small></div><span class="badge aprobado">${esc(sub.plan_name || "Activo")}</span></div>`;
+  } catch {
+    box.innerHTML = "<p class='muted'>No se pudo cargar tu membresía.</p>";
+  }
+}
 
 $("btnChangePassword").onclick = async () => {
   const cur = $("pwCurrent").value;

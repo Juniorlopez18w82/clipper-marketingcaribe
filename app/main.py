@@ -158,6 +158,10 @@ class RenderRequest(BaseModel):
     # clip record is then linked to the session so the Lives section
     # lists it. None = normal clip from Crear Clip.
     live_session_id: int | None = None
+    # Re-render an EXISTING clip (Editar > Guardar título y portada):
+    # instead of creating a new clip record, the render overwrites
+    # that clip's mp4 and updates its title/cover_at (2026-11-11).
+    update_clip_id: int | None = None
     # Cover offset (s, relative to the clip start) chosen in the editor.
     # Stored on the clip; only changes the thumbnail in Mis Clips.
     cover_at: float | None = None
@@ -464,7 +468,18 @@ def _run_render_job(job_id: str, req: RenderRequest):
             words = _clip_words(transcript, rel_start, rel_end)
         jobs.update(job_id, progress=70,
                     message="Cortando tu clip…")
-        out_name = f"clip_{job_id}.mp4"
+        # Re-render de un clip existente: se sobrescribe SU mp4 (misma
+        # URL de descarga) en vez de crear un archivo nuevo.
+        update_clip = None
+        if req.update_clip_id:
+            db_u = SessionLocal()
+            try:
+                update_clip = db_u.query(Clip).filter(
+                    Clip.id == req.update_clip_id).first()
+            finally:
+                db_u.close()
+        out_name = (update_clip.file if update_clip and update_clip.file
+                    else f"clip_{job_id}.mp4")
         out_path = OUTPUTS_DIR / out_name
         # Plantilla + color de palabra clave (2026-11-10): la plantilla
         # del request (o la guardada/default) manda sobre marco, color,
@@ -498,6 +513,11 @@ def _run_render_job(job_id: str, req: RenderRequest):
             brand_size=look["brand_size"], brand_y=look["brand_y"],
             quality=req.quality,
             camera_mode=req.camera_mode, camera_person=req.camera_person,
+            # Portada / título de enganche: el título gancho se quema
+            # grande sobre la portada al inicio del clip, sin marco ni
+            # marca (2026-11-11).
+            hook_title=req.clip_title or "",
+            cover_at=req.cover_at,
         )
         info = probe(out_path)
         jobs.update(job_id, status="done", progress=100, message="Clip listo.",
@@ -521,18 +541,33 @@ def _run_render_job(job_id: str, req: RenderRequest):
                 video_url = (src.get("payload") or {}).get("url", video_url)
             db = SessionLocal()
             try:
-                # job_id guardado = el trabajo de clips del que salió este
-                # clip (su transcripción y su video fuente viven ahí, y el
-                # botón Editar los necesita). Sin trabajo padre (URL o
-                # archivo directo), el propio trabajo de render.
-                create_clip(db, user_id=parent.get("user_id"),
-                            video_url=video_url, title=title,
-                            uploader=uploader, start=req.start, end=req.end,
-                            job_id=(req.job_id or job_id), file=out_name,
-                            score=req.clip_score,
-                            section_start=section_start,
-                            cover_at=req.cover_at,
-                            live_session_id=req.live_session_id)
+                if req.update_clip_id:
+                    # Re-render: actualiza el clip existente (mismo id y
+                    # mismo archivo, ya sobrescrito) con el título y la
+                    # portada nuevos, en vez de crear un clip duplicado.
+                    existing = db.query(Clip).filter(
+                        Clip.id == req.update_clip_id).first()
+                    if existing is not None:
+                        existing.title = title
+                        if req.cover_at is not None:
+                            dur = max(0.0, (existing.end or 0)
+                                      - (existing.start or 0))
+                            existing.cover_at = max(
+                                0.0, min(float(req.cover_at), dur))
+                        db.commit()
+                else:
+                    # job_id guardado = el trabajo de clips del que salió este
+                    # clip (su transcripción y su video fuente viven ahí, y el
+                    # botón Editar los necesita). Sin trabajo padre (URL o
+                    # archivo directo), el propio trabajo de render.
+                    create_clip(db, user_id=parent.get("user_id"),
+                                video_url=video_url, title=title,
+                                uploader=uploader, start=req.start, end=req.end,
+                                job_id=(req.job_id or job_id), file=out_name,
+                                score=req.clip_score,
+                                section_start=section_start,
+                                cover_at=req.cover_at,
+                                live_session_id=req.live_session_id)
             finally:
                 db.close()
         except Exception:  # noqa: BLE001 — panel record is best-effort

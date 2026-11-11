@@ -652,6 +652,7 @@ $("btnSaveSettings").onclick = async () => {
 const DL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/></svg>';
 const EDIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
 const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 function fmtDur(s) {
   s = Math.max(0, Math.round(s || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -680,9 +681,31 @@ function clipRow(c, admin) {
       <div class="clip-actions">
         ${c.download_url ? `<a class="icon-btn dl" href="${c.download_url}" download title="Descargar">${DL_SVG}</a>` : ""}
         <button class="icon-btn edit" title="Editar">${EDIT_SVG}</button>
+        <button class="icon-btn del" title="Eliminar">${TRASH_SVG}</button>
       </div>
     </div>`;
   div.querySelector(".icon-btn.edit").onclick = () => editClip(c);
+  // Eliminar: dos toques para confirmar (sin diálogo nativo). Al
+  // confirmar se borra el clip (fila + mp4) y la tarjeta desaparece.
+  const delBtn = div.querySelector(".icon-btn.del");
+  delBtn.onclick = async () => {
+    if (delBtn.dataset.confirm !== "1") {
+      delBtn.dataset.confirm = "1";
+      delBtn.classList.add("confirm");
+      delBtn.title = "Toca de nuevo para confirmar";
+      setTimeout(() => { delBtn.dataset.confirm = ""; delBtn.classList.remove("confirm"); delBtn.title = "Eliminar"; }, 4000);
+      return;
+    }
+    try {
+      await apiFetch(`/api/me/clips/${c.id}`, { method: "DELETE", headers: authHeaders() });
+      div.remove();
+    } catch (e) {
+      delBtn.dataset.confirm = "";
+      delBtn.classList.remove("confirm");
+      delBtn.title = "Eliminar";
+      alert("No se pudo eliminar: " + e.message);
+    }
+  };
   const playBtn = div.querySelector(".clip-play");
   if (playBtn) playBtn.onclick = (e) => { e.stopPropagation(); openClipModal(c); };
   div.querySelector(".clip-thumb").onclick = () => openClipModal(c);
@@ -1142,6 +1165,25 @@ $("btnSaveAccount").onclick = async () => {
     $("accMsg").textContent = "Guardado.";
     showUser(d);
   } catch (e) { $("accMsg").textContent = "Error: " + e.message; }
+};
+
+$("btnChangePassword").onclick = async () => {
+  const cur = $("pwCurrent").value;
+  const nw = $("pwNew").value;
+  const cf = $("pwConfirm").value;
+  const msg = $("pwMsg");
+  if (!cur || !nw || !cf) { msg.textContent = "Completa los tres campos."; return; }
+  if (nw.length < 6) { msg.textContent = "La contraseña nueva debe tener al menos 6 caracteres."; return; }
+  if (nw !== cf) { msg.textContent = "La contraseña nueva y la confirmación no coinciden."; return; }
+  msg.textContent = "Cambiando…";
+  try {
+    await apiFetch("/api/auth/change-password", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ current_password: cur, new_password: nw }) });
+    $("pwCurrent").value = "";
+    $("pwNew").value = "";
+    $("pwConfirm").value = "";
+    msg.textContent = "Contraseña cambiada. Usa la nueva la próxima vez que entres.";
+  } catch (e) { msg.textContent = "Error: " + e.message; }
 };
 
 // ---------- Poll de jobs (con reintentos ante respuestas vacías) ----------

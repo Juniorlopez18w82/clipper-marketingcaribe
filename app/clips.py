@@ -160,8 +160,8 @@ def _llm_prompt(segments: list[dict], max_clips: int,
 
 
 def _groq_chat(prompt: str) -> str | None:
-    """One Groq chat completion. Tries the 70b model first, then the 8b
-    fallback. Returns the raw content string, or None on any failure."""
+    """One Groq chat completion. Tries gpt-oss-120b first, then gpt-oss-20b.
+    Returns the raw content string, or None on any failure."""
     key = os.environ.get("GROQ_API_KEY")
     if not key:
         return None
@@ -174,7 +174,12 @@ def _groq_chat(prompt: str) -> str | None:
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.2,
-            "max_tokens": 1500,
+            # 4000, no 1500: gpt-oss gasta tokens razonando y esos cuentan
+            # en max_tokens; con 1500 el modelo no llegaba a emitir el JSON
+            # y Groq devolvía HTTP 400 json_validate_failed (visto
+            # 2026-11-10 en el video de la entrevista: los dos modelos
+            # fallaron y el selector cayó al heurístico).
+            "max_tokens": 4000,
             "response_format": {"type": "json_object"},
         }, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
@@ -187,8 +192,12 @@ def _groq_chat(prompt: str) -> str | None:
             with urllib.request.urlopen(req, timeout=GROQ_LLM_TIMEOUT) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            logger.warning("Groq LLM %s failed (HTTP %s); trying next model",
-                           model, e.code)
+            try:
+                detail = e.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                detail = ""
+            logger.warning("Groq LLM %s failed (HTTP %s %s); trying next model",
+                           model, e.code, detail)
             continue
         except Exception as e:  # noqa: BLE001 — timeout / DNS / network, any
             logger.warning("Groq LLM %s failed (%s); trying next model",

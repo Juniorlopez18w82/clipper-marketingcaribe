@@ -1,7 +1,8 @@
 // ClipViral — frontend (same origin, talks to /api/*)
 const $ = (id) => document.getElementById(id);
 const state = { clipsJob: null, transcript: null, selected: null, words: null,
-  user: null, uploadedFile: null, busy: false, pvClip: null };
+  user: null, uploadedFile: null, busy: false, pvClip: null,
+  editingClipId: null, coverAt: 0 };
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[m]));
 const FRIENDLY_ERROR = "El servidor está despertando o se está actualizando, espera un minuto e inténtalo de nuevo";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -439,7 +440,7 @@ function clipRow(c, admin) {
   const badge = (typeof c.score === "number")
     ? `<span class="viral-badge">${Math.round(c.score)}% viralidad</span>` : "";
   const thumb = c.download_url
-    ? `<video muted playsinline preload="metadata" src="${c.download_url}"></video>`
+    ? `<video muted playsinline preload="metadata" src="${c.download_url}${typeof c.cover_at === "number" ? "#t=" + c.cover_at : ""}"></video>`
     : `<div class="clip-thumb-empty">Sin video</div>`;
   const date = c.created_at ? c.created_at.slice(0, 10) : "";
   const meta = [c.uploader || "", date].filter(Boolean).join(" · ");
@@ -476,6 +477,7 @@ async function editClip(c) {
     }
     state.clipsJob = { id: c.job_id, result: { section_start: sec } };
     state.transcript = d.transcript;
+    state.editingClipId = c.id;
     const words = clipWords(c.start, c.end);
     const cand = {
       start: +(c.start - sec).toFixed(2), end: +(c.end - sec).toFixed(2),
@@ -483,6 +485,7 @@ async function editClip(c) {
       text: words.map((w) => w.w.trim()).join(" ").trim() || c.title || "",
       title: c.title || "",
       score: (typeof c.score === "number" ? c.score : null),
+      cover_at: (typeof c.cover_at === "number" ? c.cover_at : null),
     };
     document.querySelector('[data-tab="create"]').click();
     selectClip(cand, null);
@@ -729,6 +732,7 @@ $("btnClips").onclick = async () => {
   state.busy = true;
   $("btnClips").disabled = true;
   $("btnUpload").disabled = true;
+  state.editingClipId = null;
   resetCreateFlow();
   state.videoTitle = "";
   try {
@@ -783,7 +787,7 @@ $("btnClips").onclick = async () => {
       div.innerHTML = `<video muted playsinline preload="metadata" src="/api/jobs/${job.id}/source#t=${c.start.toFixed(1)}"></video>`
         + `<div class="clip-body"><div class="clip-meta">Clip ${i + 1} · ${c.abs_start}s – ${c.abs_end}s (${c.duration}s) <span class="clip-score">⭐ ${c.score}</span></div>`
         + `<small class="clip-text">${esc(c.text.slice(0, 160))}…</small></div>`;
-      div.onclick = () => selectClip(c, div);
+      div.onclick = () => { state.editingClipId = null; selectClip(c, div); };
       box.appendChild(div);
     });
     $("candidatesCard").hidden = false;
@@ -882,6 +886,19 @@ function selectClip(c, el) {
   $("clipStart").value = c.abs_start;
   $("clipEnd").value = c.abs_end;
   $("subText").value = c.text;
+  // Título de enganche + portada del paso 3: el título del candidato
+  // (LLM) o el guardado del clip (Editar); la portada guardada o 0.
+  $("hookTitle").value = c.title || "";
+  const clipDur = Math.max(0, (c.abs_end || 0) - (c.abs_start || 0));
+  const cov = $("coverRange");
+  cov.max = Math.max(clipDur, 0.1);
+  const startCover = (typeof c.cover_at === "number")
+    ? Math.min(Math.max(c.cover_at, 0), clipDur) : 0;
+  cov.value = startCover;
+  state.coverAt = startCover;
+  $("coverVal").textContent = startCover.toFixed(1) + " s";
+  $("btnSaveMeta").hidden = !state.editingClipId;
+  $("saveMetaMsg").textContent = "";
   $("pvSubs").innerHTML = state.words.slice(0, 3).map((w, i) => i === 1 ? `<span>${w.w.trim().toUpperCase()}</span>` : w.w.trim().toUpperCase()).join(" ") || "SUBTÍTULOS";
   // Ya hay un clip que ver: aparece la vista previa (encima de Configuración)
   // y empieza a reproducir el trozo elegido, con marco, marca y subtítulos.
@@ -914,6 +931,35 @@ $("btnSaveConfig").onclick = async () => {
   } catch (e) { $("cfgMsg").textContent = "Error: " + e.message; }
 };
 
+// ---------- Portada: el control mueve la vista previa al fotograma ----------
+// Pausa el video en el momento elegido (dentro del clip) para que el
+// usuario vea el fotograma que quedará como miniatura en Mis Clips.
+$("coverRange").addEventListener("input", () => {
+  const v = parseFloat($("coverRange").value || "0");
+  state.coverAt = v;
+  $("coverVal").textContent = v.toFixed(1) + " s";
+  const pv = $("pvVideo");
+  if (pv && state.selected) {
+    pv.pause();
+    try { pv.currentTime = Math.max(0, state.selected.start + v + 0.01); } catch (e) { /* aún sin metadatos */ }
+  }
+});
+
+// ---------- Guardar título y portada (sin re-renderizar) ----------
+// Solo visible cuando se está editando un clip existente: actualiza el
+// título y la portada del clip en Mis Clips, sin crear un render nuevo.
+$("btnSaveMeta").onclick = async () => {
+  if (!state.editingClipId) return;
+  const msg = $("saveMetaMsg");
+  msg.textContent = "Guardando…";
+  try {
+    await apiFetch(`/api/me/clips/${state.editingClipId}`, { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ title: $("hookTitle").value.trim(), cover_at: state.coverAt }) });
+    msg.textContent = "Guardado ✓";
+    loadMyClips();
+    if (state.user && state.user.is_admin) loadAdminClips();
+  } catch (e) { msg.textContent = "Error: " + e.message; }
+};
+
 // ---------- Renderizar ----------
 $("btnRender").onclick = async () => {
   if (!state.clipsJob) return alert("Primero genera los clips y elige uno");
@@ -943,8 +989,10 @@ $("btnRender").onclick = async () => {
       title_text: $("titleText").value,
       // Identidad del clip en la biblioteca: título gancho + viralidad
       // del candidato elegido (LLM) o su score (regla); el título del
-      // video original como respaldo.
-      clip_title: (state.selected && state.selected.title) || "",
+      // video original como respaldo. El título se toma del campo
+      // editable del paso 3, y la portada del control de portada.
+      clip_title: $("hookTitle").value.trim() || (state.selected && state.selected.title) || "",
+      cover_at: state.coverAt,
       clip_score: (state.selected && typeof state.selected.score === "number")
         ? state.selected.score : null,
       video_title: state.videoTitle || "",
@@ -970,6 +1018,9 @@ $("btnRender").onclick = async () => {
     document.getElementById("resultCard").scrollIntoView({ behavior: "smooth" });
     loadPanel();
     loadMyClips();
+    // El render creó un clip nuevo: ya no se está editando el anterior.
+    state.editingClipId = null;
+    $("btnSaveMeta").hidden = true;
   } catch (e) {
     console.error("Render falló:", e.raw || e.message);
     showJobError(e.message === "JOB_FAILED" ? "No se pudo cortar el clip. Inténtalo de nuevo." : e.message);

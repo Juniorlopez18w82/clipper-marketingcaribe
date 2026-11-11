@@ -102,6 +102,16 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .role-pills{display:flex;gap:8px;margin-top:6px}
 .role-pills label{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:1px solid #3f3f46;border-radius:10px;cursor:pointer;font-size:14px}
 .role-pills label:has(input:checked){border-color:#E10600;background:rgba(225,6,0,.12)}
+/* Menú ⋮ por usuario (Panel Admin > Usuarios). */
+.user-menu-wrap{position:relative;display:inline-block}
+.user-menu-btn{font-size:18px;line-height:1;padding:4px 10px}
+.user-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:120;min-width:190px;background:#1a1a1e;border:1px solid #3f3f46;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.55);padding:6px}
+.user-menu[hidden]{display:none}
+.user-menu button{display:block;width:100%;text-align:left;background:none;border:0;color:#f4f4f5;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+.user-menu button:hover{background:#27272a}
+.user-menu button.danger{color:#f87171}
+.user-menu button.danger:hover{background:rgba(225,6,0,.15)}
+.susp-badge{display:inline-block;font-size:11px;font-weight:700;color:#f87171;background:rgba(248,113,113,.15);padding:2px 8px;border-radius:20px;margin-left:6px;white-space:nowrap}
 .assign-plan-row{display:flex;gap:10px;align-items:flex-start;border:1px solid #27272a;border-radius:12px;padding:12px 14px;margin-top:10px;cursor:pointer}
 .assign-plan-row:hover{border-color:#3f3f46}
 .assign-plan-row.selected{border-color:#E10600;background:rgba(225,6,0,.08)}
@@ -727,6 +737,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <button class="mini-tab" data-admin="requests">Solicitudes de pago</button>
         <button class="mini-tab" data-admin="plans">Planes</button>
         <button class="mini-tab" data-admin="methods">Métodos de pago</button>
+        <button class="mini-tab" data-admin="earnings">Ganancias</button>
         <button class="mini-tab" data-admin="settings">Configuración</button>
       </div>
       <div class="admin-pane" id="adminPane-users">
@@ -769,6 +780,13 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <div class="row"><div><label>Número de cuenta</label><input id="nmAccount" type="text"></div><div><label>Titular</label><input id="nmHolder" type="text"></div></div>
           <label>Instrucciones</label><textarea id="nmInstr" rows="2" placeholder="Ej: Envía el comprobante por WhatsApp…"></textarea>
           <div style="margin-top:12px"><button id="btnNewMethod">Crear método de pago</button></div>
+        </div>
+      </div>
+      <div class="admin-pane" id="adminPane-earnings" hidden>
+        <div class="card">
+          <h4>Ganancias</h4>
+          <p class="muted" style="margin-top:0">Ventas aprobadas (comprobantes aceptados) y próximos pagos por renovaciones.</p>
+          <div id="adminEarnings"><p class="muted">Cargando…</p></div>
         </div>
       </div>
       <div class="admin-pane" id="adminPane-settings" hidden>
@@ -839,6 +857,23 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       </div>
     </div>
   </div>
+  <div id="editUserModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editUserTitle">
+      <button class="modal-x" id="editUserClose" aria-label="Cerrar">×</button>
+      <h3 id="editUserTitle">Editar usuario</h3>
+      <p class="muted">Cambia el nombre o el correo del usuario.</p>
+      <input type="hidden" id="editUserId">
+      <label>Nombre</label>
+      <input id="editUserName" type="text" autocomplete="off" style="width:100%">
+      <label style="margin-top:10px">Correo</label>
+      <input id="editUserEmail" type="email" autocomplete="off" style="width:100%">
+      <p id="editUserMsg" class="muted" style="margin:10px 0 0"></p>
+      <div class="modal-actions">
+        <button id="editUserCancel" class="ghost">Cancelar</button>
+        <button id="editUserConfirm">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
   <div id="clipModal" class="modal-backdrop" hidden>
     <div class="modal-card viewer" role="dialog" aria-modal="true" aria-labelledby="clipModalTitle">
       <button class="modal-x" id="clipModalClose" aria-label="Cerrar">×</button>
@@ -879,6 +914,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

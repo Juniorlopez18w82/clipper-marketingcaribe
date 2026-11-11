@@ -611,11 +611,30 @@ def _live_round(session_id: int) -> None:
         done = jobs.get(clips_job["id"]) or {}
         result = done.get("result") or {}
         candidates = result.get("candidates") or []
+        # Si el usuario detuvo o pausó el live mientras se descargaba y
+        # transcribía (la parte larga de la ronda), no renderizar nada:
+        # un live detenido no vuelve a sacar clips. Se vuelve a leer de
+        # la BD porque el objeto `session` es de antes de la ronda y no
+        # ve el cambio que hizo el usuario desde el panel.
+        fresh = db.get(LiveSession, session.id)
+        if fresh is None or fresh.status != STATUS_ACTIVE:
+            logger.info("live session %s no longer active, skipping renders",
+                        session.id)
+            session.last_run_at = datetime.now(timezone.utc)
+            db.commit()
+            return
         # The user's brand (for the frame), else the default.
         user = db.get(User, session.user_id) if session.user_id else None
         brand = (getattr(user, "brand_text", None) or DEFAULT_BRAND_TEXT)
         rendered = 0
         for c in candidates[:max(1, session.clips_per_round)]:
+            # Re-check antes de cada render: si lo detuvo en medio de la
+            # ronda, los clips que faltan no se sacan.
+            fresh = db.get(LiveSession, session.id)
+            if fresh is None or fresh.status != STATUS_ACTIVE:
+                logger.info("live session %s stopped mid-round, "
+                            "stopping renders", session.id)
+                break
             try:
                 rjob = jobs.create("render", {
                     "job_id": clips_job["id"],

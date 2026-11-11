@@ -61,6 +61,33 @@ def db_backend() -> str:
     return "postgres" if IS_POSTGRES else "sqlite"
 
 
+def _ensure_live_columns() -> None:
+    """Add the thumbnail column to an existing live_sessions table.
+
+    Same pattern as _ensure_clip_columns: create_all() never adds
+    columns to an existing table, so the live VPS SQLite and Render
+    Postgres need ALTER TABLE on boot.
+    """
+    from sqlalchemy import inspect
+
+    cols = {"thumbnail": "VARCHAR(500)"}
+    try:
+        existing = {c["name"]
+                    for c in inspect(engine).get_columns("live_sessions")}
+        missing = [k for k in cols if k not in existing]
+        if not missing:
+            return
+        with engine.begin() as conn:
+            for name in missing:
+                conn.exec_driver_sql(
+                    f'ALTER TABLE live_sessions ADD COLUMN "{name}" '
+                    f'{cols[name]}')
+        logger.info("Migrated live_sessions table: added %s",
+                    ", ".join(missing))
+    except Exception as e:  # noqa: BLE001 — migration is best-effort
+        logger.warning("Live columns migration failed: %s", e)
+
+
 def init_db() -> None:
     """Create tables if they do not exist. Safe to call on every boot.
 
@@ -152,6 +179,7 @@ def init_db() -> None:
         return
     _ensure_user_pref_columns()
     _ensure_clip_columns()
+    _ensure_live_columns()
     try:
         db = SessionLocal()
         try:

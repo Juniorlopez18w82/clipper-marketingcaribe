@@ -312,9 +312,15 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                         message="Leyendo tu archivo…")
             source = _cut_upload(_upload_path(source_file), start, end, job_id)
         else:
+            # Solo AUDIO para el análisis (2026-11-11): transcribir solo
+            # necesita el audio; bajar el video completo de un video largo
+            # (866 s a 1080p) dejaba el trabajo atascado en "Descargando"
+            # 5-10 min. El audio son ~14 MB y baja en segundos; el video
+            # se baja después, solo para el trozo del clip, en el render
+            # y en la vista previa (clip-video).
             jobs.update(job_id, status="running", progress=10,
-                        message="Descargando el video…")
-            source = download_section(url, start, end, job_id)
+                        message="Descargando el audio…")
+            source = download_section(url, start, end, job_id, audio_only=True)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=model)
         if not transcript["segments"]:
@@ -351,6 +357,11 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                         "transcript": transcript,
                         "candidates": candidates,
                         "selector": selector,
+                        # Para el render y la vista previa: el análisis
+                        # baja solo audio (rápido); el video del clip se
+                        # baja después, solo para ese trozo, con esta URL.
+                        "url": url,
+                        "audio_only": (source_file is None),
                     })
     except Exception as e:  # noqa: BLE001 — surfaced to the client as job error
         jobs.update(job_id, status="error", error=str(e), message="Falló.")
@@ -363,8 +374,17 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         if not parent or parent.get("status") != "done" or not parent.get("result"):
             raise HTTPException(400, "job_id no válido o aún no terminado")
         res = parent["result"]
-        source = SOURCES_DIR / res["source_file"]
-        section_start = float(res["section_start"])
+        # El análisis baja solo AUDIO (rápido); el render necesita el
+        # VIDEO, pero solo para el trozo del clip (30-60 s), así que se
+        # baja ahora a 1080p. Si el padre ya tenía video, se reutiliza.
+        if res.get("audio_only") and res.get("url"):
+            jobs.update(job_id, status="running", progress=10,
+                        message="Descargando el video del clip…")
+            source = download_section(res["url"], req.start, req.end, job_id)
+            section_start = req.start
+        else:
+            source = SOURCES_DIR / res["source_file"]
+            section_start = float(res["section_start"])
         transcript = json.loads(
             (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(encoding="utf-8"))
         return source, section_start, transcript
@@ -2048,6 +2068,31 @@ def api_job_source(job_id: str):
         path = files[0] if files else None
     if path is None or not path.exists():
         raise HTTPException(404, "Video no encontrado")
+    return FileResponse(path, media_type="video/mp4", filename=path.name)
+
+
+@app.get("/api/jobs/{job_id}/clip-video")
+def api_job_clip_video(job_id: str, start: float, end: float):
+    """Video (1080p) de UN trozo [start, end] de un clips job, para la vista
+    previa y las miniaturas. El análisis baja solo audio (rápido), así que
+    el video del clip se baja aquí, bajo demanda, y se guarda en caché por
+    job+rango: la segunda vez que se pide el mismo trozo se sirve el
+    archivo sin volver a descargar. Same public-in-v1 posture as /source."""
+    if end <= start or (end - start) > 180:
+        raise HTTPException(400, "Rango de clip no válido (máx. 180 s)")
+    safe_id = Path(job_id).name
+    job = jobs.get(safe_id)
+    res = (job or {}).get("result") or {}
+    url = res.get("url")
+    if not url:
+        raise HTTPException(400, "Este trabajo no tiene URL de video")
+    # Caché en disco: {job_id}_clip_{start}_{end}.mp4 (o .webm según formato).
+    tag = f"{safe_id}_clip_{int(start * 10)}_{int(end * 10)}"
+    for f in sorted(SOURCES_DIR.glob(f"{tag}.*")):
+        return FileResponse(f, media_type="video/mp4", filename=f.name)
+    # Descarga solo este trozo a 1080p (rápido: 30-60 s de video).
+    tmp_job = f"{tag}"
+    path = download_section(url, start, end, tmp_job)
     return FileResponse(path, media_type="video/mp4", filename=path.name)
 
 

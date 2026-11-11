@@ -58,7 +58,7 @@ from .billing import (PaymentMethod, PaymentRequest, Plan, UserSubscription,
                       approve_request, get_active_subscription,
                       has_active_subscription, method_out, plan_out,
                       reject_request, request_out, subscription_out)
-from .clips import build_candidates
+from .clips import build_candidates, build_candidates_llm
 from .clips_db import Clip, clip_out, create_clip
 from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
                      DEFAULT_FRAME_WIDTH, MAX_UPLOAD_BYTES, MAX_WORKERS,
@@ -252,8 +252,17 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         transcript = transcribe_file(source, job_id, model=model)
         jobs.update(job_id, progress=80,
                     message="La IA está eligiendo los mejores momentos…")
-        candidates = build_candidates(transcript["segments"],
-                                      min_len=min_len, max_len=max_len)
+        # Real LLM first (Groq llama, free tier) when a key is set; ANY
+        # LLM failure returns None and we fall back to the heuristic, so
+        # a bad LLM day can never fail a clips job. No key = heuristic.
+        candidates = build_candidates_llm(transcript["segments"],
+                                          max_clips=max_clips,
+                                          min_len=min_len, max_len=max_len)
+        selector = "llm"
+        if candidates is None:
+            selector = "heuristic"
+            candidates = build_candidates(transcript["segments"],
+                                          min_len=min_len, max_len=max_len)
         candidates = candidates[:max(1, max_clips)]
         # Candidates are relative to the section; expose absolute times too.
         for c in candidates:
@@ -269,6 +278,7 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                         "transcript_file": Path(transcript["path"]).name,
                         "transcript": transcript,
                         "candidates": candidates,
+                        "selector": selector,
                     })
     except Exception as e:  # noqa: BLE001 — surfaced to the client as job error
         jobs.update(job_id, status="error", error=str(e), message="Falló.")

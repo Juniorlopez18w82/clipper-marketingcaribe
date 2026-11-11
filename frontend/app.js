@@ -1616,12 +1616,18 @@ $("btnClips").onclick = async () => {
     job.result.candidates.forEach((c, i) => {
       const div = document.createElement("div");
       div.className = "clip";
-      // Miniatura real: el video de la sección, en el primer fotograma de
-      // este clip (#t= con el inicio relativo a la sección).
+      // Tarjeta del clip que eligió la IA (2026-11-11): SIN descripción
+      // (el texto transcrito ya no se muestra). Solo el video, el botón
+      // de vista previa, el rango en minutos y el % de viralización.
+      const fire = (typeof c.score === "number")
+        ? `<span class="clip-score">🔥 ${Math.round(c.score)}%</span>` : "";
       div.innerHTML = `<video muted playsinline preload="metadata" src="/api/jobs/${job.id}/clip-video?start=${c.abs_start}&end=${c.abs_end}#t=0.1"></video>`
-        + `<div class="clip-body"><div class="clip-meta">Clip ${i + 1} · ${c.abs_start}s – ${c.abs_end}s (${c.duration}s) <span class="clip-score">⭐ ${c.score}</span></div>`
-        + `<small class="clip-text">${esc(c.text.slice(0, 160))}…</small></div>`;
-      div.onclick = () => { state.editingClipId = null; selectClip(c, div); };
+        + `<div class="clip-body"><div class="clip-title">${esc(c.title || `Clip ${i + 1}`)}</div>`
+        + `<div class="clip-meta">⏱ ${fmtDur(c.abs_start)} – ${fmtDur(c.abs_end)} ${fire}</div>`
+        + `<button type="button" class="cand-preview">▶ Ver vista previa</button></div>`;
+      const pick = () => { state.editingClipId = null; selectClip(c, div); };
+      div.onclick = pick;
+      div.querySelector(".cand-preview").onclick = (e) => { e.stopPropagation(); pick(); };
       box.appendChild(div);
     });
     $("candidatesCard").hidden = false;

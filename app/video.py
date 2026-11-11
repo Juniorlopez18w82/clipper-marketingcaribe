@@ -29,18 +29,36 @@ entrypoint.sh adds wireproxy's [http] listener (127.0.0.1:1081) and sets
 YTDLP_PROXY=http://127.0.0.1:1081. Never point it at socks5:// again.
 """
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
+import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import yt_dlp
 
 from .config import BASE_DIR, SOURCES_DIR
 
+logger = logging.getLogger(__name__)
+
 # Order matters: android first — it bypasses the web bot check most often.
 PLAYER_CLIENTS = ["tv_embedded", "android", "web"]
+
+# Descarga de audio en paralelo (2026-11-11): YouTube limita la velocidad
+# POR CONEXIÓN y el límite varía mucho según el momento — el mismo audio
+# de 600 s bajó en <15 s un día y en 300 s otro (~17 KB/s). Una sola
+# conexión se queda atorada en ese límite; varias conexiones en paralelo
+# multiplican el caudal. Medido 2026-11-11 (video WqieADY9h-M, 0-600 s):
+# 1 conexión = ~300 s; 4 conexiones en paralelo (4 trozos de 150 s) =
+# 85 s. Por eso el audio largo se baja en trozos paralelos y luego se
+# unen con ffmpeg.
+AUDIO_CHUNK_SECONDS = 150
+AUDIO_PARALLEL_WORKERS = 4
+AUDIO_PARALLEL_MAX_CHUNKS = 8
+AUDIO_PARALLEL_MIN_SECONDS = 180
 
 
 def _cookies_file() -> str | None:
@@ -287,6 +305,116 @@ FORMAT_SELECTORS = [
 ]
 
 
+def _download_audio_chunk(url: str, start: float, end: float,
+                          tag: str) -> Path | None:
+    """Baja UN trozo de audio (itag 250) con yt-dlp. Devuelve el archivo
+    o None si falló. Un solo intento por cliente (tv_embedded, android,
+    web) — el que descarga primero gana; el llamador reintenta el trozo
+    en serie si hace falta."""
+    section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
+    out_tmpl = str(SOURCES_DIR / f"{tag}.%(ext)s")
+    for client in PLAYER_CLIENTS:
+        for old in SOURCES_DIR.glob(f"{tag}.*"):
+            old.unlink()
+        cmd = [
+            sys.executable, "-m", "yt_dlp", "--no-warnings",
+            "--extractor-args", f"youtube:player_client={client}",
+            "--download-sections", section,
+            "-f", "250/251/bestaudio/best",
+            "-o", out_tmpl,
+            url,
+        ]
+        cookies = _cookies_file()
+        if cookies:
+            cmd[3:3] = ["--cookies", cookies]
+        proxy = _proxy()
+        if proxy:
+            cmd[3:3] = ["--proxy", proxy]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=600)
+        except subprocess.TimeoutExpired:
+            continue
+        if proc.returncode != 0:
+            if _is_bot_block(proc.stderr):
+                break
+            continue
+        files = sorted(SOURCES_DIR.glob(f"{tag}.*"))
+        if not files:
+            continue
+        _, a_dur = _stream_durations(files[0])
+        if a_dur >= (end - start) * 0.7:
+            return files[0]
+    return None
+
+
+def _download_audio_parallel(url: str, start: float, end: float,
+                             job_id: str) -> Path:
+    """Baja el audio de [start, end] en trozos paralelos y los une.
+
+    YouTube limita la velocidad POR CONEXIÓN y el límite varía mucho
+    (el mismo audio de 600 s: <15 s un día, 300 s otro). Varias
+    conexiones en paralelo multiplican el caudal: 4 trozos de 150 s en
+    paralelo = 85 s frente a ~300 s en serie (medido 2026-11-11).
+    Los trozos se unen con ffmpeg (concat + re-encode a Opus, rápido
+    para audio) en un solo .webm. Si algún trozo falla en paralelo se
+    reintenta en serie; si la unión falla, se lanza el error y el
+    llamador cae al método en serie.
+    """
+    total = end - start
+    n_chunks = min(AUDIO_PARALLEL_MAX_CHUNKS,
+                   max(1, int(total // AUDIO_CHUNK_SECONDS) + 1))
+    chunk_len = total / n_chunks
+    bounds = []
+    for i in range(n_chunks):
+        cs = start + i * chunk_len
+        ce = start + (i + 1) * chunk_len if i < n_chunks - 1 else end
+        bounds.append((cs, ce))
+    tags = [f"{job_id}_c{i}" for i in range(n_chunks)]
+    for tag in tags:
+        for old in SOURCES_DIR.glob(f"{tag}.*"):
+            old.unlink()
+    results: dict[int, Path] = {}
+    with ThreadPoolExecutor(max_workers=AUDIO_PARALLEL_WORKERS) as ex:
+        futs = {ex.submit(_download_audio_chunk, url, cs, ce, tags[i]): i
+                for i, (cs, ce) in enumerate(bounds)}
+        for fut in as_completed(futs):
+            i = futs[fut]
+            try:
+                path = fut.result()
+            except Exception:
+                path = None
+            if path is not None:
+                results[i] = path
+    # Reintento en serie de los trozos que fallaron en paralelo.
+    for i, (cs, ce) in enumerate(bounds):
+        if i not in results:
+            path = _download_audio_chunk(url, cs, ce, tags[i])
+            if path is not None:
+                results[i] = path
+    if len(results) != n_chunks:
+        missing = [i for i in range(n_chunks) if i not in results]
+        raise RuntimeError(
+            f"audio paralelo: fallaron los trozos {missing} de {n_chunks}")
+    out_path = SOURCES_DIR / f"{job_id}.webm"
+    with tempfile.TemporaryDirectory() as tmp:
+        lst = Path(tmp) / "concat.txt"
+        lst.write_text("".join(
+            f"file '{results[i]}'\n" for i in range(n_chunks)),
+            encoding="utf-8")
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
+             "-i", str(lst), "-c:a", "libopus", "-b:a", "96k",
+             str(out_path)],
+            capture_output=True, text=True, timeout=600)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg concat falló: {proc.stderr[-300:]}")
+    for tag in tags:
+        for old in SOURCES_DIR.glob(f"{tag}.*"):
+            old.unlink()
+    return out_path
+
+
 def download_section(url: str, start: float, end: float, job_id: str,
                      audio_only: bool = False) -> Path:
     """Download only [start, end] (absolute seconds in the original video).
@@ -320,6 +448,22 @@ def download_section(url: str, start: float, end: float, job_id: str,
     # de 60 min: el usuario lo analiza por partes con Desde/Hasta.
     if end - start > 3600:
         raise ValueError("El rango es muy largo (máx. 60 min por análisis). Analiza el video por partes con Desde/Hasta.")
+    # Audio largo: en trozos paralelos (2026-11-11). Una sola conexión
+    # se atora en el límite de YouTube (600 s = 300 s un día); en
+    # paralelo baja ~3.5x más rápido. Si el paralelo falla, se cae al
+    # método en serie de abajo.
+    if audio_only and (end - start) > AUDIO_PARALLEL_MIN_SECONDS:
+        try:
+            out = _download_audio_parallel(url, start, end, job_id)
+        except Exception as e:
+            logger.warning("audio paralelo falló (%s); reintento en serie", e)
+            out = None
+        if out is not None:
+            _, a_dur = _stream_durations(out)
+            if a_dur >= (end - start) * 0.8:
+                return out
+            logger.warning("audio paralelo incompleto (%.1fs de %.0fs); "
+                           "reintento en serie", a_dur, end - start)
     out_tmpl = str(SOURCES_DIR / f"{job_id}.%(ext)s")
     section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
     errors: list[str] = []

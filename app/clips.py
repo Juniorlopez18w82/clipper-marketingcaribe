@@ -56,6 +56,13 @@ def build_candidates(segments: list[dict], min_len: float = 20.0,
         # Trim to the last word that keeps length <= max_len.
         win_words = [w for w in win_words if w["e"] - start <= max_len]
         clip_end = win_words[-1]["e"]
+        # Terminar en final de frase cuando sea posible, para no cortar
+        # la idea a mitad de frase (el corte por max_len cae donde caiga).
+        for w in reversed(win_words):
+            if _is_sentence_end(w["w"]) and w["e"] - start >= min_len:
+                win_words = [x for x in win_words if x["e"] <= w["e"]]
+                clip_end = w["e"]
+                break
         if clip_end - start < min_len:
             continue
         text = " ".join(w["w"].strip() for w in win_words).strip()
@@ -134,7 +141,8 @@ def _llm_prompt(segments: list[dict], max_clips: int,
         "Reglas obligatorias:\n"
         "- Cada clip debe empezar EXACTAMENTE donde empieza la idea o la frase, "
         "y terminar EXACTAMENTE donde termina la idea. Nunca cortes a mitad de "
-        "una frase ni a mitad de una palabra.\n"
+        "una frase ni a mitad de una palabra. El final debe ser un punto "
+        "final (.), nunca una coma.\n"
         f"- Duración entre {min_len:.0f} y {max_len:.0f} segundos por clip.\n"
         "- El clip debe tener un gancho en los primeros 3 segundos: algo "
         "sorprendente, una pregunta o una frase fuerte.\n"
@@ -236,6 +244,55 @@ def _snap_range(start: float, end: float, words: list[dict]):
     return words[first]["s"], words[last]["e"], first, last
 
 
+_SENTENCE_END = (".", "!", "?", "…")
+
+
+def _is_sentence_end(word: str) -> bool:
+    """True when the word ends a sentence (final ., !, ? or …)."""
+    w = (word or "").strip().rstrip("\"'”»)]}")
+    return w.endswith(_SENTENCE_END)
+
+
+def _snap_to_sentences(first: int, last: int, words: list[dict],
+                       min_seconds: float, max_seconds: float) -> tuple[int, int]:
+    """Move a word range to sentence boundaries: the start goes back to
+    the first word of the sentence containing ``first``; the end goes
+    forward to the last word of the sentence containing ``last`` (or,
+    if that would make the clip longer than ``max_seconds``, back to
+    the previous sentence end). Unchanged when no sentence boundary
+    can be found in the needed direction. (2026-11-10: the LLM ended a
+    clip after 'diríamos,' — a comma — cutting the sentence '...con
+    muchas experiencias variadas... pero no lograba ser contratado.'
+    Word snapping alone cannot catch that; only sentence snapping can.)"""
+    end_t = words[last]["e"]
+    # Start: back to the word after the previous sentence end, if the
+    # clip still fits in max_seconds.
+    for i in range(first - 1, -1, -1):
+        if _is_sentence_end(words[i]["w"]):
+            new_first = i + 1
+            if end_t - words[new_first]["s"] <= max_seconds:
+                first = new_first
+            break
+    # End: forward to the next sentence end, if it fits.
+    start_t = words[first]["s"]
+    for i in range(last, len(words)):
+        if _is_sentence_end(words[i]["w"]):
+            if words[i]["e"] - start_t <= max_seconds:
+                last = i
+            break
+    # If the end is still not a sentence end, fall back to the last
+    # sentence end at or before it (only if the clip stays long enough).
+    if not _is_sentence_end(words[last]["w"]):
+        for i in range(last, first, -1):
+            if _is_sentence_end(words[i]["w"]):
+                if words[i]["e"] - start_t >= min_seconds:
+                    last = i
+                break
+    if last < first:
+        last = first
+    return first, last
+
+
 def _validate_llm_clips(items: list[dict], words: list[dict],
                         t_start: float, t_end: float) -> list[dict]:
     """Validate LLM clips hard and snap them to word boundaries. Drops:
@@ -257,13 +314,17 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
             continue
         if end <= start:
             continue
-        # Clamp into the transcript, then snap to whole words.
+        # Clamp into the transcript, then snap to whole words and then
+        # to sentence boundaries (never cut a sentence mid-way).
         start = max(t_start, min(start, t_end))
         end = max(t_start, min(end, t_end))
         snapped = _snap_range(start, end, words)
         if snapped is None:
             continue
         s, e, first, last = snapped
+        first, last = _snap_to_sentences(first, last, words,
+                                         LLM_MIN_SECONDS, LLM_MAX_SECONDS)
+        s, e = words[first]["s"], words[last]["e"]
         duration = e - s
         if duration < LLM_MIN_SECONDS or duration > LLM_MAX_SECONDS:
             continue

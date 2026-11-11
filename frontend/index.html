@@ -267,6 +267,9 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .live-url:hover{color:#fff}
 .panel .live-meta{font-size:12px;color:#a1a1aa;margin:10px 0 0}
 .panel .live-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.panel .live-actions .icon-btn{background:#27272a;color:#f4f4f5;font-size:15px}
+.panel .live-actions .icon-btn:hover{background:#3f3f46}
+.panel .live-actions .icon-btn.del.confirm{background:#E10600;color:#fff}
 @media(max-width:640px){.panel .live-head{flex-direction:column}.panel .live-thumb{flex:none;width:100%}}
 .panel .clip-card{background:#000;border:3px solid #2e2e33;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 .panel .clip-thumb{position:relative;aspect-ratio:9/16;background:#000;border-radius:22px;overflow:hidden}
@@ -641,18 +644,18 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
     <div class="pane" id="pane-lives" hidden>
       <h3>Lives</h3>
-      <p class="sub">Saca clips de un live en curso, automáticamente: pega el link, elige cuántos clips y cada cuánto, y van apareciendo aquí solos. Funciona con YouTube y con Twitch. Función de los planes Pro y Full.</p>
+      <p class="sub">Clips automáticos de lives en curso · YouTube y Twitch</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
         <div class="card">
-          <label>Link del live (YouTube o Twitch)</label>
-          <input id="liveUrl" type="url" placeholder="https://www.youtube.com/watch?v=... o https://www.twitch.tv/..." style="width:100%">
+          <label>Link del live</label>
+          <input id="liveUrl" type="url" placeholder="https://www.youtube.com/watch?v=…  o  https://www.twitch.tv/…" style="width:100%">
           <div class="row">
-            <div><label>Clips cada vez (máx.)</label><input id="liveClipsPerRound" type="number" value="3" min="1" max="5"></div>
-            <div><label>Cada cuánto (minutos)</label><input id="liveInterval" type="number" value="10" min="2" max="60"></div>
+            <div><label>Clips cada vez</label><select id="liveClipsPerRound"><option value="1">1 clip</option><option value="2">2 clips</option><option value="3" selected>3 clips</option><option value="4">4 clips</option><option value="5">5 clips</option></select></div>
+            <div><label>Cada cuánto</label><select id="liveInterval"><option value="2">cada 2 min</option><option value="5">cada 5 min</option><option value="10" selected>cada 10 min</option><option value="15">cada 15 min</option><option value="30">cada 30 min</option><option value="60">cada 60 min</option></select></div>
           </div>
-          <p class="muted">Cada intervalo se toman los últimos minutos del live y se sacan hasta esa cantidad de clips, que aparecen abajo. El live debe estar en curso.</p>
-          <div style="margin-top:14px"><button id="btnStartLive">Empezar a sacar clips</button></div>
+          <p class="muted" style="font-size:12px">El live debe estar en curso. Los clips aparecen abajo solos.</p>
+          <div style="margin-top:14px"><button id="btnStartLive">▶ Empezar</button></div>
           <p id="liveMsg" class="muted"></p>
         </div>
         <h4 style="margin:20px 0 4px">Mis lives</h4>
@@ -1018,6 +1021,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>

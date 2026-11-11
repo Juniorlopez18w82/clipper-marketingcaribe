@@ -1771,10 +1771,12 @@ const CAMERA_HINTS = {
   follow_speaker: "La cámara sigue a la persona que está hablando. Si no se ve ninguna cara, queda centrada.",
   follow_person: "Sigue siempre a la persona de la zona que elijas. Si no se la ve, queda centrada.",
   dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo.",
+  split: "Para videos de gaming con facecam: la cara del creador arriba y el juego abajo, en dos pantallas.",
 };
 $("cameraMode").onchange = () => {
   const m = $("cameraMode").value;
   $("cameraPersonRow").hidden = m !== "follow_person";
+  $("facecamRow").hidden = m !== "split";
   $("cameraHint").textContent = CAMERA_HINTS[m] || CAMERA_HINTS.center;
 };
 
@@ -1798,6 +1800,7 @@ function buildRenderBody(start, end, edited) {
     cover_at: state.coverAt,
     camera_mode: $("cameraMode").value,
     camera_person: $("cameraPerson").value,
+    facecam_corner: $("facecamCorner").value,
     clip_score: (state.selected && typeof state.selected.score === "number")
       ? state.selected.score : null,
     video_title: state.videoTitle || "",

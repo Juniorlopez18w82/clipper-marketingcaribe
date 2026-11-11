@@ -1664,6 +1664,9 @@ $("hlColor").addEventListener("input", () => {
 function playPreviewClip(c) {
   const pv = $("pvVideo");
   if (!pv || !state.clipsJob) return;
+  // Al elegir otro clip se vuelve a la vista normal (marco + marca +
+  // subtítulos); la portada se ve con su botón o moviendo el control.
+  setCoverMode(false);
   const src = `/api/jobs/${state.clipsJob.id}/source`;
   state.pvClip = { start: c.start, end: c.end };
   const startAt = () => {
@@ -1682,6 +1685,50 @@ function playPreviewClip(c) {
     startAt();
   }
 }
+// ---------- Vista previa de la PORTADA (título de enganche) ----------
+// La portada real es SOLO el fotograma + el texto gancho: sin marco
+// amarillo, sin marca @, sin subtítulos (eso es lo que quema el
+// backend en la tarjeta de 2 s). La vista previa normal muestra el clip
+// con marco, marca y subtítulos, así que al elegir la portada se veía
+// el subtítulo encima — justo lo que Juan dijo que no debe salir.
+// Modo portada: pausa el video en el fotograma elegido, esconde marco /
+// marca / subtítulos y muestra el texto gancho grande y centrado, igual
+// que quedará en el video. Se activa con el botón "Ver portada", al
+// mover el control Portada o al escribir el título de enganche, y se
+// actualiza EN VIVO mientras se escribe.
+function coverTitleText() {
+  const typed = ($("hookTitle") && $("hookTitle").value || "").trim();
+  if (typed) return typed;
+  if (state.selected && state.selected.title) return state.selected.title;
+  return "Título de enganche";
+}
+function updateCoverTitle() {
+  const el = $("pvCoverTitle");
+  if (el) el.textContent = coverTitleText();
+}
+function setCoverMode(on) {
+  const phone = $("phone");
+  if (!phone) return;
+  phone.classList.toggle("cover-mode", !!on);
+  const btn = $("pvCoverBtn");
+  if (btn) btn.textContent = on ? "▶ Ver clip" : "🖼 Ver portada";
+  if (on) {
+    const pv = $("pvVideo");
+    if (pv && state.selected) {
+      pv.pause();
+      try { pv.currentTime = Math.max(0, state.selected.start + state.coverAt + 0.01); } catch (e) { /* aún sin metadatos */ }
+    }
+    updateCoverTitle();
+  }
+}
+$("pvCoverBtn").onclick = () => {
+  const phone = $("phone");
+  setCoverMode(!(phone && phone.classList.contains("cover-mode")));
+};
+$("hookTitle").addEventListener("input", () => {
+  updateCoverTitle();
+  setCoverMode(true);
+});
 $("pvVideo").addEventListener("timeupdate", () => {
   const pv = $("pvVideo");
   if (!state.pvClip) return;
@@ -1720,6 +1767,10 @@ function selectClip(c, el) {
     ? Math.min(Math.max(c.cover_at, 0), clipDur) : 0;
   cov.value = startCover;
   state.coverAt = startCover;
+  // Al abrir Editar se muestra la portada (fotograma + texto gancho,
+  // sin subtítulos) para ver cómo queda antes de guardar.
+  updateCoverTitle();
+  setCoverMode(true);
   $("coverVal").textContent = startCover.toFixed(1) + " s";
   $("btnSaveMeta").hidden = !state.editingClipId;
   $("saveMetaMsg").textContent = "";
@@ -1764,11 +1815,9 @@ $("coverRange").addEventListener("input", () => {
   const v = parseFloat($("coverRange").value || "0");
   state.coverAt = v;
   $("coverVal").textContent = v.toFixed(1) + " s";
-  const pv = $("pvVideo");
-  if (pv && state.selected) {
-    pv.pause();
-    try { pv.currentTime = Math.max(0, state.selected.start + v + 0.01); } catch (e) { /* aún sin metadatos */ }
-  }
+  // Al mover la portada se muestra la vista previa de portada (solo
+  // fotograma + texto gancho, sin subtítulos) para ver cómo queda.
+  setCoverMode(true);
 });
 
 // ---------- Guardar título y portada (re-renderiza el clip) ----------

@@ -142,6 +142,9 @@ class RenderRequest(BaseModel):
     clip_title: str = ""
     clip_score: float | None = None
     video_title: str = ""
+    # Cover offset (s, relative to the clip start) chosen in the editor.
+    # Stored on the clip; only changes the thumbnail in Mis Clips.
+    cover_at: float | None = None
     # --- Configuración: subtítulos ---
     show_subtitles: bool = True
     subtitle_style: str = "viral"  # viral | plain | yellow
@@ -257,6 +260,11 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             source = download_section(url, start, end, job_id)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=model)
+        if not transcript["segments"] or not any(
+                s.get("words") for s in transcript["segments"]):
+            raise RuntimeError(
+                "No se pudo transcribir el audio de este video. "
+                "Prueba con otro rango u otro video.")
         jobs.update(job_id, progress=80,
                     message="La IA está eligiendo los mejores momentos…")
         # Real LLM first (Groq llama, free tier) when a key is set; ANY
@@ -381,7 +389,8 @@ def _run_render_job(job_id: str, req: RenderRequest):
                             uploader=uploader, start=req.start, end=req.end,
                             job_id=(req.job_id or job_id), file=out_name,
                             score=req.clip_score,
-                            section_start=section_start)
+                            section_start=section_start,
+                            cover_at=req.cover_at)
             finally:
                 db.close()
         except Exception:  # noqa: BLE001 — panel record is best-effort
@@ -490,6 +499,30 @@ def api_my_clips(db: Session = Depends(get_db),
     clips = (db.query(Clip).filter(Clip.user_id == user.id)
              .order_by(Clip.created_at.desc()).all())
     return [clip_out(c) for c in clips]
+
+
+class ClipPatchRequest(BaseModel):
+    # Edit the hook title and/or the cover offset of an existing clip,
+    # without re-rendering. cover_at is clamped to the clip's duration.
+    title: str | None = None
+    cover_at: float | None = None
+
+
+@app.patch("/api/me/clips/{clip_id}")
+def api_patch_my_clip(clip_id: int, req: ClipPatchRequest,
+                      db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    clip = db.query(Clip).filter(Clip.id == clip_id).first()
+    if not clip or (clip.user_id != user.id and not user.is_admin):
+        raise HTTPException(404, "Clip no encontrado")
+    if req.title is not None:
+        clip.title = req.title.strip()[:255]
+    if req.cover_at is not None:
+        dur = max(0.0, (clip.end or 0) - (clip.start or 0))
+        clip.cover_at = max(0.0, min(float(req.cover_at), dur))
+    db.commit()
+    db.refresh(clip)
+    return clip_out(clip)
 
 
 # ---------------------------------------------------------------- panel admin

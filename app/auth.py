@@ -47,6 +47,9 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     plan = Column(String(20), nullable=False, default="free")
     is_admin = Column(Boolean, nullable=False, default=False)
+    # Suspendida por el admin (Panel Admin > Usuarios > Suspender):
+    # no puede entrar ni usar el panel hasta que la reactiven.
+    is_suspended = Column(Boolean, nullable=False, default=False)
     # Mi Cuenta / Configuración: nombre que saldrá en el marco y su interruptor.
     brand_text = Column(String(120), nullable=False, default="@marketingcaribe")
     frame_enabled = Column(Boolean, nullable=False, default=True)
@@ -111,6 +114,7 @@ def user_out(user: User) -> dict:
         "email": user.email,
         "plan": user.plan,
         "is_admin": bool(user.is_admin),
+        "is_suspended": bool(getattr(user, "is_suspended", False)),
         "brand_text": user.brand_text,
         "frame_enabled": bool(user.frame_enabled),
         "max_clips": user.max_clips if user.max_clips is not None else 5,
@@ -181,12 +185,19 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> User:
-    """Require a valid token. 401 if missing/invalid."""
+    """Require a valid token. 401 if missing/invalid. A suspended
+    account (is_suspended, set by the admin) gets 403 on every call
+    except for admins themselves, so it cannot use the panel until
+    reactivated."""
     user_id = _user_id_from_token(credentials.credentials) if credentials else None
     user = db.query(User).filter(User.id == user_id).first() if user_id else None
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Inicia sesión para continuar")
+    if getattr(user, "is_suspended", False) and not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Tu cuenta está suspendida. "
+                            "Contacta al administrador.")
     return user
 
 

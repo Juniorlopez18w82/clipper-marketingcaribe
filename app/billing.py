@@ -249,6 +249,35 @@ def approve_request(db, req: PaymentRequest, admin_note: str = ""):
     return sub
 
 
+def assign_plan(db, user_id: int, plan_id: int) -> UserSubscription:
+    """Asigna una membresía MANUALMENTE (admin, sin solicitud de pago
+    ni comprobante): crea la suscripción activa (+duration_days del
+    plan) y actualiza user.plan. Desactiva suscripciones activas
+    anteriores del usuario, igual que approve_request."""
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if plan is None:
+        raise ValueError("El plan no existe")
+    user = db.query(auth.User).filter(auth.User.id == user_id).first()
+    if user is None:
+        raise ValueError("El usuario no existe")
+    now = datetime.now(timezone.utc)
+    for old in (db.query(UserSubscription)
+                .filter(UserSubscription.user_id == user_id,
+                        UserSubscription.status == "active").all()):
+        old.status = "expired"
+        db.add(old)
+    sub = UserSubscription(
+        user_id=user_id, plan_id=plan_id, starts_at=now,
+        ends_at=now + timedelta(days=plan.duration_days or 30),
+        status="active")
+    db.add(sub)
+    user.plan = plan.name
+    db.add(user)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
 def reject_request(db, req: PaymentRequest, admin_note: str = ""):
     req.status = REQ_REJECTED
     req.admin_note = admin_note or ""

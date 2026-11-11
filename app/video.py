@@ -514,9 +514,14 @@ def download_section(url: str, start: float, end: float, job_id: str,
             v_dur, a_dur = _stream_durations(files[0])
             # Audio must cover (nearly) the whole section; video is ~10 s long
             # because of keyframes, so compare audio against the requested length.
-            if a_dur >= (end - start) * 0.8:
+            # Y para VIDEO (2026-11-11): exigir también que el archivo
+            # tenga video. Sin esto, un video cuyo mejor flujo es HLS
+            # (qjn_zvadIdM) baja solo el audio (video 0 KiB) y el audio
+            # pasa la verificación, pero el render falla después porque
+            # ffmpeg no encuentra video ("Cannot determine format").
+            if a_dur >= (end - start) * 0.8 and (audio_only or v_dur >= (end - start) * 0.8):
                 return files[0]
-            errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s for a "
+            errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s video {v_dur:.1f}s for a "
                           f"{end - start:.0f}s section (truncated)")
     if _proxy() and _proxy().startswith("socks"):
         errors.append("hint: YTDLP_PROXY is SOCKS5 — ffmpeg cannot use it; "

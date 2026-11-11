@@ -2,6 +2,12 @@
 const $ = (id) => document.getElementById(id);
 const state = { clipsJob: null, transcript: null, selected: null, words: null,
   user: null, uploadedFile: null, busy: false, pvClip: null,
+  // pvOffset: tiempo (s, relativo a la sección) que corresponde al
+  // tiempo 0 del video de la vista previa. Con clip-video (el video es
+  // solo el trozo del clip) es el inicio del clip; con la fuente
+  // completa es 0. Se usa para convertir tiempos de sección a tiempos
+  // del video y viceversa (subtítulos, portada).
+  pvOffset: 0,
   editingClipId: null, coverAt: 0, canImages: false, canVideos: false,
   videoModels: null, vidPollTimer: null, imageModels: null, imgPollTimer: null,
   userTemplate: "Gancho grande", templateTouched: false,
@@ -1602,7 +1608,7 @@ $("btnClips").onclick = async () => {
       div.className = "clip";
       // Miniatura real: el video de la sección, en el primer fotograma de
       // este clip (#t= con el inicio relativo a la sección).
-      div.innerHTML = `<video muted playsinline preload="metadata" src="/api/jobs/${job.id}/source#t=${c.start.toFixed(1)}"></video>`
+      div.innerHTML = `<video muted playsinline preload="metadata" src="/api/jobs/${job.id}/clip-video?start=${c.abs_start}&end=${c.abs_end}#t=0.1"></video>`
         + `<div class="clip-body"><div class="clip-meta">Clip ${i + 1} · ${c.abs_start}s – ${c.abs_end}s (${c.duration}s) <span class="clip-score">⭐ ${c.score}</span></div>`
         + `<small class="clip-text">${esc(c.text.slice(0, 160))}…</small></div>`;
       div.onclick = () => { state.editingClipId = null; selectClip(c, div); };
@@ -1675,19 +1681,24 @@ $("hlColor").addEventListener("input", () => {
 });
 
 // Reproduce el trozo del clip elegido en la vista previa 9:16 (sin sonido).
+// El video es SOLO el trozo del clip (clip-video, 2026-11-11): el análisis
+// baja solo audio (rápido) y el video se baja bajo demanda para este
+// clip. Por eso el tiempo 0 del video es el inicio del clip
+// (pvOffset = c.start) y no el inicio de la sección.
 function playPreviewClip(c) {
   const pv = $("pvVideo");
   if (!pv || !state.clipsJob) return;
   // Al elegir otro clip se vuelve a la vista normal (marco + marca +
   // subtítulos); la portada se ve con su botón o moviendo el control.
   setCoverMode(false);
-  const src = `/api/jobs/${state.clipsJob.id}/source`;
+  const src = `/api/jobs/${state.clipsJob.id}/clip-video?start=${c.abs_start}&end=${c.abs_end}`;
   state.pvClip = { start: c.start, end: c.end };
+  state.pvOffset = c.start;
   const startAt = () => {
     // Si el usuario ya eligió otro clip mientras cargaban los metadatos,
     // este arranque queda obsoleto.
     if (!state.pvClip || state.pvClip.start !== c.start) return;
-    try { pv.currentTime = Math.max(0, c.start + 0.01); } catch (e) { /* aún sin metadatos */ }
+    try { pv.currentTime = Math.max(0, c.start - state.pvOffset + 0.01); } catch (e) { /* aún sin metadatos */ }
     pv.play().catch(() => {});
   };
   if (pv.dataset.src !== src) {
@@ -1737,7 +1748,9 @@ function setCoverMode(on) {
     const pv = $("pvVideo");
     if (pv && state.selected) {
       pv.pause();
-      try { pv.currentTime = Math.max(0, state.selected.start + state.coverAt + 0.01); } catch (e) { /* aún sin metadatos */ }
+      // Tiempo de sección -> tiempo del video (resta el offset: con
+      // clip-video el tiempo 0 es el inicio del clip).
+      try { pv.currentTime = Math.max(0, state.selected.start + state.coverAt - (state.pvOffset || 0) + 0.01); } catch (e) { /* aún sin metadatos */ }
     }
     updateCoverTitle();
   }
@@ -1812,7 +1825,8 @@ function updateCoverModalPreview() {
   }
   const v = $("coverVideo");
   if (v && state.selected) {
-    try { v.currentTime = Math.max(0, state.selected.start + state.coverAt + 0.01); } catch (e) { /* aún sin metadatos */ }
+    // Tiempo de sección -> tiempo del video (resta el offset).
+    try { v.currentTime = Math.max(0, state.selected.start + state.coverAt - (state.pvOffset || 0) + 0.01); } catch (e) { /* aún sin metadatos */ }
   }
   // Sincroniza los controles con el estado.
   const sync = (id, val) => { const el = $(id); if (el && el.value !== String(val)) el.value = val; };
@@ -1851,11 +1865,13 @@ function openCoverModal() {
   rng.value = state.coverAt;
   $("coverModalVal").textContent = state.coverAt.toFixed(1) + " s";
   const cv = $("coverVideo");
-  const src = `/api/jobs/${state.clipsJob.id}/source`;
+  // El video del modal es el trozo del clip (clip-video): la fuente del
+  // análisis es solo audio, así que /source ya no tiene video.
+  const src = `/api/jobs/${state.clipsJob.id}/clip-video?start=${state.selected.abs_start}&end=${state.selected.abs_end}`;
   if (cv.dataset.src !== src) { cv.dataset.src = src; cv.src = src; cv.load(); }
   m.hidden = false;
   updateCoverModalPreview();
-  try { cv.currentTime = Math.max(0, state.selected.start + state.coverAt + 0.01); } catch (e) {}
+  try { cv.currentTime = Math.max(0, state.selected.start + state.coverAt - (state.pvOffset || 0) + 0.01); } catch (e) {}
 }
 function closeCoverModal() { $("coverModal").hidden = true; }
 $("btnCoverModal").onclick = openCoverModal;
@@ -1903,9 +1919,11 @@ $("pvVideo").addEventListener("timeupdate", () => {
   const pv = $("pvVideo");
   if (!state.pvClip) return;
   const dur = state.pvClip.end - state.pvClip.start;
-  const t = pv.currentTime - state.pvClip.start;
+  // t es relativo al inicio del CLIP (así están state.words): tiempo del
+  // video + pvOffset (inicio del clip en la sección) - inicio del clip.
+  const t = pv.currentTime + (state.pvOffset || 0) - state.pvClip.start;
   if (t >= dur) { // fin del clip: vuelve al inicio (bucle del trozo)
-    try { pv.currentTime = state.pvClip.start + 0.01; } catch (e) {}
+    try { pv.currentTime = Math.max(0, state.pvClip.start - (state.pvOffset || 0) + 0.01); } catch (e) {}
     return;
   }
   if (t >= 0) updatePreviewSubs(t);

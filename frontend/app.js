@@ -2,6 +2,13 @@
 const $ = (id) => document.getElementById(id);
 const state = { clipsJob: null, transcript: null, selected: null, words: null,
   user: null, uploadedFile: null, busy: false, pvClip: null,
+  // camTrack: recorrido de cámara (crop-x cada 2 s) para la vista
+  // previa. La vista previa recorta a 9:16 con CSS centrado y NO
+  // refleja "Seguir al que habla": con Masha a la derecha la vista
+  // previa la cortaba aunque el render sí la encuadraba. El track
+  // viene de /api/jobs/{id}/camera-track y el timeupdate mueve el
+  // encuadre con object-position. null = centrado.
+  camTrack: null, camTrackKey: "",
   // pvOffset: tiempo (s, relativo a la sección) que corresponde al
   // tiempo 0 del video de la vista previa. Con clip-video (el video es
   // solo el trozo del clip) es el inicio del clip; con la fuente
@@ -1707,6 +1714,63 @@ $("hlColor").addEventListener("input", () => {
   }
 });
 
+// ---------- Recorrido de cámara en la vista previa ----------
+// La vista previa recorta el video a 9:16 con CSS (object-fit: cover,
+// centrado) y NO reflejaba el modo de cámara: con "Seguir al que habla"
+// la persona que habla está a un lado y la vista previa la mostraba
+// cortada, aunque el clip renderizado sí la encuadraba bien
+// (comprobado 2026-11-11 con Masha: el render con follow_speaker la
+// centra completa). El backend calcula el mismo recorrido que usa el
+// render (GET /api/jobs/{id}/camera-track) y aquí se mueve el encuadre
+// de la vista previa con object-position mientras suena el clip:
+// crop-x (px) -> % con x / (width - crop_w). Solo para follow_speaker
+// y follow_person; el resto queda centrado (50%).
+async function loadCamTrack() {
+  const pv = $("pvVideo");
+  const key = [
+    state.clipsJob && state.clipsJob.id,
+    state.selected && state.selected.abs_start,
+    state.selected && state.selected.abs_end,
+    $("cameraMode") && $("cameraMode").value,
+    $("cameraPerson") && $("cameraPerson").value,
+  ].join("|");
+  state.camTrackKey = key;
+  const mode = $("cameraMode") && $("cameraMode").value;
+  if (!pv || !state.clipsJob || !state.selected
+      || (mode !== "follow_speaker" && mode !== "follow_person")) {
+    state.camTrack = null;
+    if (pv) pv.style.objectPosition = "50% 50%";
+    return;
+  }
+  try {
+    const person = ($("cameraPerson") && $("cameraPerson").value) || "center";
+    const r = await fetch(`/api/jobs/${state.clipsJob.id}/camera-track?start=${state.selected.abs_start}&end=${state.selected.abs_end}&mode=${mode}&person=${person}`);
+    if (!r.ok) throw new Error("track " + r.status);
+    const track = await r.json();
+    if (state.camTrackKey !== key) return; // el usuario ya cambió de clip
+    state.camTrack = (track && !track.fallback) ? track : null;
+    if (!state.camTrack && pv) pv.style.objectPosition = "50% 50%";
+  } catch (e) {
+    state.camTrack = null;
+    if (pv) pv.style.objectPosition = "50% 50%";
+  }
+}
+function applyCamTrack(t) {
+  const pv = $("pvVideo");
+  if (!pv) return;
+  const tr = state.camTrack;
+  if (!tr || !tr.path || !tr.path.length || !tr.width || !tr.crop_w) {
+    pv.style.objectPosition = "50% 50%";
+    return;
+  }
+  // Muestra del recorrido vigente a este tiempo (pasos de 2 s, como el render).
+  let x = tr.path[0][1];
+  for (const [pt, px] of tr.path) { if (pt <= t) x = px; else break; }
+  const span = tr.width - tr.crop_w;
+  const pct = span > 0 ? Math.max(0, Math.min(100, (x / span) * 100)) : 50;
+  pv.style.objectPosition = pct.toFixed(1) + "% 50%";
+}
+
 // Reproduce el trozo del clip elegido en la vista previa 9:16 (sin sonido).
 // El video es SOLO el trozo del clip (clip-video, 2026-11-11): el análisis
 // baja solo audio (rápido) y el video se baja bajo demanda para este
@@ -1721,6 +1785,9 @@ function playPreviewClip(c) {
   const src = `/api/jobs/${state.clipsJob.id}/clip-video?start=${c.abs_start}&end=${c.abs_end}`;
   state.pvClip = { start: c.start, end: c.end };
   state.pvOffset = c.start;
+  // El encuadre de la vista previa sigue al que habla (si el modo es
+  // follow_speaker / follow_person); si no, queda centrado.
+  loadCamTrack();
   const startAt = () => {
     // Si el usuario ya eligió otro clip mientras cargaban los metadatos,
     // este arranque queda obsoleto.
@@ -1953,7 +2020,7 @@ $("pvVideo").addEventListener("timeupdate", () => {
     try { pv.currentTime = Math.max(0, state.pvClip.start - (state.pvOffset || 0) + 0.01); } catch (e) {}
     return;
   }
-  if (t >= 0) updatePreviewSubs(t);
+  if (t >= 0) { updatePreviewSubs(t); applyCamTrack(t); }
 });
 
 // Sonido de la vista previa: suena por defecto (Juan lo pidió); el botón
@@ -2077,7 +2144,13 @@ $("cameraMode").onchange = () => {
   $("cameraPersonRow").hidden = m !== "follow_person";
   $("facecamRow").hidden = m !== "split";
   $("cameraHint").textContent = CAMERA_HINTS[m] || CAMERA_HINTS.center;
+  // Cambiar el modo mueve el encuadre de la vista previa al instante
+  // (si hay un clip elegido).
+  if (state.selected) loadCamTrack();
 };
+if ($("cameraPerson")) {
+  $("cameraPerson").onchange = () => { if (state.selected) loadCamTrack(); };
+}
 
 // ---------- Renderizar ----------
 // Cuerpo del render (paso 3): lo comparten el botón Render (clip nuevo)

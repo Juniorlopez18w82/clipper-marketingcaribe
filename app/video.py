@@ -30,6 +30,7 @@ YTDLP_PROXY=http://127.0.0.1:1081. Never point it at socks5:// again.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -104,6 +105,98 @@ def video_info(url: str) -> dict:
         "webpage_url": info.get("webpage_url") or url,
         "description": (info.get("description") or "")[:500],
     }
+
+
+def _raw_info(url: str) -> dict | None:
+    """Raw yt-dlp info dict (with formats), trying player clients in
+    order. Returns None when every client is bot-blocked (the caller
+    retries later — never hammer in a tight loop, bursts trigger the
+    bot check)."""
+    for client in PLAYER_CLIENTS:
+        try:
+            with yt_dlp.YoutubeDL(_ydl_opts(client)) as ydl:
+                return ydl.extract_info(url, download=False)
+        except Exception:
+            continue
+    return None
+
+
+def _fetch_text(url: str) -> str:
+    """Fetch a URL as text through the HTTP proxy (for HLS manifests)."""
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    proxy = _proxy()
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        return opener.open(req, timeout=30).read().decode("utf-8", "replace")
+    return urllib.request.urlopen(req, timeout=30).read().decode(
+        "utf-8", "replace")
+
+
+def live_status(url: str) -> dict | None:
+    """Live status + current live edge (seconds from stream start).
+
+    For a live in progress returns {"is_live": True, "title": ...,
+    "uploader": ..., "video_id": ..., "duration": None, "edge": <s>}.
+    The edge comes from the HLS manifest: MEDIA-SEQUENCE (segment index
+    from stream start) + the window's segment durations. YouTube's HLS
+    DVR window only holds ~1 h, so the edge is (sequence + segments) *
+    avg duration — validated 2026-11-10 on the Mansión VIP live (edge
+    ≈ 358665 s ≈ 99.6 h, matching "DÍA 3"). Segments are ~5.0004 s, so
+    the estimate is good to ~30 s; callers must apply a safety margin
+    (never request content past the true edge).
+    For a finished live / VOD returns {"is_live": False, "duration": ...,
+    "edge": None}. Returns None when the info fetch is bot-blocked.
+    """
+    info = _raw_info(url)
+    if info is None:
+        return None
+    base = {
+        "is_live": bool(info.get("is_live")),
+        "title": info.get("title") or "",
+        "uploader": info.get("uploader") or "",
+        "video_id": info.get("id") or "",
+        "duration": info.get("duration"),
+        "edge": None,
+    }
+    if not base["is_live"]:
+        return base
+    try:
+        fmts = [f for f in (info.get("formats") or [])
+                if "m3u8" in (f.get("url") or "")]
+        if not fmts:
+            return base
+        fmts.sort(key=lambda f: f.get("tbr") or 9999)
+        # Prefer 640x360 (decent DVR window); fall back to the cheapest.
+        fmt = next((x for x in fmts
+                    if x.get("resolution") == "640x360"), fmts[0])
+        text = _fetch_text(fmt["url"])
+        # Master playlist -> follow the cheapest media playlist.
+        if "#EXT-X-STREAM-INF" in text:
+            lines = text.splitlines()
+            best = None
+            for i, ln in enumerate(lines):
+                if ln.startswith("#EXT-X-STREAM-INF"):
+                    m = re.search(r"BANDWIDTH=(\d+)", ln)
+                    uri = lines[i + 1].strip() if i + 1 < len(lines) else ""
+                    if uri and not uri.startswith("#"):
+                        bw = int(m.group(1)) if m else 10 ** 9
+                        if best is None or bw < best[0]:
+                            best = (bw, uri)
+            if not best:
+                return base
+            text = _fetch_text(best[1])
+        seq_m = re.search(r"#EXT-X-MEDIA-SEQUENCE:(\d+)", text)
+        durs = [float(x) for x in re.findall(r"#EXTINF:([\d.]+)", text)]
+        if not seq_m or not durs:
+            return base
+        avg = sum(durs) / len(durs)
+        base["edge"] = round((int(seq_m.group(1)) + len(durs)) * avg, 1)
+    except Exception:
+        # Manifest fetch/parse failure: live, but edge unknown.
+        base["edge"] = None
+    return base
 
 
 def _fmt_time(seconds: float) -> str:

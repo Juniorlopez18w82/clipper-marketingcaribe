@@ -17,6 +17,12 @@ av==14.0.0
 numpy==2.2.3
 ctranslate2==4.8.5
 python-multipart==0.0.20
+# --- Cámara con seguimiento (2026-11-10) ---
+# OpenCV headless (sin dependencias GUI) para detectar caras y seguir al
+# que habla / a una persona (app/camera.py). Rueda cp37-abi3 (ABI
+# estable): funciona en Python 3.12. Verificado 2026-11-10: pip install
+# limpio en limpio + import cv2 ok (4.10.0, numpy 2.x).
+opencv-python-headless==4.10.0.84
 # --- Usuarios + base de datos (2026-11-10) ---
 # PostgreSQL en Render (DATABASE_URL), SQLite local si no hay DATABASE_URL.
 sqlalchemy==2.0.36

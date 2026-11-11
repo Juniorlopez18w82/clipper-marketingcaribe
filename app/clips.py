@@ -167,6 +167,23 @@ def _llm_prompt(segments: list[dict], max_clips: int,
         "Eres un editor de clips virales para TikTok, Reels y Shorts. "
         "Te doy la transcripción de un video con marcas de tiempo en segundos.\n"
         f"Devuelve hasta {max_clips} clips, cada uno sobre UN solo tema o idea completa.\n"
+        "QUÉ BUSCAR — elige SOLO momentos que puedan hacerse virales, "
+        "de interés real, de risa o exclusivos:\n"
+        "- Algo gracioso: un chiste, una burla, una reacción, un fail, un momento incómodo.\n"
+        "- Algo sorprendente o impactante: un giro inesperado, una revelación, un dato que nadie espera.\n"
+        "- Algo polémico o una opinión fuerte: una crítica, un debate, algo que genera discusión.\n"
+        "- Algo exclusivo: una confesión, un secreto, información que no se escucha en otro lado.\n"
+        "- Algo emotivo: una historia personal, una reacción genuina, un momento tenso.\n"
+        "- Una frase que la gente querría compartir o comentar.\n"
+        "QUÉ EVITAR — NUNCA elijas estos momentos, aunque parezcan un tema completo:\n"
+        "- La INTRODUCCIÓN del video: saludos, bienvenidas, presentación del canal o del video, "
+        "'hoy vamos a hablar de...', 'en este video...'. Los primeros 60 segundos casi siempre son intro.\n"
+        "- El FINAL del video: despedidas, 'eso fue todo', 'nos vemos en el próximo'.\n"
+        "- Llamados a la acción: 'suscríbete', 'dale like', 'comenta', 'sígueme'.\n"
+        "- Relleno y transiciones: 'bueno, entonces...', 'como les decía...', pausas largas, muletillas.\n"
+        "- Explicaciones aburridas o contexto sin punch: si no tiene gracia, sorpresa, polémica o exclusividad, NO lo elijas.\n"
+        "- Si un momento no es claramente gracioso, sorprendente, polémico, exclusivo o emotivo, NO lo incluyas. "
+        "Mejor devolver menos clips que rellenar con trozos al azar.\n"
         "Reglas obligatorias:\n"
         "- Cada clip debe empezar EXACTAMENTE donde empieza la idea o la frase, "
         "y terminar EXACTAMENTE donde termina la idea. Nunca cortes a mitad de "
@@ -183,8 +200,9 @@ def _llm_prompt(segments: list[dict], max_clips: int,
         "- Devuelve SOLO JSON válido, sin texto fuera del JSON, con este formato:\n"
         '{"clips": [{"start": 12.3, "end": 48.0, '
         '"title": "título corto del tema", '
-        '"reason": "por qué este momento engancha"}, ...]}\n'
+        '"reason": "por qué este momento engancha: gracioso/sorprendente/polémico/exclusivo/emotivo"}, ...]}\n'
         '- "start" y "end" son segundos (un decimal) relativos al inicio del video.\n'
+        '- "reason" debe decir la cualidad viral concreta (gracioso, sorprendente, polémico, exclusivo o emotivo) y por qué.\n'
         '- Si no hay ningún momento claro, devuelve {"clips": []}.\n\n'
         "Transcripción:\n" + transcript
     )
@@ -395,13 +413,16 @@ def _snap_to_sentences(first: int, last: int, words: list[dict],
 
 
 def _validate_llm_clips(items: list[dict], words: list[dict],
-                        t_start: float, t_end: float) -> list[dict]:
+                        t_start: float, t_end: float,
+                        abs_start: float = 0.0) -> list[dict]:
     """Validate LLM clips hard and snap them to word boundaries. Drops:
     non-numeric or missing times, ranges outside the transcript, clips
     shorter than 15 s or longer than 60 s after snapping, clips with
-    fewer than 8 words, and any clip overlapping one already kept
-    (LLM order wins: better-ranked clips are kept first). Returns the
-    kept clips in LLM order with snapped times."""
+    fewer than 8 words, clips that start inside the video intro
+    (absolute start < 15 s — greetings/channel bumper, never viral),
+    and any clip overlapping one already kept (LLM order wins:
+    better-ranked clips are kept first). Returns the kept clips in LLM
+    order with snapped times."""
     kept = []
     for item in items:
         if not isinstance(item, dict):
@@ -423,6 +444,11 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
         if snapped is None:
             continue
         s, e, first, last = snapped
+        # Intro del video: los primeros 15 s absolutos son saludo/bumper,
+        # nunca un momento viral. Solo aplica si el rango analizado
+        # empieza en el inicio del video (abs_start ≈ 0).
+        if abs_start + s < 15.0:
+            continue
         first, last = _snap_to_sentences(first, last, words,
                                          LLM_MIN_SECONDS, LLM_MAX_SECONDS)
         s, e = words[first]["s"], words[last]["e"]
@@ -455,7 +481,8 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
 
 def build_candidates_llm(segments: list[dict], max_clips: int = LLM_MAX_CLIPS,
                          min_len: float = 20.0,
-                         max_len: float = LLM_MAX_SECONDS) -> list[dict] | None:
+                         max_len: float = LLM_MAX_SECONDS,
+                         abs_start: float = 0.0) -> list[dict] | None:
     """Topic-aware clip selection with a real LLM (Groq gpt-oss, free tier).
 
     Returns candidates in the EXACT shape the frontend already uses
@@ -480,7 +507,8 @@ def build_candidates_llm(segments: list[dict], max_clips: int = LLM_MAX_CLIPS,
     items = _parse_llm_clips(content)
     if items is None:
         return None
-    valid = _validate_llm_clips(items, words, t_start, t_end)
+    valid = _validate_llm_clips(items, words, t_start, t_end,
+                                abs_start=abs_start)
     if not valid:
         logger.warning("Groq LLM returned no valid clips; "
                        "falling back to heuristic")

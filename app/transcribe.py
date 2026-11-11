@@ -109,26 +109,57 @@ def _map_groq_response(payload: dict) -> list[dict]:
     return out_segments
 
 
-def _transcribe_groq(wav_path: Path) -> list[dict] | None:
-    """Try Groq Whisper. Returns segments on success, None when Groq
-    was not attempted or failed — the caller then falls back to local
-    faster-whisper. An EMPTY result is treated as a failure too: a
-    real 60 s clip of speech must not transcribe to zero segments
-    (seen 2026-11-10: Groq answered 200 with no segments for a WAV
-    that curl transcribed into 18 segments), so returning None lets
-    the local engine retry instead of the job ending with 0 clips.
-    A genuinely silent video then transcribes empty locally as well,
-    and the clips job fails with a clear message (see main.py)."""
-    key = os.environ.get("GROQ_API_KEY")
-    if not key:
-        return None
-    if not _groq_eligible(wav_path):
-        size_mb = wav_path.stat().st_size / (1024 * 1024)
-        logger.warning(
-            "Groq skipped: wav %.1f MB exceeds the 25 MB free-tier limit; "
-            "using local faster-whisper", size_mb)
-        return None
+# Trozo máximo por llamada a Groq: el WAV es 16 kHz mono (32 KB/s), así
+# que 720 s ≈ 23 MB, por debajo del límite de 25 MB del plan gratis.
+GROQ_CHUNK_SECONDS = 720
 
+
+def _wav_duration(wav_path: Path) -> float:
+    with wave.open(str(wav_path), "rb") as w:
+        return w.getnframes() / float(w.getframerate() or 16000)
+
+
+def _offset_segments(segments: list[dict], offset: float) -> list[dict]:
+    for s in segments:
+        s["start"] = round(float(s.get("start", 0) or 0) + offset, 2)
+        s["end"] = round(float(s.get("end", 0) or 0) + offset, 2)
+        for w in s.get("words", []):
+            w["s"] = round(float(w.get("s", 0) or 0) + offset, 2)
+            w["e"] = round(float(w.get("e", 0) or 0) + offset, 2)
+    return segments
+
+
+def _split_wav(wav_path: Path,
+               chunk_seconds: int = GROQ_CHUNK_SECONDS) -> list[tuple[Path, float]]:
+    """Divide un WAV en trozos con ffmpeg (copia, sin recodificar).
+    Devuelve [(ruta_del_trozo, desplazamiento_en_segundos)] con los
+    desplazamientos reales medidos de cada trozo."""
+    for stale in wav_path.parent.glob(wav_path.stem + "_part*.wav"):
+        try:
+            stale.unlink(missing_ok=True)
+        except OSError:
+            pass
+    out_pattern = str(wav_path.with_name(wav_path.stem + "_part%03d.wav"))
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(wav_path),
+         "-f", "segment", "-segment_time", str(chunk_seconds),
+         "-c", "copy", out_pattern],
+        capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg wav split failed: {proc.stderr[-500:]}")
+    parts = sorted(wav_path.parent.glob(wav_path.stem + "_part*.wav"))
+    out: list[tuple[Path, float]] = []
+    offset = 0.0
+    for p in parts:
+        out.append((p, offset))
+        offset += _wav_duration(p)
+    return out
+
+
+def _transcribe_groq_one(wav_path: Path, key: str) -> list[dict] | None:
+    """Una llamada a Groq Whisper. Devuelve los segmentos (posiblemente
+    vacíos si el trozo no tiene habla) o None si la llamada falló —
+    el llamador decide si reintenta en local."""
     boundary = uuid.uuid4().hex
     fields = [
         ("model", GROQ_MODEL),
@@ -168,11 +199,57 @@ def _transcribe_groq(wav_path: Path) -> list[dict] | None:
                        "falling back to local faster-whisper", e)
         return None
     try:
-        segments = _map_groq_response(payload)
+        return _map_groq_response(payload)
     except Exception as e:  # noqa: BLE001 — unexpected response shape
         logger.warning("Groq response could not be parsed (%s); "
                        "falling back to local faster-whisper", e)
         return None
+
+
+def _transcribe_groq(wav_path: Path) -> list[dict] | None:
+    """Try Groq Whisper. Returns segments on success, None when Groq
+    was not attempted or failed — the caller then falls back to local
+    faster-whisper. An EMPTY result is treated as a failure too: a
+    real 60 s clip of speech must not transcribe to zero segments
+    (seen 2026-11-10: Groq answered 200 with no segments for a WAV
+    that curl transcribed into 18 segments), so returning None lets
+    the local engine retry instead of the job ending with 0 clips.
+    A genuinely silent video then transcribes empty locally as well,
+    and the clips job fails with a clear message (see main.py).
+    Audios largos: Groq solo acepta 25 MB por llamada, así que un WAV
+    mayor se parte en trozos de ~12 min, se transcribe cada uno y se
+    unen los segmentos con sus desplazamientos — la transcripción
+    rápida funciona para videos de cualquier duración."""
+    key = os.environ.get("GROQ_API_KEY")
+    if not key:
+        return None
+    if _groq_eligible(wav_path):
+        segments = _transcribe_groq_one(wav_path, key)
+        if segments is None:
+            return None
+    else:
+        # Audio largo: partir en trozos y unir. Si un trozo falla,
+        # todo el intento cae al motor local (como antes).
+        size_mb = wav_path.stat().st_size / (1024 * 1024)
+        logger.info("Groq: wav %.1f MB, transcribiendo por trozos", size_mb)
+        try:
+            parts = _split_wav(wav_path)
+        except Exception as e:  # noqa: BLE001 — ffmpeg split failed
+            logger.warning("Groq split failed (%s); falling back to local", e)
+            return None
+        segments = []
+        try:
+            for chunk_path, offset in parts:
+                chunk_segs = _transcribe_groq_one(chunk_path, key)
+                if chunk_segs is None:
+                    return None
+                segments.extend(_offset_segments(chunk_segs, offset))
+        finally:
+            for chunk_path, _ in parts:
+                try:
+                    chunk_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
     if not segments:
         logger.warning("Groq transcription returned no segments; "
                        "falling back to local faster-whisper")

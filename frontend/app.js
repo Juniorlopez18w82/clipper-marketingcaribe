@@ -553,6 +553,7 @@ $("btnSaveSettings").onclick = async () => {
 // oscuro). Sin score guardado no se inventa ningún %: no sale fuego.
 const DL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/></svg>';
 const EDIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
+const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 function fmtDur(s) {
   s = Math.max(0, Math.round(s || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -572,6 +573,7 @@ function clipRow(c, admin) {
     ? `<div class="muted small">${esc(c.user_name || "")} · ${esc(c.user_email || "")}</div>` : "";
   div.innerHTML = `<div class="clip-thumb">${thumb}
       <div class="clip-top">${fire}<span class="dur-badge">${dur}</span></div>
+      ${c.download_url ? `<button class="clip-play" title="Reproducir" aria-label="Reproducir">${PLAY_SVG}</button>` : ""}
     </div>
     <div class="clip-body">
       <div class="clip-title">${esc(c.title || "Clip")}</div>
@@ -583,8 +585,41 @@ function clipRow(c, admin) {
       </div>
     </div>`;
   div.querySelector(".icon-btn.edit").onclick = () => editClip(c);
+  const playBtn = div.querySelector(".clip-play");
+  if (playBtn) playBtn.onclick = (e) => { e.stopPropagation(); openClipModal(c); };
+  div.querySelector(".clip-thumb").onclick = () => openClipModal(c);
   return div;
 }
+
+// Reproducir un clip en un modal (con sonido), para verlo sin salir de
+// Mis Clips. Al cerrar se pausa el video para que no siga sonando.
+let clipModalClip = null;
+function openClipModal(c) {
+  if (!c.download_url) return;
+  clipModalClip = c;
+  $("clipModalTitle").textContent = c.title || "Clip";
+  const dur = fmtDur((c.end || 0) - (c.start || 0));
+  const fire = (typeof c.score === "number") ? `🔥 ${Math.round(c.score)}% · ` : "";
+  $("clipModalMeta").textContent = `${fire}${dur}`;
+  const v = $("clipModalVideo");
+  v.src = c.download_url;
+  $("clipModalDl").href = c.download_url;
+  $("clipModalDl").setAttribute("download", c.file || "clip.mp4");
+  $("clipModal").hidden = false;
+  v.play().catch(() => {});
+}
+function closeClipModal() {
+  const v = $("clipModalVideo");
+  v.pause();
+  v.removeAttribute("src");
+  v.load();
+  $("clipModal").hidden = true;
+  clipModalClip = null;
+}
+$("clipModalClose").onclick = closeClipModal;
+$("clipModal").addEventListener("click", (e) => { if (e.target === $("clipModal")) closeClipModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("clipModal").hidden) closeClipModal(); });
+$("clipModalEdit").onclick = () => { const c = clipModalClip; closeClipModal(); if (c) editClip(c); };
 
 // Editar: reabre el clip en el editor de subtítulos del creador
 // (paso 3), con su transcripción y su rango, para corregir subtítulos

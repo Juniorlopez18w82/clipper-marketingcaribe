@@ -482,19 +482,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
       <p id="accMsg" class="muted"></p>
       </div>
-      <div class="card">
-        <h4>Retiros</h4>
-        <p class="muted">Pide un retiro y el admin lo aprueba o lo rechaza.</p>
-        <label>Monto (RD$)</label>
-        <input id="wdAmount" type="number" min="1" placeholder="Ej: 1000">
-        <label>Método de retiro</label>
-        <input id="wdMethod" type="text" placeholder="Ej: Transferencia Banco Popular">
-        <label>Detalles (cuenta, titular…)</label>
-        <textarea id="wdDetails" rows="2" placeholder="Ej: Cuenta de ahorros 123-456789-0, Juan Pérez"></textarea>
-        <div style="margin-top:14px"><button id="btnWithdraw">Pedir retiro</button></div>
-        <p id="wdMsg" class="muted"></p>
-        <div id="myWithdrawals" style="margin-top:14px"></div>
-      </div>
       </div>
     </div>
 
@@ -507,7 +494,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <button class="mini-tab" data-admin="requests">Solicitudes de pago</button>
         <button class="mini-tab" data-admin="plans">Planes</button>
         <button class="mini-tab" data-admin="methods">Métodos de pago</button>
-        <button class="mini-tab" data-admin="withdrawals">Retiros</button>
         <button class="mini-tab" data-admin="settings">Configuración</button>
       </div>
       <div class="admin-pane" id="adminPane-users">
@@ -549,12 +535,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <div class="row"><div><label>Número de cuenta</label><input id="nmAccount" type="text"></div><div><label>Titular</label><input id="nmHolder" type="text"></div></div>
           <label>Instrucciones</label><textarea id="nmInstr" rows="2" placeholder="Ej: Envía el comprobante por WhatsApp…"></textarea>
           <div style="margin-top:12px"><button id="btnNewMethod">Crear método de pago</button></div>
-        </div>
-      </div>
-      <div class="admin-pane" id="adminPane-withdrawals" hidden>
-        <div class="card">
-          <h4>Retiros</h4>
-          <div id="adminWithdrawals"><p class="muted">Cargando…</p></div>
         </div>
       </div>
       <div class="admin-pane" id="adminPane-settings" hidden>

@@ -95,7 +95,6 @@ function showUser(user) {
     fillConfig(user);
     updatePreview();
     loadPanel();
-    loadMyWithdrawals();
     // Al entrar, el panel SE ABRE SOLO: el panel es la app, la landing
     // es solo la puerta.
     openPanel();
@@ -178,7 +177,7 @@ document.querySelectorAll("#adminTabs .mini-tab").forEach((btn) => {
     document.querySelectorAll(".admin-pane").forEach((p) => p.hidden = true);
     $("adminPane-" + btn.dataset.admin).hidden = false;
     const loaders = { users: loadAdminUsers, clips: loadAdminClips, requests: loadAdminRequests,
-      plans: loadAdminPlans, methods: loadAdminMethods, withdrawals: loadAdminWithdrawals,
+      plans: loadAdminPlans, methods: loadAdminMethods,
       settings: loadAdminSettings };
     if (loaders[btn.dataset.admin]) loaders[btn.dataset.admin]();
   };
@@ -386,28 +385,6 @@ $("btnNewMethod").onclick = async () => {
     loadAdminMethods();
   } catch { alert("No se pudo crear el método"); }
 };
-async function loadAdminWithdrawals() {
-  const box = $("adminWithdrawals");
-  try {
-    const list = await apiFetch("/api/admin/withdrawals", { headers: authHeaders() });
-    box.innerHTML = "";
-    if (!list.length) { box.innerHTML = "<p class='muted'>Aún no hay solicitudes de retiro.</p>"; return; }
-    list.forEach((w) => {
-      const div = document.createElement("div");
-      div.className = "rowline";
-      div.innerHTML = `<div><b>RD$ ${w.amount_dop.toLocaleString("es-DO")}</b> · ${w.user_name || ""} (${w.user_email || ""})<br><small>${w.method} · ${w.details || ""} · ${w.created_at ? w.created_at.slice(0, 10) : ""}</small></div>
-        <span class="badge ${w.status === "approved" ? "aprobado" : ""}">${w.status === "pending" ? "Pendiente" : w.status === "approved" ? "Aprobado" : "Rechazado"}</span>`;
-      if (w.status === "pending") {
-        const acts = document.createElement("div");
-        acts.innerHTML = `<button class="small" data-act="approve">Aprobar</button> <button class="small black" data-act="reject">Rechazar</button>`;
-        acts.querySelector('[data-act="approve"]').onclick = async () => { await apiFetch(`/api/admin/withdrawals/${w.id}/approve`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminWithdrawals(); };
-        acts.querySelector('[data-act="reject"]').onclick = async () => { await apiFetch(`/api/admin/withdrawals/${w.id}/reject`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) }); loadAdminWithdrawals(); };
-        div.appendChild(acts);
-      }
-      box.appendChild(div);
-    });
-  } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar los retiros.</p>"; }
-}
 async function loadAdminSettings() {
   try {
     const s = await apiFetch("/api/admin/settings", { headers: authHeaders() });
@@ -518,7 +495,6 @@ function loadAdmin() {
   loadAdminRequests();
   loadAdminPlans();
   loadAdminMethods();
-  loadAdminWithdrawals();
   loadAdminSettings();
 }
 
@@ -531,31 +507,6 @@ $("btnSaveAccount").onclick = async () => {
     showUser(d);
   } catch (e) { $("accMsg").textContent = "Error: " + e.message; }
 };
-
-// ---------- Retiros (usuario) ----------
-$("btnWithdraw").onclick = async () => {
-  const amount = parseInt($("wdAmount").value || "0", 10);
-  const method = $("wdMethod").value.trim();
-  if (!amount || amount <= 0) return $("wdMsg").textContent = "Pon un monto mayor que 0.";
-  if (!method) return $("wdMsg").textContent = "Indica el método de retiro.";
-  try {
-    await apiFetch("/api/withdrawals", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ amount_dop: amount, method, details: $("wdDetails").value.trim() }) });
-    $("wdMsg").textContent = "Solicitud enviada. Queda Pendiente hasta que el admin la revise.";
-    $("wdAmount").value = ""; $("wdMethod").value = ""; $("wdDetails").value = "";
-    loadMyWithdrawals();
-  } catch (e) { $("wdMsg").textContent = "Error: " + e.message; }
-};
-async function loadMyWithdrawals() {
-  const box = $("myWithdrawals");
-  if (!box) return;
-  try {
-    const list = await apiFetch("/api/withdrawals/mine", { headers: authHeaders() });
-    if (!list.length) { box.innerHTML = "<p class='muted'>No tienes retiros todavía.</p>"; return; }
-    box.innerHTML = "<h4 style='font-size:16px'>Mis retiros</h4>" + list.map((w) =>
-      `<div class="rowline"><div><b>RD$ ${w.amount_dop.toLocaleString("es-DO")}</b> · ${w.method}<br><small>${w.created_at ? w.created_at.slice(0, 10) : ""}</small></div><span class="badge ${w.status === "approved" ? "aprobado" : ""}">${w.status === "pending" ? "Pendiente" : w.status === "approved" ? "Aprobado" : "Rechazado"}</span></div>`).join("");
-  } catch { box.innerHTML = ""; }
-}
 
 // ---------- Poll de jobs (con reintentos ante respuestas vacías) ----------
 async function pollJob(jobId, onProgress) {

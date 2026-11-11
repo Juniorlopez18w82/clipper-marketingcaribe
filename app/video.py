@@ -40,7 +40,7 @@ import yt_dlp
 from .config import BASE_DIR, SOURCES_DIR
 
 # Order matters: android first — it bypasses the web bot check most often.
-PLAYER_CLIENTS = ["android", "tv_embedded", "web"]
+PLAYER_CLIENTS = ["tv_embedded", "android", "web"]
 
 
 def _cookies_file() -> str | None:
@@ -275,11 +275,13 @@ def _stream_durations(path: Path) -> tuple[float, float]:
     return v_dur, a_dur
 
 
-# Format selectors tried in order per client. The android client only
-# offers the combined format 18 (640x360 MP4), so the bv+ba selector
-# resolves to it via its /b fallback — but if a client ever reports
-# "Requested format is not available", fall back to 18/best explicitly.
+# Format selectors tried in order per client. 2026-11-11 (calidad): antes
+# android iba primero y solo ofrece el formato 18 (640x360), así que
+# TODOS los clips salían en 360p y se veían borrosos al subirlos a
+# 1080x1920. Ahora tv_embedded va primero (ofrece hasta 1080p60) y el
+# primer selector pide hasta 1080p; android queda como fallback 360p.
 FORMAT_SELECTORS = [
+    "bv[height<=1080]+ba/b[height<=1080]",
     "bv[height<=720]+ba/b[height<=720]",
     "18/best[height<=720]/best",
 ]
@@ -288,7 +290,7 @@ FORMAT_SELECTORS = [
 def download_section(url: str, start: float, end: float, job_id: str) -> Path:
     """Download only [start, end] (absolute seconds in the original video).
 
-    Returns the downloaded file. Format: best video <=720p + audio, merged
+    Returns the downloaded file. Format: best video <=1080p + audio, merged
     by ffmpeg (yt-dlp does the merge; the section cut is keyframe-based,
     so the file can be a few seconds longer than requested — render.py
     trims exactly with -ss/-t).

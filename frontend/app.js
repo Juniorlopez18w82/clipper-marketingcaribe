@@ -811,8 +811,18 @@ function clipRow(c, admin) {
   const dur = fmtDur((c.end || 0) - (c.start || 0));
   const fire = (typeof c.score === "number")
     ? `<span class="fire-badge">🔥 ${Math.round(c.score)}%</span>` : "";
+  // La miniatura es la PORTADA configurada (2026-11-11): si el clip tiene
+  // título de enganche, el video empieza con la tarjeta de portada (2 s
+  // con el fotograma + el título), así que la miniatura es el fotograma
+  // a 1 s, en medio de la portada. Si no tiene título, no hay tarjeta y
+  // la miniatura es el fotograma elegido con cover_at. Antes se usaba
+  // siempre #t=cover_at, que con tarjeta mostraba un fotograma del clip
+  // (y desplazado 2 s) en vez de la portada.
+  const hasTitleCard = !!(c.title && String(c.title).trim());
+  const thumbTime = hasTitleCard ? 1
+    : (typeof c.cover_at === "number" ? c.cover_at : 0);
   const thumb = c.download_url
-    ? `<video muted playsinline preload="metadata" src="${c.download_url}${typeof c.cover_at === "number" ? "#t=" + c.cover_at : ""}"></video>`
+    ? `<video muted playsinline preload="metadata" src="${c.download_url}#t=${thumbTime}"></video>`
     : `<div class="clip-thumb-empty">Sin video</div>`;
   const date = c.created_at ? c.created_at.slice(0, 10) : "";
   const meta = [c.uploader || "", date].filter(Boolean).join(" · ");

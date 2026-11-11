@@ -403,6 +403,82 @@ def _split_crop(w: int, h: int, corner: str = "top-left") -> tuple[tuple[int, in
     return fc, gm
 
 
+def _detect_facecam_box(source: Path, start: float, duration: float,
+                        corner: str = "top-left") -> tuple[int, int, int, int] | None:
+    """Localiza la cara de la facecam con precisión (2026-11-11, queja
+    de Juan: el recorte fijo no dejaba la cara fija arriba).
+
+    Extrae 3 fotogramas del clip, detecta caras (Haar) dentro de la
+    zona de la esquina, y devuelve el rectángulo de encuadre de la
+    facecam: la cara detectada (mediana de los 3 fotogramas) ampliada
+    para incluir hombros (2.2x ancho, 2.6x alto, centrada en la cara),
+    recortada al aspecto del panel 9/8 y a los límites del fotograma.
+    Devuelve None si no hay cara en la esquina en ningún fotograma.
+    """
+    import cv2
+
+    try:
+        cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        if cascade.empty():
+            return None
+        vw, vh = probe_size(source)
+        corner = (corner or "top-left").strip().lower()
+        # Zona de búsqueda: la mitad de la esquina (un poco más amplia
+        # que la zona de recorte, para no perder la cara si está en el
+        # borde).
+        zw, zh = vw * 0.45, vh * 0.55
+        if corner == "top-left":
+            zx, zy = 0, 0
+        elif corner == "top-right":
+            zx, zy = vw - zw, 0
+        elif corner == "bottom-left":
+            zx, zy = 0, vh - zh
+        else:
+            zx, zy = vw - zw, vh - zh
+        boxes: list[tuple[float, float, float, float]] = []
+        with tempfile.TemporaryDirectory(prefix="facecam_") as td:
+            td = Path(td)
+            for i, frac in enumerate((0.25, 0.5, 0.75)):
+                t = start + duration * frac
+                frame = td / f"f{i}.png"
+                _run(["ffmpeg", "-y", "-v", "error", "-ss", str(t),
+                      "-i", str(source), "-frames:v", "1", str(frame)],
+                     "facecam frame")
+                img = cv2.imread(str(frame))
+                if img is None:
+                    continue
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                roi = gray[int(zy):int(zy + zh), int(zx):int(zx + zw)]
+                faces = cascade.detectMultiScale(
+                    roi, scaleFactor=1.1, minNeighbors=4,
+                    minSize=(30, 30))
+                if len(faces) == 0:
+                    continue
+                # La cara más grande de la zona (la facecam es la cara
+                # principal de esa esquina).
+                x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
+                boxes.append((zx + x + fw / 2, zy + y + fh / 2,
+                              float(fw), float(fh)))
+        if not boxes:
+            return None
+        boxes.sort(key=lambda b: b[0])
+        cx, cy, fw, fh = boxes[len(boxes) // 2]
+        # Encuadre facecam: hombros incluidos, centrado en la cara.
+        bw, bh = fw * 2.2, fh * 2.6
+        panel_aspect = 9 / 8
+        if bw / bh >= panel_aspect:
+            cw, ch = bh * panel_aspect, bh
+        else:
+            cw, ch = bw, bw / panel_aspect
+        x = max(0.0, min(cx - cw / 2, vw - cw))
+        y = max(0.0, min(cy - ch * 0.38, vh - ch))
+        return (int(round(cw / 2) * 2), int(round(ch / 2) * 2),
+                int(round(x / 2) * 2), int(round(y / 2) * 2))
+    except Exception:
+        return None
+
+
 def _path_x_at(path: list, t: float) -> float:
     """Crop-x of the follow path nearest to time t (path is smoothed)."""
     best = path[0][1]
@@ -530,7 +606,7 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
         f":textfile={title_file}:fontsize={size}:fontcolor=white:"
         "x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.55:boxborderw=28:"
         "line_spacing=12",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-r", "30", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-shortest", str(card),
     ], "title card video")
@@ -575,7 +651,7 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
             "-ss", str(start_in_source + t), "-i", str(source), "-t", str(cd),
             "-vf", f"crop=ih*9/16:ih:{x}:0,scale={out_w}:{out_h},setpts=PTS-STARTPTS",
             "-af", "asetpts=PTS-STARTPTS",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-r", "30",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
             "-c:a", "aac", "-b:a", "128k", str(chunk),
         ], f"follow chunk {i}")
         chunks.append(chunk)
@@ -591,7 +667,7 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
         "-f", "concat", "-safe", "0", "-i", str(concat_file),
         "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
         "-map", "[out]", "-map", "[aout]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-r", "30",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
         "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
     ], "follow final pass")
     return output
@@ -724,9 +800,15 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 )
             elif mode == "split":
                 # Pantalla dividida: facecam arriba, juego abajo.
+                # La cara se localiza por detección (fija y precisa);
+                # si no hay cara en la esquina, se usa el recorte fijo.
                 vw, vh = probe_size(source)
-                (fcw, fch, fcx, fcy), (gw, gh, gx, gy) = _split_crop(
-                    vw, vh, facecam_corner)
+                fc = _detect_facecam_box(source, start_in_source,
+                                         duration, facecam_corner)
+                if fc is None:
+                    fc, _ = _split_crop(vw, vh, facecam_corner)
+                _, (gw, gh, gx, gy) = _split_crop(vw, vh, facecam_corner)
+                fcw, fch, fcx, fcy = fc
                 base = (
                     f"[0:v]split=2[fc][gm];"
                     f"[fc]crop={fcw}:{fch}:{fcx}:{fcy},scale={out_w}:{out_h // 2}[top];"
@@ -745,7 +827,7 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 "-ss", str(start_in_source), "-i", str(source), "-t", str(duration),
                 "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
                 "-map", "[out]", "-map", "[aout]",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-r", "30",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
                 "-c:a", "aac", "-b:a", "128k", "-shortest", str(main_path),
             ], "render")
         # --- Portada / título de enganche (2026-11-11) ---

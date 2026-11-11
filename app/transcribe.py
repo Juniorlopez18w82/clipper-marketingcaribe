@@ -11,7 +11,7 @@ Proven 2026-11-10 (clipper-prueba/transcribe2.py + transcribe_base.py):
 Groq (added 2026-11-10, Juan's choice): local faster-whisper is too slow
 on Render's free server (shared CPU, 512 MB), so when GROQ_API_KEY is
 set, transcription goes to Groq's free tier instead — same Whisper,
-model whisper-large-v3-turbo, ~160x realtime, no card. Free-tier limits:
+model whisper-large-v3, ~160x realtime, no card. Free-tier limits:
 25 MB max file per request, 2,000 requests/day, 8 h audio/day. Any Groq
 failure falls back to local faster-whisper automatically — a Groq outage
 must never fail a clips job.
@@ -41,7 +41,7 @@ _model = None
 
 # --- Groq Whisper (free tier) -------------------------------------------
 GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
-GROQ_MODEL = "whisper-large-v3-turbo"
+GROQ_MODEL = "whisper-large-v3"
 # Free tier: 25 MB max file per request. Larger files go local instead.
 GROQ_MAX_FILE_BYTES = 25 * 1024 * 1024
 GROQ_TIMEOUT = 120  # seconds per request
@@ -177,6 +177,19 @@ def _transcribe_groq(wav_path: Path) -> list[dict] | None:
         logger.warning("Groq transcription returned no segments; "
                        "falling back to local faster-whisper")
         return None
+    # Calidad mínima: una transcripción real de N segundos de habla
+    # tiene del orden de 2 palabras por segundo. Si Groq devuelve
+    # poquísimas palabras para el tramo (visto 2026-11-10: 8 palabras
+    # en 61 s, con una alucinación "¡Suscríbete al canal!" de 30 s,
+    # mientras whisper-large-v3 —sin turbo— daba 107 palabras del
+    # mismo audio), el resultado es basura y el local lo hace mejor.
+    total_words = sum(len(s.get("words", [])) for s in segments)
+    span = max((float(s.get("end", 0) or 0) for s in segments), default=0.0)
+    if total_words < max(8.0, span / 3.0):
+        logger.warning("Groq transcription too sparse (%d words in %.0f s); "
+                       "falling back to local faster-whisper",
+                       total_words, span)
+        return None
     return segments
 
 
@@ -224,7 +237,7 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None) -> dict
     Engine: Groq Whisper first when GROQ_API_KEY is set (fast, free
     tier); any Groq failure falls back to local faster-whisper, so the
     return shape is identical either way. ``model`` only applies to the
-    local engine; Groq always uses whisper-large-v3-turbo.
+    local engine; Groq always uses whisper-large-v3.
     """
     wav_path = TRANSCRIPTS_DIR / f"{job_id}.wav"
     extract_wav(source, wav_path)

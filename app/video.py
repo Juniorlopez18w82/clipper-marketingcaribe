@@ -146,6 +146,14 @@ def live_status(url: str) -> dict | None:
     ≈ 358665 s ≈ 99.6 h, matching "DÍA 3"). Segments are ~5.0004 s, so
     the estimate is good to ~30 s; callers must apply a safety margin
     (never request content past the true edge).
+    Twitch: MEDIA-SEQUENCE can RESET to 0 mid-stream (it is relative
+    to the current playlist window, not the stream start), so the
+    sequence math gives a bogus tiny edge and the monitor requests a
+    negative window and finds nothing — that is why the KaiCenat
+    session produced 0 clips. For Twitch the manifest carries the
+    true elapsed time, so the edge prefers #EXT-X-TWITCH-TOTAL-SECS
+    (end of the window), else #EXT-X-TWITCH-ELAPSED-SECS (start of
+    the window) + the window duration.
     For a finished live / VOD returns {"is_live": False, "duration": ...,
     "edge": None}. Returns None when the info fetch is bot-blocked.
     """
@@ -193,7 +201,26 @@ def live_status(url: str) -> dict | None:
         if not seq_m or not durs:
             return base
         avg = sum(durs) / len(durs)
-        base["edge"] = round((int(seq_m.group(1)) + len(durs)) * avg, 1)
+        # Twitch: MEDIA-SEQUENCE can RESET to 0 mid-stream (it is
+        # relative to the current playlist window, not the stream
+        # start), so the sequence math gives a bogus tiny edge (e.g.
+        # 6 s on a 32 h stream) and the monitor then requests a
+        # negative window and finds nothing. Twitch puts the true
+        # elapsed time in the manifest itself — prefer it.
+        # TOTAL-SECS is the edge (end of the playlist window);
+        # ELAPSED-SECS is the start of the window.
+        total_m = re.search(r"#EXT-X-TWITCH-TOTAL-SECS:([\d.]+)", text)
+        if total_m:
+            base["edge"] = round(float(total_m.group(1)), 1)
+        else:
+            elapsed_m = re.search(
+                r"#EXT-X-TWITCH-ELAPSED-SECS:([\d.]+)", text)
+            if elapsed_m:
+                base["edge"] = round(
+                    float(elapsed_m.group(1)) + len(durs) * avg, 1)
+            else:
+                base["edge"] = round(
+                    (int(seq_m.group(1)) + len(durs)) * avg, 1)
     except Exception:
         # Manifest fetch/parse failure: live, but edge unknown.
         base["edge"] = None

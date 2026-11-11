@@ -9,6 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -sL https://github.com/pufferffish/wireproxy/releases/download/v1.1.3/wireproxy_linux_amd64.tar.gz \
   | tar xz -C /usr/local/bin wireproxy \
  && chmod +x /usr/local/bin/wireproxy
+# deno 2.x — runtime JS para yt-dlp (2026-11-11): sin un runtime JS,
+# yt-dlp salta el cliente tv_embedded ("Skipping unsupported client")
+# y la descarga cae al cliente web (bloqueado por YouTube) y sale
+# corrupta — eso rompió el render dual de qjn_zvadIdM. Con deno,
+# tv_embedded vuelve a dar hasta 1080p.
+RUN curl -sL https://github.com/denoland/deno/releases/download/v2.4.0/deno-x86_64-unknown-linux-gnu.zip -o /tmp/deno.zip \
+ && python3 -c "import zipfile; zipfile.ZipFile('/tmp/deno.zip').extract('deno', '/usr/local/bin')" \
+ && chmod +x /usr/local/bin/deno && rm /tmp/deno.zip \
+ && deno --version
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

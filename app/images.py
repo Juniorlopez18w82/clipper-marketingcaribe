@@ -234,14 +234,7 @@ def refresh_image(db, rec: GeneratedImage) -> GeneratedImage:
 
 
 def user_can_generate_images(db, user) -> bool:
-    """Imágenes IA: solo el plan Full (o admin). Pro y Básico dicen
-    'Sin imágenes dibujadas por IA' en sus features, así que el
-    chequeo es por el nombre exacto del feature."""
-    if user.is_admin:
-        return True
-    from .billing import get_active_subscription
-    sub = get_active_subscription(db, user.id)
-    if not sub:
-        return False
-    plan = sub.plan
-    return plan.name == "Full" or "Imágenes dibujadas por IA" in (plan.features or [])
+    """Imágenes IA: SOLO admin (2026-11-11, Juan: "Próximamente" para
+    los usuarios; solo el admin entra directo). Antes era plan Full.
+    El resto de usuarios ven el candado de Próximamente."""
+    return bool(user.is_admin)

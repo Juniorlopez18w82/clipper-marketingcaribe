@@ -72,6 +72,8 @@ function openPanel() {
   document.querySelector("main").hidden = true;
   document.querySelector("header").hidden = true;
   window.scrollTo(0, 0);
+  // Abrir la sección que dice la URL (enlace directo o recarga).
+  openTabFromUrl();
 }
 function closePanel() {
   $("panel").hidden = true;
@@ -130,6 +132,8 @@ function doLogout() {
   localStorage.removeItem("clipper_admin_token");
   localStorage.removeItem("clipper_impersonating");
   showUser(null);
+  // Al salir se vuelve a la landing, con su URL limpia.
+  history.pushState({}, "", "/");
 }
 function showUser(user) {
   state.user = user;
@@ -206,21 +210,64 @@ $("btnBackAdmin").onclick = () => {
 };
 refreshMe();
 
+// ---------- URLs limpias por sección ----------
+// Cada pestaña del panel tiene su propia URL (Juan, 2026-11-10: antes
+// todo cargaba como AJAX y la URL nunca cambiaba). Al cambiar de
+// pestaña la URL cambia con pushState; atrás/adelante y recargar abren
+// la sección de la URL; entrar por un enlace directo abre esa sección
+// tras el login. El backend sirve index.html en cada una de estas
+// rutas, así que recargar no da 404.
+const ROUTES = {
+  home: "/inicio", clips: "/mis-clips", create: "/crear-clip",
+  images: "/imagenes-ia", videos: "/videos-ia", plans: "/planes",
+  account: "/mi-cuenta", admin: "/admin",
+};
+const ROUTE_TABS = Object.fromEntries(
+  Object.entries(ROUTES).map(([tab, path]) => [path, tab]));
+function tabFromUrl() {
+  const p = location.pathname.replace(/\/+$/, "") || "/";
+  if (p === "/") return "home";
+  return ROUTE_TABS[p] || "home";
+}
+function goTab(tab, { push = false } = {}) {
+  // Una pestaña no disponible (p. ej. admin para un usuario normal)
+  // cae a Inicio y su URL.
+  let btn = document.querySelector(`.panel .tab[data-tab="${tab}"]`);
+  if (!btn || btn.hidden) tab = "home";
+  btn = document.querySelector(`.panel .tab[data-tab="${tab}"]`);
+  if (!btn) return false;
+  document.body.classList.toggle("create-wide", tab === "create");
+  document.querySelectorAll(".panel .tab[data-tab]").forEach((b) => b.classList.toggle("on", b === btn));
+  document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
+  $("pane-" + tab).hidden = false;
+  if (tab === "clips") loadMyClips();
+  if (tab === "images") { loadImageModels(); loadMyImages(); }
+  if (tab === "videos") { loadVideoModels(); loadMyVideos(); }
+  if (tab === "admin") loadAdmin();
+  const url = ROUTES[tab] || "/inicio";
+  if (push) history.pushState({ tab }, "", url);
+  else history.replaceState({ tab }, "", url);
+  return true;
+}
+function openTabFromUrl() {
+  goTab(tabFromUrl());
+}
+window.addEventListener("popstate", () => {
+  if (!$("panel").hidden) openTabFromUrl();
+});
+
 // ---------- Panel: pestañas ----------
 // Al entrar en Crear Clip el menú lateral se cierra (body.create-wide) para
 // que la sección se vea más abierta; cualquier otra pestaña, el logo o el
 // botón "← Volver al panel" lo devuelven.
 document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
   btn.onclick = () => {
-    if (btn.dataset.tab === "creator") { closePanel(); return; }
-    document.body.classList.toggle("create-wide", btn.dataset.tab === "create");
-    document.querySelectorAll(".panel .tab[data-tab]").forEach((b) => b.classList.toggle("on", b === btn));
-    document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
-    $("pane-" + btn.dataset.tab).hidden = false;
-    if (btn.dataset.tab === "clips") loadMyClips();
-    if (btn.dataset.tab === "images") { loadImageModels(); loadMyImages(); }
-    if (btn.dataset.tab === "videos") { loadVideoModels(); loadMyVideos(); }
-    if (btn.dataset.tab === "admin") loadAdmin();
+    if (btn.dataset.tab === "creator") {
+      closePanel();
+      history.pushState({}, "", "/");
+      return;
+    }
+    goTab(btn.dataset.tab, { push: true });
   };
 });
 $("btnBackToPanel").onclick = () => document.querySelector('[data-tab="home"]').click();

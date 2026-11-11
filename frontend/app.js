@@ -219,8 +219,8 @@ refreshMe();
 // rutas, así que recargar no da 404.
 const ROUTES = {
   home: "/inicio", clips: "/mis-clips", create: "/crear-clip",
-  images: "/imagenes-ia", videos: "/videos-ia", plans: "/planes",
-  account: "/mi-cuenta", admin: "/admin",
+  lives: "/lives", images: "/imagenes-ia", videos: "/videos-ia",
+  plans: "/planes", account: "/mi-cuenta", admin: "/admin",
 };
 const ROUTE_TABS = Object.fromEntries(
   Object.entries(ROUTES).map(([tab, path]) => [path, tab]));
@@ -241,6 +241,7 @@ function goTab(tab, { push = false } = {}) {
   document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
   $("pane-" + tab).hidden = false;
   if (tab === "clips") loadMyClips();
+  if (tab === "lives") loadLives();
   if (tab === "images") { loadImageModels(); loadMyImages(); }
   if (tab === "videos") { loadVideoModels(); loadMyVideos(); }
   if (tab === "admin") loadAdmin();
@@ -709,6 +710,120 @@ async function loadMyClips() {
     list.forEach((c) => box.appendChild(clipRow(c, false)));
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
 }
+
+// ---------- Lives (clips automáticos de un live en curso) ----------
+const LIVE_STATUS_LABEL = {
+  active: "● En vivo", paused: "⏸ Pausado", stopped: "■ Detenido",
+  ended: "✓ Terminado",
+};
+let livesTimer = null;
+
+async function loadLives() {
+  const box = $("myLives");
+  try {
+    const list = await apiFetch("/api/lives", { headers: authHeaders() });
+    box.innerHTML = "";
+    if (!list.length) {
+      box.innerHTML = "<p class='muted'>Aún no tienes lives. Pega el link de un live en curso arriba y empieza.</p>";
+    }
+    for (const s of list) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.marginBottom = "16px";
+      const status = LIVE_STATUS_LABEL[s.status] || s.status;
+      const err = s.last_error ? `<p class="muted" style="color:#f87171">${esc(s.last_error)}</p>` : "";
+      card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
+          <div><b>${esc(s.title || "Live")}</b> <span class="muted">${esc(s.uploader || "")}</span></div>
+          <span class="muted">${status}</span></div>
+        <p class="muted" style="margin:6px 0 0">${s.clips_per_round} clip${s.clips_per_round === 1 ? "" : "s"} cada ${s.interval_minutes} min · ${s.clip_count || 0} clips sacados</p>
+        ${err}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          ${s.status === "active" ? `<button class="small ghost" data-live-pause="${s.id}">⏸ Pausar</button>` : ""}
+          ${s.status === "paused" ? `<button class="small" data-live-resume="${s.id}">▶ Reanudar</button>` : ""}
+          ${s.status === "active" || s.status === "paused" ? `<button class="small ghost" data-live-stop="${s.id}">■ Detener</button>` : ""}
+          <button class="small ghost" data-live-del="${s.id}">🗑 Eliminar</button>
+        </div>
+        <div class="live-clips" id="live-clips-${s.id}" style="margin-top:14px"><p class="muted">Cargando clips…</p></div>`;
+      box.appendChild(card);
+      // Clips de este live, en la misma sección.
+      try {
+        const clips = await apiFetch(`/api/lives/${s.id}/clips`, { headers: authHeaders() });
+        const grid = card.querySelector(`#live-clips-${s.id}`);
+        grid.innerHTML = "";
+        if (!clips.length) {
+          grid.innerHTML = "<p class='muted'>Todavía no hay clips. El primero aparece cuando se cumpla el primer intervalo.</p>";
+        } else {
+          clips.forEach((c) => grid.appendChild(clipRow(c, false)));
+        }
+      } catch {
+        const grid = card.querySelector(`#live-clips-${s.id}`);
+        if (grid) grid.innerHTML = "<p class='muted'>No se pudieron cargar los clips.</p>";
+      }
+    }
+    box.querySelectorAll("[data-live-pause]").forEach((b) => b.onclick = () => liveControl(b.dataset.livePause, "pause"));
+    box.querySelectorAll("[data-live-resume]").forEach((b) => b.onclick = () => liveControl(b.dataset.liveResume, "resume"));
+    box.querySelectorAll("[data-live-stop]").forEach((b) => b.onclick = () => liveControl(b.dataset.liveStop, "stop"));
+    box.querySelectorAll("[data-live-del]").forEach((b) => b.onclick = () => liveDelete(b));
+  } catch {
+    box.innerHTML = "<p class='muted'>No se pudieron cargar tus lives.</p>";
+  }
+  // Refresco mientras la pestaña Lives está abierta (los clips nuevos
+  // aparecen solos, sin recargar la página).
+  if (livesTimer) clearInterval(livesTimer);
+  livesTimer = setInterval(() => {
+    if (!$("pane-lives").hidden) loadLives();
+  }, 30000);
+}
+
+async function liveControl(id, action) {
+  try {
+    await apiFetch(`/api/lives/${id}/${action}`, { method: "POST", headers: authHeaders() });
+    loadLives();
+  } catch (e) {
+    $("liveMsg").textContent = "Error: " + e.message;
+  }
+}
+
+async function liveDelete(btn) {
+  // Dos toques para confirmar (sin diálogo nativo).
+  if (btn.dataset.confirm !== "1") {
+    btn.dataset.confirm = "1";
+    btn.textContent = "¿Seguro? Toca de nuevo";
+    setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "🗑 Eliminar"; }, 4000);
+    return;
+  }
+  try {
+    await apiFetch(`/api/lives/${btn.dataset.liveDel}`, { method: "DELETE", headers: authHeaders() });
+    loadLives();
+  } catch (e) {
+    $("liveMsg").textContent = "Error: " + e.message;
+  }
+}
+
+$("btnStartLive").onclick = async () => {
+  const url = $("liveUrl").value.trim();
+  const msg = $("liveMsg");
+  if (!url) { msg.textContent = "Pega el link del live."; return; }
+  msg.textContent = "Comprobando que el live esté en curso…";
+  $("btnStartLive").disabled = true;
+  try {
+    const d = await apiFetch("/api/lives", {
+      method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        url,
+        interval_minutes: parseInt($("liveInterval").value || "10", 10),
+        clips_per_round: parseInt($("liveClipsPerRound").value || "3", 10),
+      }),
+    });
+    msg.textContent = `Live agregado: ${d.title}. El primer clip aparece en unos ${d.interval_minutes} minutos.`;
+    $("liveUrl").value = "";
+    loadLives();
+  } catch (e) {
+    msg.textContent = "Error: " + e.message;
+  } finally {
+    $("btnStartLive").disabled = false;
+  }
+};
 
 // ---------- Imágenes IA (fal.ai, plan Full) ----------
 const IMG_STYLE_SUFFIX = {

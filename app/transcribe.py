@@ -60,20 +60,52 @@ def _groq_eligible(wav_path: Path) -> bool:
 def _map_groq_response(payload: dict) -> list[dict]:
     """Map Groq verbose_json into the same segment shape local Whisper
     returns: {start, end, text, words: [{w, s, e}]}. Callers (clips.py,
-    render.py) see no difference."""
+    render.py) see no difference.
+
+    Groq puts word timestamps in the TOP-LEVEL "words" array, NOT
+    inside each segment (found 2026-11-10: every segment came back
+    with no "words" key, so clip selection saw 0 words and returned
+    0 clips even though the transcript had 18 segments). Words are
+    assigned to the segment whose [start, end] contains the word's
+    start; a word outside every segment goes to the nearest one.
+    If a segment carries its own embedded words (other providers),
+    those are used instead."""
+    top_words = [
+        {"w": w.get("word", ""),
+         "s": round(float(w.get("start", 0) or 0), 2),
+         "e": round(float(w.get("end", 0) or 0), 2)}
+        for w in (payload.get("words") or [])
+    ]
     out_segments = []
     for s in payload.get("segments", []) or []:
+        start = round(float(s.get("start", 0) or 0), 2)
+        end = round(float(s.get("end", 0) or 0), 2)
+        embedded = [
+            {"w": w.get("word", ""),
+             "s": round(float(w.get("start", 0) or 0), 2),
+             "e": round(float(w.get("end", 0) or 0), 2)}
+            for w in (s.get("words") or [])
+        ]
+        seg_words = embedded or [w for w in top_words if start <= w["s"] < end]
         out_segments.append({
-            "start": round(float(s.get("start", 0) or 0), 2),
-            "end": round(float(s.get("end", 0) or 0), 2),
+            "start": start,
+            "end": end,
             "text": (s.get("text") or "").strip(),
-            "words": [
-                {"w": w.get("word", ""),
-                 "s": round(float(w.get("start", 0) or 0), 2),
-                 "e": round(float(w.get("end", 0) or 0), 2)}
-                for w in (s.get("words") or [])
-            ],
+            "words": seg_words,
         })
+    # Words that fell outside every segment (rounding/gaps): attach
+    # each to the nearest segment so no word is lost.
+    if out_segments and top_words:
+        covered = {id(w) for s in out_segments for w in s["words"]}
+        for w in top_words:
+            if id(w) in covered:
+                continue
+            nearest = min(out_segments,
+                          key=lambda s: min(abs(w["s"] - s["start"]),
+                                            abs(w["s"] - s["end"])))
+            nearest["words"].append(w)
+        for s in out_segments:
+            s["words"].sort(key=lambda w: w["s"])
     return out_segments
 
 

@@ -34,13 +34,14 @@ Render options (Configuración):
   subtitle_position / show_subtitles / quality: see RenderRequest.
 """
 import json
+import logging
 import os
 import shutil
 import subprocess
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form,
@@ -60,14 +61,23 @@ from .billing import (PaymentMethod, PaymentRequest, Plan, UserSubscription,
 from .clips import build_candidates, build_candidates_llm
 from .clips_db import Clip, clip_out, create_clip
 from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
-                     DEFAULT_FRAME_WIDTH, MAX_UPLOAD_BYTES, MAX_WORKERS,
-                     OUTPUTS_DIR, RECEIPTS_DIR, SOURCES_DIR, TRANSCRIPTS_DIR,
-                     UPLOADS_DIR)
+                     DEFAULT_FRAME_WIDTH, IMAGES_DIR, MAX_UPLOAD_BYTES,
+                     MAX_WORKERS, OUTPUTS_DIR, RECEIPTS_DIR, SOURCES_DIR,
+                     TRANSCRIPTS_DIR, UPLOADS_DIR, VIDEOS_DIR)
 from .db import SessionLocal, db_backend, get_db, init_db
-from .render import render_clip
+from .images import (ASPECTS, GeneratedImage, create_image,
+                     fetch_image_models, get_model as get_image_model,
+                     image_out, refresh_image, submit_image,
+                     user_can_generate_images)
+from .videos import (AIVideoJob, build_fal_payload, create_job,
+                     fetch_video_models, get_model, job_out, refresh_job,
+                     submit_video, user_can_generate_videos)
+from .render import DEFAULT_TEMPLATE, TEMPLATES, render_clip, resolve_template
 from .settings import get_setting, set_setting
 from .transcribe import transcribe_file, transcription_engine
 from .video import download_section, probe, video_info
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -154,6 +164,15 @@ class RenderRequest(BaseModel):
     subtitle_style: str = "viral"  # viral | plain | yellow
     subtitle_size: int = 76
     subtitle_position: str = "bottom"  # bottom | middle | top
+    # Color de la palabra clave (fondo): elección del editor para este
+    # render. None = el de la plantilla o el default de la plataforma.
+    highlight_color: str | None = None
+    # --- Configuración: plantilla ---
+    # Nombre de plantilla ("Gancho grande" / "Limpio" / "Impacto").
+    # None = el usuario tocó un control de la plantilla en el editor:
+    # render personalizado con sus valores, sin preset. Un nombre
+    # desconocido cae a la plantilla guardada del usuario → la
+    # plantilla por defecto de la plataforma → "Gancho grande".
     # Edited subtitle words (relative to clip start): [{w, s, e}] — the
     # frontend sends these when Juan corrects the auto-transcription.
     edited_words: list[dict] | None = None
@@ -191,6 +210,10 @@ class UserResponse(BaseModel):
     subtitles_enabled: bool = True
     template: str = "Gancho grande"
     created_at: str | None = None
+    # Fin del plan (ISO) para la cuenta atrás del encabezado: ends_at de
+    # la suscripción activa, o created_at + 30 días para el admin sin
+    # suscripción; None = usuario sin plan (nunca se inventa una fecha).
+    plan_expires: str | None = None
 
 
 class UpdateMeRequest(BaseModel):
@@ -331,6 +354,88 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
     raise HTTPException(400, "Pasa job_id, url o un archivo subido")
 
 
+def _plan_expires_for(db, user: User) -> str | None:
+    """Fin del plan del usuario (ISO) para la cuenta atrás del encabezado
+    (2026-11-10, pedido de Juan). Suscripción activa y vigente → su
+    ends_at. El ADMIN nunca compra: sin suscripción, su plan corre 30
+    días desde que se creó su cuenta (created_at + 30 días). Usuario
+    normal sin suscripción → None: nunca se inventa una fecha."""
+    sub = get_active_subscription(db, user.id)
+    if sub is not None and sub.ends_at is not None:
+        return sub.ends_at.isoformat()
+    if getattr(user, "is_admin", False) and user.created_at is not None:
+        return (user.created_at + timedelta(days=30)).isoformat()
+    return None
+
+
+def _valid_hex(color: str | None) -> str | None:
+    """#RRGGBB válido, o None."""
+    if not color or not isinstance(color, str):
+        return None
+    c = color.strip()
+    if len(c) == 7 and c.startswith("#"):
+        try:
+            int(c[1:], 16)
+            return c.upper()
+        except ValueError:
+            return None
+    return None
+
+
+def _resolve_render_look(db, user_id: int | None, req: RenderRequest) -> dict:
+    """Resuelve plantilla + color de palabra clave para un render.
+
+    - req.template es un nombre válido → esa plantilla (sus valores de
+      marco/color/posición son autoritativos).
+    - req.template es None → render personalizado: el usuario tocó un
+      control en el editor; se usan los valores del request, sin preset.
+    - req.template es un nombre desconocido → la plantilla guardada del
+      usuario → la plantilla por defecto de la plataforma → "Gancho
+      grande".
+    - Color de palabra clave: elección del editor (req.highlight_color)
+      → color de la plantilla → default de la plataforma
+      (subtitle_highlight_color) → #FADE4C.
+    """
+    preset = None
+    template_name: str | None = None
+    tpl = (req.template or "").strip()
+    if tpl in TEMPLATES:
+        template_name, preset = resolve_template(tpl)
+    elif tpl:
+        # Nombre desconocido: la plantilla guardada del usuario → la
+        # default de la plataforma → "Gancho grande".
+        user_tpl = None
+        if user_id is not None:
+            u = db.query(User).filter(User.id == user_id).first()
+            user_tpl = getattr(u, "template", None) if u else None
+        if user_tpl:
+            template_name, preset = resolve_template(user_tpl)
+        else:
+            default_tpl = get_setting(db, "default_template", DEFAULT_TEMPLATE)
+            template_name, preset = resolve_template(default_tpl)
+    if preset is not None:
+        look = {"template": template_name,
+                "frame_enabled": preset["frame_enabled"],
+                "frame_color": preset["frame_color"],
+                "frame_width": preset["frame_width"],
+                "subtitle_position": preset["subtitle_position"],
+                "brand_size": preset["brand_size"],
+                "brand_y": preset["brand_y"]}
+        hl = (_valid_hex(req.highlight_color) or preset["highlight_color"])
+    else:
+        look = {"template": None,
+                "frame_enabled": req.frame_enabled,
+                "frame_color": req.frame_color,
+                "frame_width": req.frame_width,
+                "subtitle_position": req.subtitle_position,
+                "brand_size": 68, "brand_y": 90}
+        hl = _valid_hex(req.highlight_color)
+    if hl is None:
+        hl = _valid_hex(get_setting(db, "subtitle_highlight_color", "#FADE4C"))
+    look["highlight_color"] = hl or "#FADE4C"
+    return look
+
+
 def _run_render_job(job_id: str, req: RenderRequest):
     try:
         source, section_start, transcript = _resolve_source_for_render(req, job_id)
@@ -352,14 +457,36 @@ def _run_render_job(job_id: str, req: RenderRequest):
                     message="Cortando tu clip…")
         out_name = f"clip_{job_id}.mp4"
         out_path = OUTPUTS_DIR / out_name
+        # Plantilla + color de palabra clave (2026-11-10): la plantilla
+        # del request (o la guardada/default) manda sobre marco, color,
+        # posición de subtítulos y marca; el color de palabra clave
+        # sigue su propia cadena (editor → plantilla → plataforma).
+        parent0 = jobs.get(job_id) or {}
+        look = {"template": None, "frame_enabled": req.frame_enabled,
+                "frame_color": req.frame_color, "frame_width": req.frame_width,
+                "subtitle_position": req.subtitle_position,
+                "highlight_color": req.highlight_color or "#FADE4C",
+                "brand_size": 68, "brand_y": 90}
+        try:
+            db0 = SessionLocal()
+            try:
+                look = _resolve_render_look(db0, parent0.get("user_id"), req)
+            finally:
+                db0.close()
+        except Exception:  # noqa: BLE001 — la resolución nunca falla el render
+            logger.warning("template resolution failed, using request values",
+                           exc_info=True)
         render_clip(
             source, rel_start, duration, out_path, words,
-            frame_enabled=req.frame_enabled,
-            frame_color=req.frame_color, frame_width=req.frame_width,
+            frame_enabled=look["frame_enabled"],
+            frame_color=look["frame_color"], frame_width=look["frame_width"],
             brand_text=req.brand_text, title_text=req.title_text,
             subtitle_style=req.subtitle_style, subtitle_size=req.subtitle_size,
-            subtitle_position=req.subtitle_position,
+            subtitle_position=look["subtitle_position"],
             show_subtitles=req.show_subtitles,
+            highlight_color=look["highlight_color"],
+            template=look["template"],
+            brand_size=look["brand_size"], brand_y=look["brand_y"],
             quality=req.quality,
             camera_mode=req.camera_mode, camera_person=req.camera_person,
         )
@@ -367,8 +494,9 @@ def _run_render_job(job_id: str, req: RenderRequest):
         jobs.update(job_id, status="done", progress=100, message="Clip listo.",
                     result={"file": out_name, "download_url": f"/api/download/{out_name}",
                             "duration": duration, "output": info,
-                            "frame_enabled": req.frame_enabled,
-                            "brand_text": req.brand_text})
+                            "frame_enabled": look["frame_enabled"],
+                            "brand_text": req.brand_text,
+                            "template": look["template"] or "Personalizado"})
         # Durable per-user record for the panel. The clip is downloadable
         # IMMEDIATELY — no admin approval for clips (reversed 2026-11-10).
         # Never breaks the render.
@@ -420,8 +548,9 @@ def api_register(req: RegisterRequest, db: Session = Depends(get_db)):
         user = auth.register_user(db, req.name, req.email, req.password)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    return {"access_token": auth.create_access_token(user.id),
-            "user": auth.user_out(user)}
+    out = auth.user_out(user)
+    out["plan_expires"] = _plan_expires_for(db, user)
+    return {"access_token": auth.create_access_token(user.id), "user": out}
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
@@ -429,13 +558,17 @@ def api_login(req: LoginRequest, db: Session = Depends(get_db)):
     user = auth.authenticate_user(db, req.email, req.password)
     if user is None:
         raise HTTPException(401, "Correo o contraseña incorrectos")
-    return {"access_token": auth.create_access_token(user.id),
-            "user": auth.user_out(user)}
+    out = auth.user_out(user)
+    out["plan_expires"] = _plan_expires_for(db, user)
+    return {"access_token": auth.create_access_token(user.id), "user": out}
 
 
 @app.get("/api/auth/me", response_model=UserResponse)
-def api_me(user: User = Depends(get_current_user)):
-    return auth.user_out(user)
+def api_me(db: Session = Depends(get_db),
+           user: User = Depends(get_current_user)):
+    out = auth.user_out(user)
+    out["plan_expires"] = _plan_expires_for(db, user)
+    return out
 
 
 @app.patch("/api/auth/me", response_model=UserResponse)
@@ -963,6 +1096,206 @@ def api_job(job_id: str):
 @app.get("/api/download/{filename}")
 def api_download(filename: str):
     path = OUTPUTS_DIR / Path(filename).name
+    if not path.exists():
+        raise HTTPException(404, "Archivo no encontrado")
+    return FileResponse(path, media_type="video/mp4", filename=path.name)
+
+
+# ---------------------------------------------------------------- imágenes con IA (fal.ai)
+class ImageGenerateRequest(BaseModel):
+    prompt: str
+    model: str = "fal-ai/flux/schnell"
+    aspect: str = "9:16"  # 9:16 | 1:1 | 16:9
+    style: str = ""  # Realista | Dibujo | 3D (se añade al prompt)
+
+
+@app.get("/api/images/models")
+def api_image_models():
+    """Modelos de imagen curados con $/imagen. Se verifican en vivo
+    contra fal.ai (caché 1 h); si fal.ai no responde, la lista
+    estática se marca approximate=true."""
+    return fetch_image_models()
+
+
+@app.post("/api/images/generate")
+def api_generate_image(req: ImageGenerateRequest,
+                       db: Session = Depends(get_db),
+                       user: User = Depends(get_current_user)):
+    """Genera una imagen con fal.ai (Full o admin). La clave se lee
+    del entorno en el servidor; si no está configurada, error claro.
+    La generación es asíncrona (cola de fal.ai): el frontend consulta
+    GET /api/images/{id} hasta que esté lista."""
+    prompt = (req.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(400, "Escribe qué imagen quieres crear")
+    if len(prompt) > 1000:
+        raise HTTPException(400, "El prompt es demasiado largo (máx. 1000 caracteres)")
+    if not user_can_generate_images(db, user):
+        raise HTTPException(
+            403, "Las imágenes con IA están en el plan Full")
+    style = (req.style or "").strip()
+    if style:
+        prompt = f"{prompt}, {style}"
+    models = fetch_image_models()
+    model = get_image_model(models, req.model)
+    if model is None:
+        raise HTTPException(400, "Modelo de imagen no disponible")
+    aspect = req.aspect if req.aspect in ASPECTS else "9:16"
+    try:
+        sub = submit_image(model, prompt, aspect)
+    except ValueError as e:
+        # Sin FAL_API_KEY en el servidor, o error de fal.ai.
+        raise HTTPException(500, str(e)) from e
+    rec = create_image(db, user.id, prompt, req.model, aspect, sub,
+                       model["price_per_image"])
+    return image_out(rec)
+
+
+@app.get("/api/images/{image_id}")
+def api_get_image(image_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    """Estado de una imagen: consulta fal.ai y, si se completó,
+    descarga la imagen al servidor. El frontend lo llama cada ~5 s."""
+    img = db.query(GeneratedImage).filter(
+        GeneratedImage.id == image_id).first()
+    if img is None:
+        raise HTTPException(404, "Imagen no encontrada")
+    if img.user_id != user.id and not user.is_admin:
+        raise HTTPException(403, "Esta imagen no es tuya")
+    try:
+        img = refresh_image(db, img)
+    except ValueError as e:
+        raise HTTPException(500, str(e)) from e
+    return image_out(img)
+
+
+@app.get("/api/images")
+def api_my_images(db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    """Mis imágenes generadas, las nuevas primero."""
+    imgs = (db.query(GeneratedImage).filter(GeneratedImage.user_id == user.id)
+            .order_by(GeneratedImage.created_at.desc()).all())
+    return [image_out(i) for i in imgs]
+
+
+@app.get("/api/images/{image_id}/file")
+def api_image_file(image_id: int):
+    """Sirve el archivo de una imagen generada. Misma postura pública
+    que /api/download en v1 (el id es la única llave)."""
+    # La ruta real sale del registro en la DB, nunca del parámetro.
+    db = SessionLocal()
+    try:
+        img = db.query(GeneratedImage).filter(
+            GeneratedImage.id == image_id).first()
+    finally:
+        db.close()
+    if img is None or not img.filename:
+        raise HTTPException(404, "Imagen no encontrada")
+    path = IMAGES_DIR / str(img.user_id) / Path(img.filename).name
+    if not path.exists():
+        raise HTTPException(404, "Archivo no encontrado")
+    media = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+    return FileResponse(path, media_type=media, filename=path.name)
+
+
+# ---------------------------------------------------------------- videos IA (fal.ai)
+class VideoGenerateRequest(BaseModel):
+    prompt: str
+    model: str
+    duration: int = 8
+    aspect_ratio: str = "9:16"
+    audio: bool = True
+
+
+@app.get("/api/videos/models")
+def api_video_models():
+    """Modelos de video curados con $/s, duraciones, aspectos y audio.
+    Se verifican en vivo contra fal.ai (caché 1 h); si fal.ai no
+    responde, la lista estática se marca approximate=true."""
+    return fetch_video_models()
+
+
+@app.post("/api/videos/generate")
+def api_generate_video(req: VideoGenerateRequest,
+                       db: Session = Depends(get_db),
+                       user: User = Depends(get_current_user)):
+    """Crea un video con fal.ai (Full/Pro o admin). Cada generación
+    es UN clip corto (el más largo es Wan 3.0, ~30 s), no un video
+    largo: un video de 1 minuto son varios clips cortos unidos."""
+    prompt = (req.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(400, "Escribe qué video quieres crear")
+    if len(prompt) > 1000:
+        raise HTTPException(400, "El prompt es demasiado largo (máx. 1000 caracteres)")
+    if not user_can_generate_videos(db, user):
+        raise HTTPException(
+            403, "Los videos con IA están en los planes Pro y Full")
+    models = fetch_video_models()
+    model = get_model(models, req.model)
+    if model is None:
+        raise HTTPException(400, "Modelo de video no disponible")
+    if req.duration not in model["durations"]:
+        raise HTTPException(
+            400, f"Este modelo solo genera {model['durations']} segundos")
+    if req.aspect_ratio not in model["aspect_ratios"]:
+        raise HTTPException(
+            400, f"Este modelo solo soporta {model['aspect_ratios']}")
+    # El audio solo se apaga cuando el modelo tiene un parámetro para
+    # ello (Veo Lite, Kling, Wan); H3 Max y Grok Lite siempre llevan
+    # audio, Seedance nunca.
+    audio = bool(req.audio) and bool(model["audio_param"])
+    estimated = round(model["price_per_second"] * req.duration, 2)
+    try:
+        sub = submit_video(model, prompt, req.duration,
+                           req.aspect_ratio, audio)
+    except ValueError as e:
+        # Sin FAL_API_KEY en el servidor, o error de fal.ai.
+        raise HTTPException(500, str(e)) from e
+    job = create_job(db, user.id, prompt, req.model, req.duration,
+                     req.aspect_ratio, audio, sub, estimated)
+    out = job_out(job)
+    out["polling_status"] = "processing"
+    return out
+
+
+@app.get("/api/videos/{video_id}")
+def api_get_video(video_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    """Estado de un video: consulta fal.ai y, si se completó,
+    descarga el MP4 al servidor. El frontend lo llama cada ~30 s."""
+    job = db.query(AIVideoJob).filter(AIVideoJob.id == video_id).first()
+    if job is None:
+        raise HTTPException(404, "Video no encontrado")
+    if job.user_id != user.id and not user.is_admin:
+        raise HTTPException(403, "Este video no es tuyo")
+    try:
+        job = refresh_job(db, job)
+    except ValueError as e:
+        raise HTTPException(500, str(e)) from e
+    return job_out(job)
+
+
+@app.get("/api/videos")
+def api_my_videos(db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    """Mis videos generados, los nuevos primero."""
+    jobs = (db.query(AIVideoJob).filter(AIVideoJob.user_id == user.id)
+            .order_by(AIVideoJob.created_at.desc()).all())
+    return [job_out(j) for j in jobs]
+
+
+@app.get("/api/videos/{video_id}/file")
+def api_video_file(video_id: int):
+    """Sirve el MP4 de un video generado. Misma postura pública que
+    /api/download en v1 (el id es la única llave)."""
+    db = SessionLocal()
+    try:
+        job = db.query(AIVideoJob).filter(AIVideoJob.id == video_id).first()
+    finally:
+        db.close()
+    if job is None or not job.file:
+        raise HTTPException(404, "Video no encontrado")
+    path = VIDEOS_DIR / str(job.user_id) / Path(job.file).name
     if not path.exists():
         raise HTTPException(404, "Archivo no encontrado")
     return FileResponse(path, media_type="video/mp4", filename=path.name)

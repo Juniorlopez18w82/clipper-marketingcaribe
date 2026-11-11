@@ -786,6 +786,24 @@ def api_my_stats(db: Session = Depends(get_db),
     q = db.query(Clip).filter(Clip.user_id == user.id)
     total = q.count()
     this_month = q.filter(Clip.created_at >= month_start).count()
+    # Videos generados: videos fuente distintos de los que salieron clips.
+    videos_total = q.with_entities(Clip.video_url).distinct().count()
+    # Minutos generados: duración total de los clips, en minutos.
+    minutes_total = 0.0
+    try:
+        from sqlalchemy import func as _func
+        minutes_total = float(
+            db.query(_func.coalesce(_func.sum(Clip.end - Clip.start), 0))
+            .filter(Clip.user_id == user.id).scalar() or 0) / 60.0
+    except Exception:  # noqa: BLE001 — stats are best-effort
+        minutes_total = 0.0
+    # Lives activos (sección Lives).
+    lives_active = (db.query(LiveSession)
+                    .filter(LiveSession.user_id == user.id,
+                            LiveSession.status == STATUS_ACTIVE).count())
+    # Últimos 3 clips generados (para el Inicio).
+    recent = (db.query(Clip).filter(Clip.user_id == user.id)
+              .order_by(Clip.id.desc()).limit(3).all())
     # Videos en proceso: jobs en cola o corriendo de este usuario (v1: JSON).
     in_process = 0
     try:
@@ -802,6 +820,10 @@ def api_my_stats(db: Session = Depends(get_db),
         "clips_this_month": this_month,
         "videos_in_process": in_process,
         "clips_total": total,
+        "videos_total": videos_total,
+        "minutes_total": round(minutes_total, 1),
+        "lives_active": lives_active,
+        "recent_clips": [clip_out(c) for c in recent],
     }
 
 

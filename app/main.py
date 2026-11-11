@@ -16,7 +16,6 @@ Endpoints:
   POST /api/auth/login          {email, password} -> token
   GET  /api/auth/me            (token) -> current user
   GET  /api/me/stats           clips este mes / en proceso / total
-  POST /api/withdrawals         request a withdrawal (amount, method, details)
   POST /api/admin/impersonate/{user_id}  admin -> JWT for that user
   GET/POST /api/admin/settings  platform defaults (brand, frame)
 
@@ -66,9 +65,7 @@ from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
                      UPLOADS_DIR)
 from .db import SessionLocal, db_backend, get_db, init_db
 from .render import render_clip
-from .settings import (WD_APPROVED, WD_PENDING, WD_REJECTED,
-                       WithdrawalRequest, get_setting, set_setting,
-                       withdrawal_out)
+from .settings import get_setting, set_setting
 from .transcribe import transcribe_file, transcription_engine
 from .video import download_section, probe, video_info
 
@@ -607,86 +604,11 @@ def api_admin_impersonate(user_id: int, db: Session = Depends(get_db),
             "user": auth.user_out(target)}
 
 
-# ---------------------------------------------------------------- retiros
+# DecideRequest: nota del admin al aprobar/rechazar solicitudes de pago.
+# (Antes también servía a los retiros; los retiros se eliminaron el
+# 2026-11-10 por decisión de Juan: el usuario no hará ningún retiro.)
 class DecideRequest(BaseModel):
     admin_note: str = ""
-
-
-class WithdrawalRequestIn(BaseModel):
-    amount_dop: int
-    method: str = ""
-    details: str = ""
-
-
-@app.post("/api/withdrawals")
-def api_create_withdrawal(req: WithdrawalRequestIn,
-                          db: Session = Depends(get_db),
-                          user: User = Depends(get_current_user)):
-    if req.amount_dop <= 0:
-        raise HTTPException(400, "El monto debe ser mayor que 0")
-    if not req.method.strip():
-        raise HTTPException(400, "Indica el método de retiro")
-    w = WithdrawalRequest(user_id=user.id, amount_dop=int(req.amount_dop),
-                          method=req.method.strip()[:120],
-                          details=req.details.strip()[:500])
-    db.add(w)
-    db.commit()
-    db.refresh(w)
-    return withdrawal_out(w, user=user)
-
-
-@app.get("/api/withdrawals/mine")
-def api_my_withdrawals(db: Session = Depends(get_db),
-                       user: User = Depends(get_current_user)):
-    rows = (db.query(WithdrawalRequest)
-            .filter(WithdrawalRequest.user_id == user.id)
-            .order_by(WithdrawalRequest.created_at.desc()).all())
-    return [withdrawal_out(w, user=user) for w in rows]
-
-
-@app.get("/api/admin/withdrawals")
-def api_admin_withdrawals(db: Session = Depends(get_db),
-                          _admin: User = Depends(require_admin)):
-    rows = (db.query(WithdrawalRequest)
-            .order_by(WithdrawalRequest.created_at.desc()).all())
-    out = []
-    for w in rows:
-        out.append(withdrawal_out(
-            w, db.query(User).filter(User.id == w.user_id).first()))
-    return out
-
-
-def _decide_withdrawal(db: Session, w_id: int, status: str,
-                       admin_note: str) -> dict:
-    w = db.query(WithdrawalRequest).filter(WithdrawalRequest.id == w_id).first()
-    if w is None:
-        raise HTTPException(404, "Solicitud de retiro no encontrada")
-    if w.status != WD_PENDING:
-        raise HTTPException(400, f"La solicitud ya está {w.status}")
-    w.status = status
-    w.admin_note = admin_note or ""
-    w.decided_at = datetime.now(timezone.utc)
-    db.add(w)
-    db.commit()
-    db.refresh(w)
-    return withdrawal_out(
-        w, db.query(User).filter(User.id == w.user_id).first())
-
-
-@app.post("/api/admin/withdrawals/{w_id}/approve")
-def api_admin_approve_withdrawal(w_id: int, body: DecideRequest | None = None,
-                                 db: Session = Depends(get_db),
-                                 _admin: User = Depends(require_admin)):
-    return _decide_withdrawal(db, w_id, WD_APPROVED,
-                              body.admin_note if body else "")
-
-
-@app.post("/api/admin/withdrawals/{w_id}/reject")
-def api_admin_reject_withdrawal(w_id: int, body: DecideRequest | None = None,
-                                db: Session = Depends(get_db),
-                                _admin: User = Depends(require_admin)):
-    return _decide_withdrawal(db, w_id, WD_REJECTED,
-                              body.admin_note if body else "")
 
 
 # ---------------------------------------------------------------- configuración de la plataforma (admin)

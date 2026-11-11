@@ -405,29 +405,23 @@ def _split_crop(w: int, h: int, corner: str = "top-left") -> tuple[tuple[int, in
 
 def _detect_facecam_box(source: Path, start: float, duration: float,
                         corner: str = "top-left") -> tuple[int, int, int, int] | None:
-    """Localiza la cara de la facecam con precisión (2026-11-11, queja
-    de Juan: el recorte fijo no dejaba la cara fija arriba).
+    """Localiza el CUADRO de la facecam (2026-11-11, queja de Juan: el
+    recorte que seguía la cara se movía; el cuadro completo debe quedar
+    FIJO arriba).
 
-    Extrae 3 fotogramas del clip, detecta caras (Haar) dentro de la
-    zona de la esquina, y devuelve el rectángulo de encuadre de la
-    facecam: la cara detectada (mediana de los 3 fotogramas) ampliada
-    para incluir hombros (2.2x ancho, 2.6x alto, centrada en la cara),
-    recortada al aspecto del panel 9/8 y a los límites del fotograma.
-    Devuelve None si no hay cara en la esquina en ningún fotograma.
+    El cuadro de la facecam es un rectángulo fijo (overlay con borde)
+    en una esquina. Se detecta por bordes: Canny + contornos, se busca
+    el cuadrilátero más grande de la zona de la esquina en 3
+    fotogramas y se toma la mediana. Devuelve (w, h, x, y) del cuadro
+    completo, ya recortado al aspecto del panel 9/8 (cover, centrado).
+    Devuelve None si no se encuentra un rectángulo claro.
     """
     import cv2
 
     try:
-        cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-        if cascade.empty():
-            return None
         vw, vh = probe_size(source)
         corner = (corner or "top-left").strip().lower()
-        # Zona de búsqueda: la mitad de la esquina (un poco más amplia
-        # que la zona de recorte, para no perder la cara si está en el
-        # borde).
-        zw, zh = vw * 0.45, vh * 0.55
+        zw, zh = vw * 0.5, vh * 0.6
         if corner == "top-left":
             zx, zy = 0, 0
         elif corner == "top-right":
@@ -436,6 +430,7 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
             zx, zy = 0, vh - zh
         else:
             zx, zy = vw - zw, vh - zh
+        panel_aspect = 9 / 8
         boxes: list[tuple[float, float, float, float]] = []
         with tempfile.TemporaryDirectory(prefix="facecam_") as td:
             td = Path(td)
@@ -450,31 +445,50 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
                     continue
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 roi = gray[int(zy):int(zy + zh), int(zx):int(zx + zw)]
-                faces = cascade.detectMultiScale(
-                    roi, scaleFactor=1.1, minNeighbors=4,
-                    minSize=(30, 30))
-                if len(faces) == 0:
-                    continue
-                # La cara más grande de la zona (la facecam es la cara
-                # principal de esa esquina).
-                x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
-                boxes.append((zx + x + fw / 2, zy + y + fh / 2,
-                              float(fw), float(fh)))
+                edges = cv2.Canny(roi, 50, 150)
+                contours, _ = cv2.findContours(
+                    edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                best: tuple[float, float, float, float] | None = None
+                best_area = 0.0
+                for cnt in contours:
+                    area = cv2.contourArea(cnt)
+                    if area < (zw * zh) * 0.04:
+                        continue
+                    peri = cv2.arcLength(cnt, True)
+                    approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+                    if len(approx) != 4:
+                        continue
+                    x, y, w, h = cv2.boundingRect(approx)
+                    # El cuadro debe ser un rectángulo apaisado y no
+                    # ocupar casi toda la zona (eso sería el juego).
+                    if w < zw * 0.15 or h < zh * 0.15:
+                        continue
+                    if w > zw * 0.95 and h > zh * 0.95:
+                        continue
+                    if area > best_area:
+                        best_area = area
+                        best = (float(x), float(y), float(w), float(h))
+                if best is not None:
+                    boxes.append(best)
         if not boxes:
             return None
         boxes.sort(key=lambda b: b[0])
-        cx, cy, fw, fh = boxes[len(boxes) // 2]
-        # Encuadre facecam: hombros incluidos, centrado en la cara.
-        bw, bh = fw * 2.2, fh * 2.6
-        panel_aspect = 9 / 8
+        bx, by, bw, bh = boxes[len(boxes) // 2]
+        # El cuadro completo, recortado al aspecto del panel (cover)
+        # y a los límites del fotograma. El cuadro es FIJO: un solo
+        # rectángulo para todo el clip, sin seguimiento.
         if bw / bh >= panel_aspect:
             cw, ch = bh * panel_aspect, bh
+            cx = zx + bx + (bw - cw) / 2
+            cy = zy + by
         else:
             cw, ch = bw, bw / panel_aspect
-        x = max(0.0, min(cx - cw / 2, vw - cw))
-        y = max(0.0, min(cy - ch * 0.38, vh - ch))
+            cx = zx + bx
+            cy = zy + by + (bh - ch) / 2
+        cx = max(0.0, min(cx, vw - cw))
+        cy = max(0.0, min(cy, vh - ch))
         return (int(round(cw / 2) * 2), int(round(ch / 2) * 2),
-                int(round(x / 2) * 2), int(round(y / 2) * 2))
+                int(round(cx / 2) * 2), int(round(cy / 2) * 2))
     except Exception:
         return None
 

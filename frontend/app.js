@@ -1596,6 +1596,12 @@ $("btnClips").onclick = async () => {
       showJobError(`El rango es muy corto: de ${body.start} s a ${body.end} s son ${Math.max(0, body.end - body.start)} s y cada clip dura al menos ${body.min_len} s. Pon un Hasta mayor (por defecto se analiza el video completo).`);
       return;
     }
+    // El servidor acepta hasta 60 min por análisis (2026-11-11): un
+    // video más largo se analiza por partes con Desde/Hasta.
+    if ((body.end - body.start) > 3600) {
+      showJobError(`El video dura ${fmtDur(body.end - body.start)} y el análisis cubre hasta 60 min por vez. Pon un Hasta de 60 min o menos, o analiza el video por partes con Desde/Hasta.`);
+      return;
+    }
     const d = await apiFetch("/api/clips", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     const job = await pollJob(d.job_id, (j) => {
       setJobProgress(j.progress || 0);
@@ -1635,7 +1641,12 @@ $("btnClips").onclick = async () => {
   } catch (e) {
     console.error("Sacar clips falló:", e.raw || e.message);
     renderSteps(0, -1, "");
-    showJobError("No se pudo procesar el video. Revisa el enlace o el archivo e inténtalo de nuevo.");
+    // Muestra el motivo real cuando el servidor lo explica en claro
+    // (por ejemplo, el rango es muy largo); si no, el mensaje genérico.
+    const raw = (e.raw || "").trim();
+    const friendly = raw && raw.length <= 200 && !/traceback|yt-dlp|Error:/i.test(raw)
+      ? raw : "No se pudo procesar el video. Revisa el enlace o el archivo e inténtalo de nuevo.";
+    showJobError(friendly);
   } finally {
     state.busy = false;
     $("btnClips").disabled = false;

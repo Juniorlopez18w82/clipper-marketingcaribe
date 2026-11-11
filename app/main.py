@@ -898,6 +898,34 @@ def api_admin_users(db: Session = Depends(get_db),
     return out
 
 
+class CreateUserRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    is_admin: bool = False
+
+
+@app.post("/api/admin/users")
+def api_admin_create_user(req: CreateUserRequest,
+                          db: Session = Depends(get_db),
+                          _admin: User = Depends(require_admin)):
+    """Admin creates a user directly (client or another admin) from
+    the floating + button in Panel Admin > Usuarios. Uses the same
+    validation as public register (name, valid email, password >= 6,
+    email not already registered)."""
+    try:
+        user = auth.register_user(db, req.name, req.email, req.password)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if req.is_admin:
+        user.is_admin = True
+        db.commit()
+        db.refresh(user)
+    row = auth.user_out(user)
+    row["plan_expires"] = None
+    return row
+
+
 class AssignPlanRequest(BaseModel):
     plan_id: int
 

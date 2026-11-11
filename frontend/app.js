@@ -766,7 +766,7 @@ async function loadLives() {
         ${err}
         <div class="live-actions">
           ${s.status === "active" ? `<button class="small ghost" data-live-pause="${s.id}">⏸ Pausar</button>` : ""}
-          ${s.status === "paused" ? `<button class="small" data-live-resume="${s.id}">▶ Reanudar</button>` : ""}
+          ${s.status === "paused" || s.status === "stopped" ? `<button class="small" data-live-resume="${s.id}">▶ Reanudar</button>` : ""}
           ${s.status === "active" || s.status === "paused" ? `<button class="small ghost" data-live-stop="${s.id}">■ Detener</button>` : ""}
           <button class="small ghost" data-live-del="${s.id}">🗑 Eliminar</button>
         </div>

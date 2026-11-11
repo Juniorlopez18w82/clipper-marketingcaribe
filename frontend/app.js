@@ -978,22 +978,21 @@ async function loadLives() {
       card.innerHTML = `<div class="live-head">
           <div class="live-thumb">${thumb}${onair}</div>
           <div class="live-info">
-            <div class="live-title">${esc(s.title || "Live")}</div>
+            <div class="live-title"><a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${esc(s.title || "Live")}</a></div>
             <div class="live-badges">
               <span class="live-badge ${esc(s.status)}">${esc(status)}</span>
               <span class="live-platform ${esc(platform)}">${esc(platformLabel)}</span>
               ${s.uploader ? `<span class="muted" style="font-size:12px">${esc(s.uploader)}</span>` : ""}
             </div>
-            <a class="live-url" href="${esc(s.url)}" target="_blank" rel="noopener">🔗 ${esc(s.url)}</a>
+            <p class="live-meta">${s.clips_per_round} clip${s.clips_per_round === 1 ? "" : "s"} cada ${s.interval_minutes} min · ${s.clip_count || 0} clips</p>
           </div>
         </div>
-        <p class="live-meta">${s.clips_per_round} clip${s.clips_per_round === 1 ? "" : "s"} cada ${s.interval_minutes} min · ${s.clip_count || 0} clips sacados</p>
         ${err}
         <div class="live-actions">
-          ${s.status === "active" ? `<button class="small ghost" data-live-pause="${s.id}">⏸ Pausar</button>` : ""}
-          ${s.status === "paused" || s.status === "stopped" ? `<button class="small" data-live-resume="${s.id}">▶ Reanudar</button>` : ""}
-          ${s.status === "active" || s.status === "paused" ? `<button class="small ghost" data-live-stop="${s.id}">■ Detener</button>` : ""}
-          <button class="small ghost" data-live-del="${s.id}">🗑 Eliminar</button>
+          ${s.status === "active" ? `<button class="icon-btn" data-live-pause="${s.id}" title="Pausar">⏸</button>` : ""}
+          ${s.status === "paused" || s.status === "stopped" ? `<button class="icon-btn" data-live-resume="${s.id}" title="Reanudar">▶</button>` : ""}
+          ${s.status === "active" || s.status === "paused" ? `<button class="icon-btn" data-live-stop="${s.id}" title="Detener">■</button>` : ""}
+          <button class="icon-btn del" data-live-del="${s.id}" title="Eliminar">🗑</button>
         </div>
         <div class="live-clips" id="live-clips-${s.id}" style="margin-top:14px"><p class="muted">Cargando clips…</p></div>`;
       box.appendChild(card);
@@ -1003,7 +1002,7 @@ async function loadLives() {
         const grid = card.querySelector(`#live-clips-${s.id}`);
         grid.innerHTML = "";
         if (!clips.length) {
-          grid.innerHTML = "<p class='muted'>Todavía no hay clips. El primero aparece cuando se cumpla el primer intervalo.</p>";
+          grid.innerHTML = "<p class='muted'>Sin clips todavía. El primero llega en ~" + s.interval_minutes + " min.</p>";
         } else {
           clips.forEach((c) => grid.appendChild(clipRow(c, false)));
         }
@@ -1037,11 +1036,12 @@ async function liveControl(id, action) {
 }
 
 async function liveDelete(btn) {
-  // Dos toques para confirmar (sin diálogo nativo).
+  // Dos toques para confirmar: el botón se pone rojo en el 1er toque.
   if (btn.dataset.confirm !== "1") {
     btn.dataset.confirm = "1";
-    btn.textContent = "¿Seguro? Toca de nuevo";
-    setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "🗑 Eliminar"; }, 4000);
+    btn.classList.add("confirm");
+    btn.title = "Toca de nuevo para confirmar";
+    setTimeout(() => { btn.dataset.confirm = ""; btn.classList.remove("confirm"); btn.title = "Eliminar"; }, 4000);
     return;
   }
   try {
@@ -1067,7 +1067,7 @@ $("btnStartLive").onclick = async () => {
         clips_per_round: parseInt($("liveClipsPerRound").value || "3", 10),
       }),
     });
-    msg.textContent = `Live agregado: ${d.title}. El primer clip aparece en unos ${d.interval_minutes} minutos.`;
+    msg.textContent = `✓ Live agregado. El primer clip llega en ~${d.interval_minutes} min.`;
     $("liveUrl").value = "";
     loadLives();
   } catch (e) {

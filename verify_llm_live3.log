@@ -1,0 +1,39 @@
+== health ==
+{"ok":true,"service":"ClipViral","version":"1.4.0","warp":"ok","proxy":true,"transcription":"groq","db":"sqlite","auth":true}
+== clips job ==
+job: 16e4de865253
+poll 1 (16s): {"id":"16e4de865253","kind":"clips","status":"error","progress":40,"message":"Falló.","payload":{"url":"https://www.youtube.com/watch?v=lvPIofmDIGk","source_file":null,"start":50.0,"end":110.0,"model":"base","max_clips":5,"min_len":20.0,"max_len":45.0},"result":null,"error":"No se pudo transcribir el audio de este video. Prueba con otro rango u otro video.","created_at":"2026-11-11T00:33:12.61363
+== result (selector + candidates) ==
+status: error | selector: None | error: No se pudo transcribir el audio de este video. Prueba con otro rango u otro video.
+MODEL: None
+== render candidate 1 ==
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+TypeError: 'NoneType' object is not subscriptable
+candidate 1 abs range: 
+render job: {'detail': [{'type': 'json_invalid', 'loc': ['body', 33], 'msg': 'JSON decode error', 'input': {}, 'ctx': {'error': 'Expecting value'}}]}
+render poll 1: 
+render poll 2: 
+render poll 3: 
+render poll 4: 
+render poll 5: 
+render poll 6: 
+render poll 7: 
+render poll 8: 
+render poll 9: 
+render poll 10: 
+render poll 11: 
+render poll 12: 
+render poll 13: 
+render poll 14: 
+render poll 15: 
+render poll 16: 
+render poll 17: 
+render poll 18: 
+render poll 19: 
+render poll 20: 
+== my clips (saved title/score) ==
+3 | BULIN 47 x VIN DIESEL | score= None | file= clip_b10872a8e7f5.mp4 | 27.1 -> 61.6
+2 | BULIN 47 x VIN DIESEL | score= None | file= clip_a9eee199daf7.mp4 | 10.08 -> 54.36
+1 |  | score= None | file= clip_d774bf81f30f.mp4 | 88.54 -> 109.98
+== done in 218s ==

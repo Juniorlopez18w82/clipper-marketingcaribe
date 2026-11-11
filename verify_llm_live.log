@@ -1,0 +1,16 @@
+== health ==
+{"ok":true,"service":"ClipViral","version":"1.4.0","warp":"ok","proxy":true,"transcription":"groq","db":"sqlite","auth":true}
+== clips job ==
+job: 9c418bf10278
+poll 1 (16s): {"id":"9c418bf10278","kind":"clips","status":"running","progress":40,"message":"Transcribiendo el audio…","payload":{"url":"https://www.youtube.com/watch?v=lvPIofmDIGk","source_file":null,"start":50.0,"end":110.0,"model":"base","max_clips":5,"min_len":20.0,"max_len":45.0},"result":null,"error":null,"created_at":"2026-11-11T00:15:53.688348+00:00","user_id":1}
+poll 2 (31s): {"id":"9c418bf10278","kind":"clips","status":"running","progress":40,"message":"Transcribiendo el audio…","payload":{"url":"https://www.youtube.com/watch?v=lvPIofmDIGk","source_file":null,"start":50.0,"end":110.0,"model":"base","max_clips":5,"min_len":20.0,"max_len":45.0},"result":null,"error":null,"created_at":"2026-11-11T00:15:53.688348+00:00","user_id":1}
+poll 3 (46s): {"id":"9c418bf10278","kind":"clips","status":"done","progress":100,"message":"Listo.","payload":{"url":"https://www.youtube.com/watch?v=lvPIofmDIGk","source_file":null,"start":50.0,"end":110.0,"model":"base","max_clips":5,"min_len":20.0,"max_len":45.0},"result":{"source_file":"9c418bf10278.mp4","section_start":50.0,"section_end":110.0,"source":{"width":640,"height":360,"codec":"h264","duration":60
+== result (selector + candidates) ==
+status: done | selector: heuristic | error: None
+- 38.46->59.32 (20.86s) score=100.0 title=None reason='None'
+MODEL: base
+== render candidate 1 ==
+render job: {'detail': [{'type': 'missing', 'loc': ['body', 'start'], 'msg': 'Field required', 'input': {'job_id': '9c418bf10278', 'clip_index': 0}}, {'type': 'missing', 'loc': ['body', 'end'], 'msg': 'Field required', 'input': {'job_id': '9c418bf10278', 'clip_index': 0}}]}
+render poll 1: 
+render poll 2: 
+render poll 3: 

@@ -295,14 +295,6 @@ def refresh_job(db, job: AIVideoJob) -> AIVideoJob:
 
 
 def user_can_generate_videos(db, user) -> bool:
-    """Videos IA: planes Pro y Full (o admin). Básico dice
-    'Sin Videos IA' en sus features, así que el chequeo es por el
-    nombre exacto 'Videos IA' para no confundirlo con el 'Sin'."""
-    if user.is_admin:
-        return True
-    from .billing import get_active_subscription
-    sub = get_active_subscription(db, user.id)
-    if not sub:
-        return False
-    plan = sub.plan
-    return plan.name in ("Full", "Pro") or "Videos IA" in (plan.features or [])
+    """Videos IA: SOLO admin (2026-11-11, Juan: "Próximamente" para
+    los usuarios; solo el admin entra directo). Antes eran Pro y Full."""
+    return bool(user.is_admin)

@@ -741,16 +741,30 @@ async function loadLives() {
     }
     for (const s of list) {
       const card = document.createElement("div");
-      card.className = "card";
-      card.style.marginBottom = "16px";
+      card.className = "live-card";
       const status = LIVE_STATUS_LABEL[s.status] || s.status;
-      const err = s.last_error ? `<p class="muted" style="color:#f87171">${esc(s.last_error)}</p>` : "";
-      card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
-          <div><b>${esc(s.title || "Live")}</b> <span class="muted">${esc(s.uploader || "")}</span></div>
-          <span class="muted">${status}</span></div>
-        <p class="muted" style="margin:6px 0 0">${s.clips_per_round} clip${s.clips_per_round === 1 ? "" : "s"} cada ${s.interval_minutes} min · ${s.clip_count || 0} clips sacados</p>
+      const platform = (s.platform || "youtube").toLowerCase();
+      const platformLabel = platform === "twitch" ? "Twitch" : "YouTube";
+      const err = s.last_error ? `<p class="muted" style="color:#f87171;margin:10px 0 0">${esc(s.last_error)}</p>` : "";
+      const thumb = s.thumbnail
+        ? `<img src="${esc(s.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+        : `<div class="live-thumb-empty">📺</div>`;
+      const onair = s.status === "active" ? `<span class="live-onair">● EN VIVO</span>` : "";
+      card.innerHTML = `<div class="live-head">
+          <div class="live-thumb">${thumb}${onair}</div>
+          <div class="live-info">
+            <div class="live-title">${esc(s.title || "Live")}</div>
+            <div class="live-badges">
+              <span class="live-badge ${esc(s.status)}">${esc(status)}</span>
+              <span class="live-platform ${esc(platform)}">${esc(platformLabel)}</span>
+              ${s.uploader ? `<span class="muted" style="font-size:12px">${esc(s.uploader)}</span>` : ""}
+            </div>
+            <a class="live-url" href="${esc(s.url)}" target="_blank" rel="noopener">🔗 ${esc(s.url)}</a>
+          </div>
+        </div>
+        <p class="live-meta">${s.clips_per_round} clip${s.clips_per_round === 1 ? "" : "s"} cada ${s.interval_minutes} min · ${s.clip_count || 0} clips sacados</p>
         ${err}
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <div class="live-actions">
           ${s.status === "active" ? `<button class="small ghost" data-live-pause="${s.id}">⏸ Pausar</button>` : ""}
           ${s.status === "paused" ? `<button class="small" data-live-resume="${s.id}">▶ Reanudar</button>` : ""}
           ${s.status === "active" || s.status === "paused" ? `<button class="small ghost" data-live-stop="${s.id}">■ Detener</button>` : ""}

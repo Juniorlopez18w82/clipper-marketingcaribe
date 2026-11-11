@@ -513,6 +513,43 @@ $("assignConfirm").onclick = async () => {
     closeAssignModal();
   }
 };
+// Modal "Añadir usuario": botón flotante + en Panel Admin > Usuarios.
+// Crea un cliente o un administrador (POST /api/admin/users).
+function openAddUserModal() {
+  $("addUserName").value = "";
+  $("addUserEmail").value = "";
+  $("addUserPassword").value = "";
+  const client = document.querySelector('input[name="addUserRole"][value="client"]');
+  if (client) client.checked = true;
+  $("addUserMsg").textContent = "";
+  $("addUserModal").hidden = false;
+  $("addUserName").focus();
+}
+function closeAddUserModal() { $("addUserModal").hidden = true; }
+$("fabAddUser").onclick = openAddUserModal;
+$("addUserClose").onclick = closeAddUserModal;
+$("addUserCancel").onclick = closeAddUserModal;
+$("addUserModal").addEventListener("click", (e) => { if (e.target === $("addUserModal")) closeAddUserModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("addUserModal").hidden) closeAddUserModal(); });
+$("addUserConfirm").onclick = async () => {
+  const name = $("addUserName").value.trim();
+  const email = $("addUserEmail").value.trim();
+  const password = $("addUserPassword").value;
+  const role = (document.querySelector('input[name="addUserRole"]:checked') || {}).value || "client";
+  const msg = $("addUserMsg");
+  if (!name || !email || !password) { msg.textContent = "Completa nombre, correo y contraseña."; return; }
+  if (password.length < 6) { msg.textContent = "La contraseña debe tener al menos 6 caracteres."; return; }
+  msg.textContent = "Creando…";
+  try {
+    const r = await apiFetch("/api/admin/users", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ name, email, password, is_admin: role === "admin" }) });
+    closeAddUserModal();
+    await loadAdminUsers();
+    const m2 = $("usersMsg");
+    if (m2) m2.textContent = `Usuario ${r.name} (${r.email}) creado como ${r.is_admin ? "Administrador" : "Cliente"}.`;
+  } catch (e) {
+    msg.textContent = "Error: " + e.message;
+  }
+};
 async function impersonateUser(userId, name) {
   try {
     const d = await apiFetch(`/api/admin/impersonate/${userId}`, { method: "POST", headers: authHeaders() });

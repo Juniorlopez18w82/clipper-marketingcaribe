@@ -113,6 +113,7 @@ def _ensure_user_pref_columns() -> None:
         "quality": "VARCHAR(10) DEFAULT '1080p'",
         "subtitles_enabled": "BOOLEAN DEFAULT TRUE" if IS_POSTGRES else "BOOLEAN DEFAULT 1",
         "template": "VARCHAR(80) DEFAULT 'Gancho grande'",
+        "is_suspended": "BOOLEAN DEFAULT FALSE" if IS_POSTGRES else "BOOLEAN DEFAULT 0",
     }
     try:
         existing = {c["name"] for c in inspect(engine).get_columns("users")}

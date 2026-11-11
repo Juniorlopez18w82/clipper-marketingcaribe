@@ -302,11 +302,30 @@ $("btnBuy").onclick = async () => {
 // ---------- Panel Admin ----------
 async function loadAdminUsers() {
   try {
-    const users = await apiFetch("/api/admin/users", { headers: authHeaders() });
+    const [users, plans] = await Promise.all([
+      apiFetch("/api/admin/users", { headers: authHeaders() }),
+      apiFetch("/api/plans"),
+    ]);
+    const planOpts = plans.map((p) => `<option value="${p.id}">${p.name} · RD$ ${p.price_dop.toLocaleString("es-DO")} · ${p.duration_days} días</option>`).join("");
     $("adminUsers").innerHTML = "<table><tr><th>Nombre</th><th>Correo</th><th>Plan</th><th>Admin</th><th></th></tr>" +
-      users.map((u) => `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.plan}</td><td>${u.is_admin ? "SÍ" : "No"}</td>
-        <td>${u.is_admin ? "" : `<button class="small" data-imp="${u.id}" data-name="${u.name}">Entrar como usuario</button>`}</td></tr>`).join("") + "</table>";
+      users.map((u) => {
+        const exp = u.plan_expires ? ` <small>· hasta ${u.plan_expires.slice(0, 10)}</small>` : "";
+        const assign = u.is_admin ? "" : ` <select data-plan-sel="${u.id}">${planOpts}</select> <button class="small" data-assign="${u.id}">Asignar plan</button>`;
+        return `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.plan}${exp}</td><td>${u.is_admin ? "SÍ" : "No"}</td>
+        <td>${u.is_admin ? "" : `<button class="small" data-imp="${u.id}" data-name="${u.name}">Entrar como usuario</button>`}${assign}</td></tr>`;
+      }).join("") + "</table><p id=\"usersMsg\" class=\"muted\"></p>";
     $("adminUsers").querySelectorAll("[data-imp]").forEach((b) => b.onclick = () => impersonateUser(b.dataset.imp, b.dataset.name));
+    $("adminUsers").querySelectorAll("[data-assign]").forEach((b) => b.onclick = async () => {
+      const sel = $("adminUsers").querySelector(`[data-plan-sel="${b.dataset.assign}"]`);
+      const planId = parseInt(sel.value, 10);
+      const msg = $("usersMsg");
+      try {
+        const r = await apiFetch(`/api/admin/users/${b.dataset.assign}/assign-plan`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ plan_id: planId }) });
+        await loadAdminUsers();
+        const m2 = $("usersMsg");
+        if (m2) m2.textContent = `Plan ${r.subscription.plan_name} asignado hasta ${r.subscription.ends_at.slice(0, 10)}.`;
+      } catch (e) { if (msg) msg.textContent = "Error: " + e.message; }
+    });
   } catch { $("adminUsers").innerHTML = "<p class='muted'>No se pudieron cargar los usuarios.</p>"; }
 }
 async function impersonateUser(userId, name) {
@@ -911,6 +930,19 @@ $("btnSaveMeta").onclick = async () => {
   } catch (e) { msg.textContent = "Error: " + e.message; }
 };
 
+// ---------- Cámara (paso 3) ----------
+const CAMERA_HINTS = {
+  center: "Centrada: el recorte 9:16 fijo en el centro del video, como siempre.",
+  follow_speaker: "La cámara sigue a la persona que está hablando. Si no se ve ninguna cara, queda centrada.",
+  follow_person: "Sigue siempre a la persona de la zona que elijas. Si no se la ve, queda centrada.",
+  dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo.",
+};
+$("cameraMode").onchange = () => {
+  const m = $("cameraMode").value;
+  $("cameraPersonRow").hidden = m !== "follow_person";
+  $("cameraHint").textContent = CAMERA_HINTS[m] || CAMERA_HINTS.center;
+};
+
 // ---------- Renderizar ----------
 $("btnRender").onclick = async () => {
   if (!state.clipsJob) return alert("Primero genera los clips y elige uno");
@@ -944,6 +976,8 @@ $("btnRender").onclick = async () => {
       // editable del paso 3, y la portada del control de portada.
       clip_title: $("hookTitle").value.trim() || (state.selected && state.selected.title) || "",
       cover_at: state.coverAt,
+      camera_mode: $("cameraMode").value,
+      camera_person: $("cameraPerson").value,
       clip_score: (state.selected && typeof state.selected.score === "number")
         ? state.selected.score : null,
       video_title: state.videoTitle || "",

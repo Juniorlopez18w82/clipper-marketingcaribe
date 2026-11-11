@@ -114,6 +114,7 @@ def _ensure_clip_columns() -> None:
     cols = {
         "score": "FLOAT",
         "section_start": "FLOAT",
+        "cover_at": "FLOAT",
     }
     try:
         existing = {c["name"] for c in inspect(engine).get_columns("clips")}

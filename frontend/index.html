@@ -54,7 +54,7 @@ button.ghost{background:transparent;color:var(--red);border:2px solid var(--red)
 .phone .frame{position:absolute;inset:0;pointer-events:none;border:14px solid var(--yellow)}
 .phone .brand{position:absolute;top:22px;left:0;right:0;text-align:center;color:var(--yellow);font-weight:800;font-size:20px;background:rgba(0,0,0,.55);padding:6px 8px;margin:0 18px}
 .phone .subs{position:absolute;left:12px;right:12px;bottom:70px;text-align:center;color:#fff;font-weight:800;font-size:22px;text-shadow:0 2px 0 #000,0 0 8px #000}
-.phone .subs span{color:var(--yellow)}
+.phone .subs span{color:#000;background:var(--yellow);padding:1px 8px;border-radius:6px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 video#result{width:100%;border-radius:12px;background:#000}
 /* Takeover del panel: cuando el panel está abierto, la landing desaparece.
    (El atributo hidden NO bastaba: header{display:flex} y main{display:grid}
@@ -83,6 +83,23 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel-top .who b{color:#f4f4f5}
 .panel .planbadge{display:inline-block;background:#27272a;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;margin-left:6px}
 .panel .planbadge.admin{background:#E10600}
+.panel .who .countdown{font-weight:700}
+.panel .who .countdown.expired{color:#E10600}
+.panel .who .countdown.no-plan{cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+/* Modal (asignar plan): fondo oscuro + tarjeta centrada. */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
+.modal-backdrop[hidden]{display:none}
+.modal-card{position:relative;background:#1a1a1e;border:1px solid #27272a;border-radius:16px;width:min(460px,94vw);max-height:88vh;overflow:auto;padding:22px;box-shadow:0 16px 48px rgba(0,0,0,.6)}
+.modal-card h3{margin:0 0 4px;font-size:20px}
+.modal-x{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:#27272a;color:#f4f4f5;font-size:18px;line-height:1;cursor:pointer}
+.assign-plan-row{display:flex;gap:10px;align-items:flex-start;border:1px solid #27272a;border-radius:12px;padding:12px 14px;margin-top:10px;cursor:pointer}
+.assign-plan-row:hover{border-color:#3f3f46}
+.assign-plan-row.selected{border-color:#E10600;background:rgba(225,6,0,.08)}
+.assign-plan-row input{margin-top:3px;accent-color:#E10600}
+.assign-plan-row .ap-name{font-weight:700}
+.assign-plan-row .ap-meta{color:#a1a1aa;font-size:13px}
+.assign-plan-row .ap-pop{background:#E10600;color:#fff;font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px;margin-left:6px;white-space:nowrap}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
 .panel-shell{display:flex;align-items:stretch;max-width:1280px;margin:0 auto}
 .panel-nav{width:248px;flex:none;background:#18181b;border-right:1px solid #27272a;padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:60px;height:calc(100vh - 60px)}
 .panel-nav .nav-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#71717a;padding:6px 12px 8px}
@@ -136,6 +153,35 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .locked button{margin-top:16px}
 .panel .pane.is-locked .locked{display:block}
 .panel .pane.is-locked .pane-body{display:none}
+/* Bloqueo por plan (p. ej. Imágenes IA solo en Full): mismo estilo que
+   el bloqueo sin plan, pero por nivel de plan. */
+.panel .locked-full{display:none;background:#1a1a1e;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4);padding:32px 24px;margin:16px 0;text-align:center}
+.panel .locked-full .lock-icon{width:56px;height:56px;border-radius:50%;background:#E10600;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.panel .locked-full p{font-size:17px;font-weight:600;color:#f4f4f5;margin:0 0 6px}
+.panel .locked-full button{margin-top:16px}
+.panel .pane.is-locked-full .locked-full{display:block}
+.panel .pane.is-locked-full .pane-body{display:none}
+/* Imágenes IA: rejilla de miniaturas */
+.images-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:12px}
+@media(max-width:1200px){.images-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.images-grid{grid-template-columns:1fr}}
+.img-card{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;overflow:hidden}
+.img-card img{width:100%;display:block;background:#000}
+.img-card .img-body{padding:10px 12px}
+.img-card .img-prompt{font-size:13px;color:#f4f4f5;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:8px}
+.img-card .img-meta{font-size:12px;color:#a1a1aa;margin-bottom:8px}
+.img-pending{display:flex;align-items:center;justify-content:center;min-height:120px;background:#111113;color:#a1a1aa;font-size:13px}
+/* Videos IA: rejilla de videos generados */
+.videos-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:12px}
+@media(max-width:560px){.videos-grid{grid-template-columns:1fr}}
+.vid-card{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;overflow:hidden}
+.vid-card video{width:100%;display:block;background:#000;aspect-ratio:16/9}
+.vid-card .vid-body{padding:10px 12px}
+.vid-card .vid-prompt{font-size:13px;color:#f4f4f5;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:4px}
+.vid-card .vid-meta{font-size:12px;color:#a1a1aa;margin-bottom:8px}
+.vid-status{font-weight:700}
+.vid-status.done{color:#22c55e}
+.vid-status.bad{color:#E10600}
 /* Creador dentro del panel (Crear Clip): 2 columnas, izquierda flujo, derecha config+preview */
 .panel .create-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
 .panel .create-grid .card h2{font-size:18px;font-weight:700;color:#f4f4f5;margin:0 0 12px}
@@ -148,24 +194,30 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 @media(max-width:1000px){.panel #candidates{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.panel #candidates{grid-template-columns:1fr}}
 /* Mis Clips / Biblioteca: 4 columnas (3 ≤1200px, 2 ≤800px, 1 ≤560px) de
-   tarjetas verticales 9:16 con el video real, badge verde de viralidad
-   y duración sobre la miniatura, título y botones Descargar / Editar. */
+   tarjetas con forma de CELULAR: marco redondeado con bisel + isla
+   dinámica arriba, el video llena la pantalla 9:16, arriba el fuego +
+   % de viralidad a la izquierda y la duración a la derecha, y abajo
+   título + botones de icono (descargar rojo, editar oscuro). */
 .panel #myClips,.panel #adminClips{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .panel #myClips>p,.panel #adminClips>p{grid-column:1/-1}
 @media(max-width:1200px){.panel #myClips,.panel #adminClips{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:800px){.panel #myClips,.panel #adminClips{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.panel #myClips,.panel #adminClips{grid-template-columns:1fr}}
-.panel .clip-card{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
-.panel .clip-thumb{position:relative;aspect-ratio:9/16;background:#000}
+.panel .clip-card{background:#000;border:3px solid #2e2e33;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.panel .clip-thumb{position:relative;aspect-ratio:9/16;background:#000;border-radius:22px;overflow:hidden}
 .panel .clip-thumb video{width:100%;height:100%;object-fit:cover;display:block}
 .panel .clip-thumb-empty{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#71717a}
-.panel .clip-badges{position:absolute;left:8px;right:8px;bottom:8px;display:flex;gap:6px;align-items:center}
-.panel .viral-badge{background:#16a34a;color:#fff;font-weight:700;font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap}
-.panel .dur-badge{margin-left:auto;background:rgba(0,0,0,.72);color:#fff;font-weight:600;font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap}
-.panel .clip-card .clip-body{padding:12px}
+.panel .clip-thumb::before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);width:64px;height:18px;background:#000;border-radius:10px;z-index:3}
+.panel .clip-top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;align-items:flex-start;z-index:2}
+.panel .fire-badge{background:rgba(0,0,0,.72);color:#fff;font-weight:800;font-size:13px;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.panel .dur-badge{background:rgba(0,0,0,.72);color:#fff;font-weight:600;font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap}
+.panel .clip-card .clip-body{padding:12px 6px 6px}
 .panel .clip-card .clip-title{font-weight:700;font-size:15px;color:#f4f4f5;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:4px}
-.panel .clip-card .clip-actions{display:flex;gap:8px;margin-top:10px}
-.panel .clip-card .clip-actions a{display:contents}
+.panel .clip-card .clip-actions{display:flex;gap:8px;margin-top:10px;justify-content:flex-end}
+.panel .icon-btn{width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;text-decoration:none}
+.panel .icon-btn svg{width:20px;height:20px}
+.panel .icon-btn.dl{background:#E10600;color:#fff}
+.panel .icon-btn.edit{background:#27272a;color:#f4f4f5}
 .panel .clip{margin:0;padding:0;overflow:hidden;display:flex;flex-direction:column}
 .panel .clip video{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000}
 .panel .clip .clip-body{padding:10px 12px 12px}
@@ -272,7 +324,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   <div class="panel-top">
     <span class="brand" id="brandHome" title="Volver al inicio"><img src="/favicon.svg" alt="ClipViral"> ClipViral</span>
     <span class="spacer"></span>
-    <span class="who">Hola, <b id="panelUserName"></b><span class="planbadge" id="panelUserPlan">Sin plan</span></span>
+    <span class="who"><b id="panelCountdown" class="countdown"></b><span class="planbadge" id="panelUserPlan">Sin plan</span></span>
     <button class="ghost" id="btnLogoutTop">Cerrar sesión</button>
   </div>
   <div class="panel-shell">
@@ -281,6 +333,8 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <button class="tab on" data-tab="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9 21v-6h6v6"/></svg>Inicio</button>
       <button class="tab" data-tab="clips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>Mis Clips</button>
       <button class="tab" data-tab="create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></svg>Crear Clip</button>
+      <button class="tab" data-tab="images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 17l5-4 4 3 4-3 5 4"/></svg>Imágenes IA</button>
+      <button class="tab" data-tab="videos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5l5 2.5-5 2.5z"/></svg>Videos IA</button>
       <button class="tab" data-tab="plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l4 3.5L12 5l5 6.5L21 8l-1.6 10H4.6z"/><path d="M5 21h14"/></svg>Planes</button>
       <button class="tab" data-tab="account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="8" r="3.5"/><path d="M5.5 19.5c1.2-3 3.6-4.5 6.5-4.5s5.3 1.5 6.5 4.5"/></svg>Mi Cuenta</button>
       <button class="tab" data-tab="admin" id="tabAdmin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>Panel Admin</button>
@@ -389,6 +443,15 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           </select>
         </div>
         <p class="muted" id="cameraHint">Centrada: el recorte 9:16 fijo en el centro del video, como siempre.</p>
+        <label>Color de la palabra clave</label>
+        <select id="hlColor">
+          <option value="#FADE4C" selected>Amarillo</option>
+          <option value="#E10600">Rojo</option>
+          <option value="#22C55E">Verde</option>
+          <option value="#38BDF8">Azul</option>
+          <option value="#FFFFFF">Blanco</option>
+        </select>
+        <p class="muted">La palabra que suena se ve con este color de fondo y letra negra.</p>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button id="btnRender">Renderizar clip 9:16</button>
           <button id="btnSaveMeta" class="ghost" hidden>Guardar título y portada</button>
@@ -425,7 +488,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         </div>
         <div class="cfg-pane" id="cfg-template">
           <label>Plantilla del clip</label>
-          <select id="cfgTemplate"><option>Gancho grande</option><option>Viral</option><option>Minimalista</option></select>
+          <select id="cfgTemplate"><option>Gancho grande</option><option>Limpio</option><option>Impacto</option></select>
           <div class="switchrow">
             <label class="switch"><input type="checkbox" id="frameEnabled" checked><span class="slider"></span></label>
             <div><b id="frameLabel">Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
@@ -471,6 +534,65 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       </section>
       </div>
       </div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-images" hidden>
+      <h3>Imágenes IA</h3>
+      <p class="sub">Crea imágenes con IA para tus clips, portadas y publicaciones. Función del plan Full.</p>
+      <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <div class="locked-full"><div class="lock-icon">🔒</div><p>Las imágenes con IA están en el plan Full</p><p class="muted">Tu plan actual no incluye imágenes dibujadas por IA. Pásate al plan Full para crearlas.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver plan Full</button></div>
+      <div class="pane-body">
+        <div class="card">
+          <label>Describe tu imagen</label>
+          <textarea id="imgPrompt" rows="3" placeholder="Ej.: Un empresario dominicano celebrando en su oficina, luz cálida, foto realista…"></textarea>
+          <div style="margin-top:10px"><label>Modelo</label><select id="imgModel"><option value="">Cargando modelos…</option></select></div>
+          <p id="imgPriceNote" class="muted" style="margin:2px 0 0;font-size:12px"></p>
+          <div class="row">
+            <div><label>Formato</label><select id="imgAspect"><option value="9:16" selected>Vertical 9:16</option><option value="1:1">Cuadrado 1:1</option><option value="16:9">Horizontal 16:9</option></select></div>
+            <div><label>Estilo (opcional)</label><select id="imgStyle"><option value="" selected>Sin estilo</option><option value="Realista">Realista</option><option value="Dibujo">Dibujo</option><option value="3D">3D</option></select></div>
+          </div>
+          <div style="margin-top:14px"><button id="btnGenImage">Generar imagen</button></div>
+          <p id="imgMsg" class="muted"></p>
+          <div id="imgResult" hidden>
+            <img id="imgPreview" alt="Imagen generada" style="width:100%;max-width:420px;border-radius:12px;border:1px solid #27272a;display:block">
+            <p style="margin-top:12px"><a id="imgDownload" href="#" download><button>⬇ Descargar imagen</button></a></p>
+          </div>
+        </div>
+        <h4 style="margin:20px 0 4px">Mis imágenes</h4>
+        <div id="myImages" class="images-grid"><p class="muted">Cargando…</p></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-videos" hidden>
+      <h3>Videos IA</h3>
+      <p class="sub">Crea videos con IA desde un texto, con fal.ai. Función de los planes Pro y Full.</p>
+      <p class="muted" style="margin-top:-6px">Cada generación crea <b style="color:#f4f4f5">UN clip corto</b>: como máximo <b style="color:#f4f4f5">~30 s</b> (Wan 3.0), y la mayoría de los modelos solo 4–15 s. <b style="color:#f4f4f5">Ningún modelo genera 1 minuto de una vez</b>: un video de 1 minuto se hace con varios clips cortos unidos.</p>
+      <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <div class="locked-full"><div class="lock-icon">🔒</div><p>Los videos con IA están en los planes Pro y Full</p><p class="muted">Tu plan actual no incluye videos IA. Pásate a Pro o Full para crearlos.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes Pro y Full</button></div>
+      <div class="pane-body">
+        <div class="card">
+          <label>Describe tu video</label>
+          <textarea id="vidPrompt" rows="3" placeholder="Ej.: Un vendedor dominicano abriendo su tienda al amanecer, cámara lenta, luz cálida…"></textarea>
+          <div class="row">
+            <div><label>Modelo</label><select id="vidModel"><option value="">Cargando modelos…</option></select></div>
+            <div><label>Duración</label><select id="vidDuration"></select></div>
+          </div>
+          <div class="row">
+            <div><label>Formato</label><select id="vidAspect"></select></div>
+            <div id="vidAudioRow"><label>Audio</label><select id="vidAudio"><option value="1" selected>Con audio</option><option value="0">Sin audio</option></select></div>
+          </div>
+          <p id="vidCost" class="muted" style="margin:10px 0 0">Costo estimado: —</p>
+          <p id="vidPriceNote" class="muted" style="margin:2px 0 0;font-size:12px"></p>
+          <div style="margin-top:14px"><button id="btnGenVideo">Generar video</button></div>
+          <p id="vidMsg" class="muted"></p>
+          <div id="vidResult" hidden>
+            <video id="vidPreview" controls playsinline style="width:100%;border-radius:12px;border:1px solid #27272a;display:block"></video>
+            <p style="margin-top:12px"><a id="vidDownload" href="#" download><button>⬇ Descargar video</button></a></p>
+          </div>
+        </div>
+        <h4 style="margin:20px 0 4px">Mis videos</h4>
+        <div id="myVideos" class="videos-grid"><p class="muted">Cargando…</p></div>
       </div>
     </div>
 
@@ -569,12 +691,41 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <label>Nombre por defecto en el marco</label>
           <input id="setBrand" type="text" placeholder="@marketingcaribe">
           <label><input type="checkbox" id="setFrame" style="width:18px;height:18px;vertical-align:-3px"> Marco activado por defecto</label>
+          <label>Plantilla por defecto</label>
+          <select id="setTemplate">
+            <option value="Gancho grande">Gancho grande — marco amarillo, marca arriba, subtítulos abajo</option>
+            <option value="Limpio">Limpio — sin marco, marca pequeña, subtítulos abajo</option>
+            <option value="Impacto">Impacto — marco rojo, marca grande, resaltado rojo</option>
+          </select>
+          <p class="muted">La plantilla que usarán los videos de tus usuarios (cada uno puede cambiar la suya en Mi Cuenta).</p>
+          <label>Color de palabra clave por defecto</label>
+          <select id="setHighlight">
+            <option value="#FADE4C" selected>Amarillo</option>
+            <option value="#E10600">Rojo</option>
+            <option value="#22C55E">Verde</option>
+            <option value="#38BDF8">Azul</option>
+            <option value="#FFFFFF">Blanco</option>
+          </select>
+          <p class="muted">El fondo de la palabra que suena en los subtítulos, cuando el usuario no elige otro color en el editor.</p>
           <div style="margin-top:14px"><button id="btnSaveSettings">Guardar configuración</button></div>
           <p id="setMsg" class="muted"></p>
         </div>
       </div>
     </div>
 
+      </div>
+    </div>
+  </div>
+  <!-- Modal: asignar plan a un usuario (Panel Admin > Usuarios) -->
+  <div id="assignModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="assignTitle">
+      <button class="modal-x" id="assignClose" aria-label="Cerrar">×</button>
+      <h3 id="assignTitle">Asignar plan</h3>
+      <p class="muted" id="assignUserLine"></p>
+      <div id="assignPlanList"></div>
+      <div class="modal-actions">
+        <button id="assignCancel" class="ghost">Cancelar</button>
+        <button id="assignConfirm">Asignar</button>
       </div>
     </div>
   </div>
@@ -606,6 +757,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

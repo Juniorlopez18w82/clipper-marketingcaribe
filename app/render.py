@@ -406,29 +406,101 @@ def _split_crop(w: int, h: int, corner: str = "top-left") -> tuple[tuple[int, in
 def _detect_facecam_box(source: Path, start: float, duration: float,
                         corner: str = "top-left") -> tuple[int, int, int, int] | None:
     """Cuadro de la facecam (2026-11-11, queja de Juan: el cuadro debe
-    quedar COMPLETO y FIJO arriba, sin moverse).
+    quedar COMPLETO y FIJO, sin moverse, y enfocar completo al que habla).
 
-    El cuadro es un rectángulo fijo anclado a una esquina del video.
-    Medido en el video de RDjavi (visual grounding, 640x360): cuadro
-    CUADRADO ~18% del ancho x ~32% del alto, con un pequeño margen
-    superior (y≈0.03). NO se sigue la cara: centrar en la cara
-    desplazaba el cuadro y recortaba su lado derecho. Se usa un
-    rectángulo fijo anclado a la esquina, el mismo para todo el clip.
-    Devuelve (w, h, x, y).
+    El cuadro ya NO es un tamaño fijo medido en un solo video (RDjavi:
+    18% x 32%): en el video de Luinny la facecam es mucho más grande
+    (~35% x ~42%) y el cuadro fijo la recortaba por la mitad — solo se
+    veía medio Luinny arriba. Ahora el cuadro se MIDE en el propio
+    video: se detecta la cara del que habla en la esquina de la facecam
+    (Haar, varios fotogramas), se toma la posición MEDIANA (así el
+    cuadro queda FIJO aunque la persona se mueva) y se dimensiona a
+    partir de la cara (ancho = cara x 2.8, alto = cara x 2.0) para que
+    entre la cabeza + los hombros completos. Si no se encuentra cara,
+    se usa el cuadro fijo de RDjavi. Devuelve (w, h, x, y).
     """
     vw, vh = probe_size(source)
     corner = (corner or "top-left").strip().lower()
-    bw, bh = vw * 0.18, vh * 0.32
+    # Cuadro fijo de respaldo (RDjavi, v31).
+    bw0, bh0 = vw * 0.18, vh * 0.32
     if corner == "top-left":
-        x, y = 0.0, vh * 0.02
+        fx0, fy0 = 0.0, vh * 0.02
     elif corner == "top-right":
-        x, y = vw - bw, vh * 0.02
+        fx0, fy0 = vw - bw0, vh * 0.02
     elif corner == "bottom-left":
-        x, y = 0.0, vh - bh - vh * 0.02
+        fx0, fy0 = 0.0, vh - bh0 - vh * 0.02
     else:
-        x, y = vw - bw, vh - bh - vh * 0.02
-    return (int(round(bw / 2) * 2), int(round(bh / 2) * 2),
-            int(round(x / 2) * 2), int(round(y / 2) * 2))
+        fx0, fy0 = vw - bw0, vh - bh0 - vh * 0.02
+    fixed = (int(round(bw0 / 2) * 2), int(round(bh0 / 2) * 2),
+             int(round(fx0 / 2) * 2), int(round(fy0 / 2) * 2))
+    # --- Detección adaptativa: mide la cara en la esquina. ---
+    try:
+        import statistics
+        import cv2
+    except Exception:
+        return fixed
+    try:
+        n = max(3, min(8, int(duration // 3) + 1))
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pattern = tmpdir / "fc_%04d.jpg"
+            cmd = ["ffmpeg", "-y", "-v", "error",
+                   "-ss", str(start), "-i", str(source),
+                   "-t", str(duration),
+                   "-vf", f"fps={n}/{duration},scale=640:-1",
+                   "-q:v", "4", str(pattern)]
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=120)
+            if proc.returncode != 0:
+                return fixed
+            frames = sorted(tmpdir.glob("fc_*.jpg"))
+            if not frames:
+                return fixed
+            cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades
+                + "haarcascade_frontalface_default.xml")
+            # Región de la esquina (cuadrante, con un margen del 5% para
+            # no contar una cara centrada a pantalla completa).
+            m = 0.05
+            if corner == "top-left":
+                rx0, ry0, rx1, ry1 = 0, 0, vw * (0.5 - m), vh * (0.5 - m)
+            elif corner == "top-right":
+                rx0, ry0, rx1, ry1 = vw * (0.5 + m), 0, vw, vh * (0.5 - m)
+            elif corner == "bottom-left":
+                rx0, ry0, rx1, ry1 = 0, vh * (0.5 + m), vw * (0.5 - m), vh
+            else:
+                rx0, ry0, rx1, ry1 = vw * (0.5 + m), vh * (0.5 + m), vw, vh
+            faces: list[tuple[float, float, float, float]] = []
+            s = 640 / vw  # escala: fotograma 640 px -> video original
+            for fp in frames:
+                img = cv2.imread(str(fp))
+                if img is None:
+                    continue
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                found = cascade.detectMultiScale(
+                    gray, scaleFactor=1.1, minNeighbors=5,
+                    minSize=(30, 30))
+                for (x, y, w, h) in found:
+                    cx = (x + w / 2) / s
+                    cy = (y + h / 2) / s
+                    if rx0 <= cx <= rx1 and ry0 <= cy <= ry1:
+                        faces.append((cx, cy, w / s, h / s))
+            if not faces:
+                return fixed
+            mcx = statistics.median(f[0] for f in faces)
+            mcy = statistics.median(f[1] for f in faces)
+            mfw = statistics.median(f[2] for f in faces)
+            mfh = statistics.median(f[3] for f in faces)
+            # Cuadro = cabeza + hombros completos.
+            bw = min(mfw * 2.8, vw * 0.5)
+            bh = min(mfh * 2.0, vh * 0.6)
+            x = max(0.0, min(mcx - bw / 2, vw - bw))
+            y = max(0.0, min(mcy - bh / 2, vh - bh))
+            return (int(round(bw / 2) * 2), int(round(bh / 2) * 2),
+                    int(round(x / 2) * 2), int(round(y / 2) * 2))
+    except Exception as e:  # noqa: BLE001 — la detección no puede tumbar el render
+        logger.warning("facecam: detección falló (%s); uso cuadro fijo", e)
+        return fixed
 
 
 def _path_x_at(path: list, t: float) -> float:

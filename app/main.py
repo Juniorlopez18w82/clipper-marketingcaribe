@@ -1349,5 +1349,21 @@ def api_job_source(job_id: str):
 
 # Minimal frontend (same origin, no extra server).
 _frontend = BASE_DIR / "frontend"
+# URLs limpias por sección del panel (2026-11-10, Juan): cada pestaña
+# tiene su propia URL y el frontend usa history.pushState, así que una
+# recarga o un enlace directo a /mis-clips debe servir el panel; sin
+# estas rutas StaticFiles devolvería 404. Solo las secciones conocidas:
+# cualquier otra ruta sigue cayendo al StaticFiles de abajo.
+_PANEL_ROUTES = ("/inicio", "/mis-clips", "/crear-clip", "/imagenes-ia",
+                 "/videos-ia", "/planes", "/mi-cuenta", "/admin")
+
+
+def _panel_index():
+    return FileResponse(_frontend / "index.html")
+
+
+for _route in _PANEL_ROUTES:
+    app.add_api_route(_route, _panel_index, methods=["GET"],
+                      name=f"panel{_route.replace('/', '_')}")
 if _frontend.exists():
     app.mount("/", StaticFiles(directory=str(_frontend), html=True), name="frontend")

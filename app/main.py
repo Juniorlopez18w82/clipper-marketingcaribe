@@ -2137,13 +2137,23 @@ def api_job_camera_track(job_id: str, start: float, end: float,
             return json.loads(track_file.read_text(encoding="utf-8"))
         except Exception:
             pass
-    # Video del trozo (misma caché que /clip-video).
+    # Video del trozo en BAJA resolución (2026-11-11, velocidad): para
+    # detectar caras basta 360p y el archivo es ~5x más pequeño, así que
+    # el track tarda ~15 s en vez de ~37 s la primera vez. La posición
+    # en % es la misma a cualquier resolución (el frontend calcula
+    # object-position en %, no en píxeles), así que el recorrido vale
+    # igual para la vista previa en 1080p. Se usa su propio tag
+    # ({tag}_lr) para no chocar con el video 1080p de la vista previa.
+    # Nota: se ignoran los .part (descarga en curso) para no analizar
+    # un archivo incompleto y cachear un fallback centrado por error.
+    lr_tag = f"{tag}_lr"
     video = None
-    for f in sorted(SOURCES_DIR.glob(f"{tag}.*")):
-        video = f
-        break
+    for f in sorted(SOURCES_DIR.glob(f"{lr_tag}.*")):
+        if not f.name.endswith(".part"):
+            video = f
+            break
     if video is None:
-        video = download_section(url, start, end, tag)
+        video = download_section(url, start, end, lr_tag, lowres=True)
     from .camera import analyze_camera, probe_size
     duration = end - start
     cam = analyze_camera(video, 0, duration, mode, person)

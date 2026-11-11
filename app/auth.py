@@ -79,8 +79,10 @@ def _apply_platform_defaults(db: Session, user: User) -> None:
         from .settings import get_setting
         brand = get_setting(db, "default_brand_text", DEFAULT_BRAND_TEXT)
         frame = get_setting(db, "default_frame_enabled", "true")
+        tpl = get_setting(db, "default_template", "Gancho grande")
         user.brand_text = brand or DEFAULT_BRAND_TEXT
         user.frame_enabled = str(frame).lower() not in ("false", "0", "no")
+        user.template = (tpl or "Gancho grande").strip()[:80] or "Gancho grande"
     except Exception:  # noqa: BLE001 — defaults are best-effort
         pass
 

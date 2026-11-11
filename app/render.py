@@ -538,7 +538,9 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
                 title_border_w: int | None = None,
                 title_bg_color: str | None = None,
                 title_bg: bool = True,
-                title_size: int | None = None) -> Path:
+                title_size: int | None = None,
+                title_pos_x: float | None = None,
+                title_pos_y: float | None = None) -> Path:
     """Portada del clip (2026-11-11, petición de Juan): un fotograma fijo
     del video (el elegido con el control Portada) a pantalla completa
     9:16, con el título de enganche GRANDE y centrado encima, SIN marco
@@ -573,6 +575,11 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
     borderw = 3 if title_border_w is None else max(0, int(title_border_w))
     bgcolor = _hex_to_ffmpeg(title_bg_color, "0x000000") + "@0.55"
     box_part = f"box=1:boxcolor={bgcolor}:boxborderw=28:" if title_bg else ""
+    # Posición del texto (modal Configurar portada, 2026-11-11): 0.0 =
+    # arriba/izquierda, 0.5 = centrado, 1.0 = abajo/derecha. Antes era
+    # siempre centrado: x=(w-text_w)/2:y=(h-text_h)/2.
+    px = 0.5 if title_pos_x is None else max(0.0, min(1.0, float(title_pos_x)))
+    py = 0.5 if title_pos_y is None else max(0.0, min(1.0, float(title_pos_y)))
     # La portada lleva TAMBIÉN 2 s de audio en silencio (anullsrc), para
     # que tenga los mismos streams que el clip y el concat demuxer pueda
     # copiar sin re-codificar (el re-encode del concat filter era
@@ -586,7 +593,7 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
         "drawtext=fontfile=" + FONT_BOLD +
         f":textfile={title_file}:fontsize={size}:fontcolor={fontcolor}:"
         f"borderw={borderw}:bordercolor={bordercolor}:"
-        "x=(w-text_w)/2:y=(h-text_h)/2:" + box_part +
+        f"x=(w-text_w)*{px}:y=(h-text_h)*{py}:" + box_part +
         "line_spacing=12",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-r", "30", "-pix_fmt", "yuv420p",
@@ -690,7 +697,9 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 title_border_w: int | None = None,
                 title_bg_color: str | None = None,
                 title_bg: bool = True,
-                title_size: int | None = None) -> Path:
+                title_size: int | None = None,
+                title_pos_x: float | None = None,
+                title_pos_y: float | None = None) -> Path:
     """Render one clip. ``start_in_source`` is seconds into ``source`` file.
 
     ``quality``: "1080p" (1080x1920) or "720p" (720x1280) — marco, nombre
@@ -839,7 +848,9 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                                title_border_w=title_border_w,
                                title_bg_color=title_bg_color,
                                title_bg=title_bg,
-                               title_size=title_size)
+                               title_size=title_size,
+                               title_pos_x=title_pos_x,
+                               title_pos_y=title_pos_y)
             _concat_title_card(card, main_path, output)
         else:
             shutil.copyfile(main_path, output)

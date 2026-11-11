@@ -416,7 +416,8 @@ def _download_audio_parallel(url: str, start: float, end: float,
 
 
 def download_section(url: str, start: float, end: float, job_id: str,
-                     audio_only: bool = False) -> Path:
+                     audio_only: bool = False,
+                     lowres: bool = False) -> Path:
     """Download only [start, end] (absolute seconds in the original video).
 
     Returns the downloaded file. Format: best video <=1080p + audio, merged
@@ -477,7 +478,9 @@ def download_section(url: str, start: float, end: float, job_id: str,
         # no es de YouTube en general, es por flujo/cliente. 70 kbps
         # Opus es más que suficiente para transcribir voz con Whisper.
         # Si 250 no existe en un video, cae a 251 y luego a bestaudio.
-        formats = ["250/251/bestaudio/best"] if audio_only else FORMAT_SELECTORS
+        formats = (["250/251/bestaudio/best"] if audio_only
+                   else ["18/best[height<=360]/best"] if lowres
+                   else FORMAT_SELECTORS)
         for fmt in formats:
             attempt += 1
             for old in SOURCES_DIR.glob(f"{job_id}.*"):

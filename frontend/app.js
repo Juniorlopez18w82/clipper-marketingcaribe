@@ -684,7 +684,14 @@ $("btnClips").onclick = async () => {
       const info = await apiFetch("/api/video-info", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ url }) });
       const mins = info.duration ? `${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}` : "live";
       $("videoMeta").textContent = `${info.title} · ${info.uploader || ""} · ${mins}`;
-      $("rangeEnd").value = Math.min(info.duration || 120, 300);
+      // No pisar el "Hasta" que el usuario ya escribió: solo poner el
+      // valor por defecto si está vacío, y recortarlo a la duración real.
+      const userEnd = parseFloat($("rangeEnd").value);
+      if (!userEnd || userEnd <= 0) {
+        $("rangeEnd").value = Math.min(info.duration || 120, 300);
+      } else if (info.duration) {
+        $("rangeEnd").value = Math.min(userEnd, info.duration);
+      }
       body = { url };
     }
     body.start = parseFloat($("rangeStart").value || 0);

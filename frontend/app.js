@@ -354,6 +354,19 @@ async function loadPanel() {
     $("stMonth").textContent = s.clips_this_month ?? 0;
     $("stProcessing").textContent = s.videos_in_process ?? 0;
     $("stTotalClips").textContent = s.clips_total ?? 0;
+    $("stVideos").textContent = s.videos_total ?? 0;
+    $("stMinutes").textContent = s.minutes_total ?? 0;
+    $("stLives").textContent = s.lives_active ?? 0;
+    const recent = $("homeRecent");
+    if (recent) {
+      recent.innerHTML = "";
+      const list = s.recent_clips || [];
+      if (!list.length) {
+        recent.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>";
+      } else {
+        list.forEach((c) => recent.appendChild(clipRow(c, false)));
+      }
+    }
   } catch { /* stats best-effort */ }
   $("accName").value = state.user.name || "";
   $("accEmail").value = state.user.email || "";

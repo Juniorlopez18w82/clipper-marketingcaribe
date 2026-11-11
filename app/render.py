@@ -135,13 +135,18 @@ def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
     """ASS subtitles from word timestamps (times relative to clip start).
 
     Groups of 3 words, split on pauses > 0.8 s (proven in make_clip.py).
-    ``style``: viral = white text + yellow karaoke word;
+    ``style``: viral = white text + highlight box on the sounding word;
                plain = white text, no karaoke; yellow = all-yellow text.
     ``position``: bottom (MarginV 320) / middle (MarginV 850) / top.
     Every word is uppercased, white, with a black border (Outline 4).
-    The sounding word also gets a coloured BACKGROUND block behind
-    black text (see ``_keyword_box_events``); ``extra_events`` carries
-    those box events and ``extra_styles`` their ViralBox style.
+    The sounding word gets a coloured BACKGROUND block behind black text
+    (see ``_keyword_box_events``); ``extra_events`` carries those box
+    events and ``extra_styles`` their ViralBox style. The karaoke sweep
+    (\\k) is ONLY a fallback when there are no box events: with both,
+    the yellow karaoke and the black-on-colour box highlight different
+    words at once (their timings drift when Whisper word times overlap)
+    and the subtitles look like two fonts on top of each other
+    (seen 2026-11-10).
     """
     groups = _group_words(words)
     header = _ass_header(size, position, highlight_color, width, height,
@@ -157,11 +162,12 @@ def build_ass(words: list[dict], size: int = 76, position: str = "bottom",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
+    use_karaoke = (style == "viral" and not extra_events)
     for i, g in enumerate(groups):
         start, end = g[0]["s"], g[-1]["e"] + 0.15
         if i + 1 < len(groups):
             end = min(end, groups[i + 1][0]["s"] - 0.05)
-        if style == "viral":
+        if use_karaoke:
             parts = []
             for w in g:
                 dur = int(max(5, (w["e"] - w["s"]) * 100))
@@ -252,10 +258,27 @@ def _keyword_box_events(words: list[dict], *, size: int, position: str,
         else:  # bottom / middle: box bottom = height - MarginV
             an, y_pos = 2, height - margin_v
         events: list[str] = []
+        # Índice por identidad para el siguiente de cada palabra (hay
+        # palabras repetidas; words.index() devolvería la primera).
+        _next_start = {}
+        for _j, _w in enumerate(words):
+            _next_start[id(_w)] = (words[_j + 1]["s"]
+                                   if _j + 1 < len(words) else None)
         for i, g in enumerate(groups):
             gray = frames[i].max(axis=2)
             ink_cols = np.where(gray.max(axis=0) > 80)[0]
             if ink_cols.size == 0:
+                continue
+            # Si el grupo ocupa DOS líneas (palabras largas), las cajas
+            # medidas por columnas mezclan ambas líneas y salen
+            # descolocadas (una encima de otra, cortadas por el borde).
+            # Mejor sin caja en ese grupo: el texto blanco sigue limpio.
+            ink_rows = np.where(gray.max(axis=1) > 80)[0]
+            bands = 1
+            for _r in range(1, len(ink_rows)):
+                if ink_rows[_r] - ink_rows[_r - 1] > 15:
+                    bands += 1
+            if bands > 1:
                 continue
             # Ink runs (consecutive columns with ink).
             col_list = ink_cols.tolist()
@@ -288,8 +311,15 @@ def _keyword_box_events(words: list[dict], *, size: int, position: str,
             for w, (x0, x1) in zip(g, word_boxes):
                 cx = (x0 + x1) // 2
                 text = _ass_escape(w["w"].strip().upper())
+                # Una sola caja a la vez: si la palabra siguiente empieza
+                # antes de que termine esta (tiempos de Whisper solapados),
+                # cortar ahí para que no se vean dos cajas a la vez.
+                box_end = w["e"] + 0.05
+                nxt = _next_start.get(id(w))
+                if nxt is not None and nxt < box_end:
+                    box_end = nxt
                 events.append(
-                    f"Dialogue: 1,{_fmt(w['s'])},{_fmt(w['e'] + 0.05)},"
+                    f"Dialogue: 1,{_fmt(w['s'])},{_fmt(box_end)},"
                     f"ViralBox,,0,0,0,,{{\\an{an}\\pos({cx},{y_pos})}}"
                     f"{text}")
         if not events:

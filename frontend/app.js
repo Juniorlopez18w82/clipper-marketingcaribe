@@ -1736,19 +1736,33 @@ $("coverRange").addEventListener("input", () => {
   }
 });
 
-// ---------- Guardar título y portada (sin re-renderizar) ----------
-// Solo visible cuando se está editando un clip existente: actualiza el
-// título y la portada del clip en Mis Clips, sin crear un render nuevo.
+// ---------- Guardar título y portada (re-renderiza el clip) ----------
+// Cuando se está editando un clip existente, guardar el título y la
+// portada RE-RENDERIZA ese mismo clip (mismo id y mismo archivo): el
+// título de enganche se quema grande sobre la portada al inicio del
+// video, sin marco ni marca. Un PATCH solo cambiaría la miniatura, y
+// el título no saldría en el video (eso era lo que estaba mal).
 $("btnSaveMeta").onclick = async () => {
   if (!state.editingClipId) return;
+  if (!state.clipsJob || state.busy) return;
   const msg = $("saveMetaMsg");
-  msg.textContent = "Guardando…";
+  const start = parseFloat($("clipStart").value), end = parseFloat($("clipEnd").value);
+  if (!(end > start)) { msg.textContent = "El fin debe ser mayor que el inicio."; return; }
+  msg.textContent = "Guardando y re-renderizando el clip…";
+  state.busy = true;
   try {
-    await apiFetch(`/api/me/clips/${state.editingClipId}`, { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ title: $("hookTitle").value.trim(), cover_at: state.coverAt }) });
-    msg.textContent = "Guardado ✓";
+    const body = buildRenderBody(start, end, null);
+    body.update_clip_id = state.editingClipId;
+    const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    await pollJob(d.job_id, () => {});
+    msg.textContent = "Guardado ✓ El título ya sale en la portada del video.";
     loadMyClips();
     if (state.user && state.user.is_admin) loadAdminClips();
-  } catch (e) { msg.textContent = "Error: " + e.message; }
+  } catch (e) {
+    msg.textContent = "Error: " + e.message;
+  } finally {
+    state.busy = false;
+  }
 };
 
 // ---------- Cámara (paso 3) ----------
@@ -1765,6 +1779,40 @@ $("cameraMode").onchange = () => {
 };
 
 // ---------- Renderizar ----------
+// Cuerpo del render (paso 3): lo comparten el botón Render (clip nuevo)
+// y Guardar título y portada (re-render del clip existente).
+function buildRenderBody(start, end, edited) {
+  return {
+    job_id: state.clipsJob.id, start, end, model: $("model").value,
+    quality: $("cfgQuality").value,
+    frame_enabled: $("frameEnabled").checked,
+    frame_color: $("frameColor").value,
+    frame_width: parseInt($("frameWidth").value || "14", 10),
+    brand_text: $("brandText").value,
+    title_text: $("titleText").value,
+    // Identidad del clip en la biblioteca: título gancho + viralidad
+    // del candidato elegido (LLM) o su score (regla); el título del
+    // video original como respaldo. El título se toma del campo
+    // editable del paso 3, y la portada del control de portada.
+    clip_title: $("hookTitle").value.trim() || (state.selected && state.selected.title) || "",
+    cover_at: state.coverAt,
+    camera_mode: $("cameraMode").value,
+    camera_person: $("cameraPerson").value,
+    clip_score: (state.selected && typeof state.selected.score === "number")
+      ? state.selected.score : null,
+    video_title: state.videoTitle || "",
+    show_subtitles: $("showSubs").value === "1",
+    subtitle_style: $("subStyle").value,
+    subtitle_size: parseInt($("subSize").value || "76", 10),
+    subtitle_position: $("subPos").value,
+    // Plantilla: null = el usuario tocó un control (render
+    // personalizado con sus valores); si no, su plantilla guardada.
+    // Color de palabra clave: la elección del editor para este render.
+    template: state.templateTouched ? null : (state.userTemplate || "Gancho grande"),
+    highlight_color: $("hlColor").value,
+    edited_words: edited,
+  };
+}
 $("btnRender").onclick = async () => {
   if (!state.clipsJob) return alert("Primero genera los clips y elige uno");
   if (state.busy) return;
@@ -1783,36 +1831,7 @@ $("btnRender").onclick = async () => {
   hideJobError();
   renderSteps(3, 3, FLOW_MSGS[3]);
   try {
-    const body = {
-      job_id: state.clipsJob.id, start, end, model: $("model").value,
-      quality: $("cfgQuality").value,
-      frame_enabled: $("frameEnabled").checked,
-      frame_color: $("frameColor").value,
-      frame_width: parseInt($("frameWidth").value || "14", 10),
-      brand_text: $("brandText").value,
-      title_text: $("titleText").value,
-      // Identidad del clip en la biblioteca: título gancho + viralidad
-      // del candidato elegido (LLM) o su score (regla); el título del
-      // video original como respaldo. El título se toma del campo
-      // editable del paso 3, y la portada del control de portada.
-      clip_title: $("hookTitle").value.trim() || (state.selected && state.selected.title) || "",
-      cover_at: state.coverAt,
-      camera_mode: $("cameraMode").value,
-      camera_person: $("cameraPerson").value,
-      clip_score: (state.selected && typeof state.selected.score === "number")
-        ? state.selected.score : null,
-      video_title: state.videoTitle || "",
-      show_subtitles: $("showSubs").value === "1",
-      subtitle_style: $("subStyle").value,
-      subtitle_size: parseInt($("subSize").value || "76", 10),
-      subtitle_position: $("subPos").value,
-      // Plantilla: null = el usuario tocó un control (render
-      // personalizado con sus valores); si no, su plantilla guardada.
-      // Color de palabra clave: la elección del editor para este render.
-      template: state.templateTouched ? null : (state.userTemplate || "Gancho grande"),
-      highlight_color: $("hlColor").value,
-      edited_words: edited,
-    };
+    const body = buildRenderBody(start, end, edited);
     const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     const job = await pollJob(d.job_id, (j) => {
       setJobProgress(j.progress || 0);

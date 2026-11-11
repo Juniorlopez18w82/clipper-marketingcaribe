@@ -251,6 +251,23 @@ def _fmt_time(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
+def _video_decodable(path: Path) -> bool:
+    """¿El video se puede decodificar de verdad? ffprobe solo lee la
+    cabecera: un archivo con cabecera válida pero sin fotogramas (lo
+    que deja --download-sections en algunos videos HLS, como
+    qjn_zvadIdM) pasa la verificación de duración y luego el render
+    falla con 'Cannot determine format'. Decodificar 1 fotograma lo
+    detecta y fuerza el fallback al siguiente formato (18, MP4)."""
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(path),
+             "-frames:v", "1", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=60)
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
 def _stream_durations(path: Path) -> tuple[float, float]:
     """(video_duration, audio_duration) in seconds; 0 if missing.
 
@@ -515,11 +532,14 @@ def download_section(url: str, start: float, end: float, job_id: str,
             # Audio must cover (nearly) the whole section; video is ~10 s long
             # because of keyframes, so compare audio against the requested length.
             # Y para VIDEO (2026-11-11): exigir también que el archivo
-            # tenga video. Sin esto, un video cuyo mejor flujo es HLS
-            # (qjn_zvadIdM) baja solo el audio (video 0 KiB) y el audio
-            # pasa la verificación, pero el render falla después porque
-            # ffmpeg no encuentra video ("Cannot determine format").
-            if a_dur >= (end - start) * 0.8 and (audio_only or v_dur >= (end - start) * 0.8):
+            # tenga video Y que se pueda decodificar. Sin esto, un video
+            # cuyo mejor flujo es HLS (qjn_zvadIdM) baja solo el audio
+            # (video 0 KiB) o un webm con cabecera válida pero sin
+            # fotogramas, el audio pasa la verificación, pero el render
+            # falla después porque ffmpeg no encuentra video
+            # ("Cannot determine format").
+            if a_dur >= (end - start) * 0.8 and (audio_only or (
+                    v_dur >= (end - start) * 0.8 and _video_decodable(files[0]))):
                 return files[0]
             errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s video {v_dur:.1f}s for a "
                           f"{end - start:.0f}s section (truncated)")

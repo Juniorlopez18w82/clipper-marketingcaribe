@@ -80,8 +80,13 @@ def _map_groq_response(payload: dict) -> list[dict]:
 def _transcribe_groq(wav_path: Path) -> list[dict] | None:
     """Try Groq Whisper. Returns segments on success, None when Groq
     was not attempted or failed — the caller then falls back to local
-    faster-whisper. An empty list is a VALID result (silence), not a
-    failure, so it is returned as-is."""
+    faster-whisper. An EMPTY result is treated as a failure too: a
+    real 60 s clip of speech must not transcribe to zero segments
+    (seen 2026-11-10: Groq answered 200 with no segments for a WAV
+    that curl transcribed into 18 segments), so returning None lets
+    the local engine retry instead of the job ending with 0 clips.
+    A genuinely silent video then transcribes empty locally as well,
+    and the clips job fails with a clear message (see main.py)."""
     key = os.environ.get("GROQ_API_KEY")
     if not key:
         return None
@@ -131,11 +136,16 @@ def _transcribe_groq(wav_path: Path) -> list[dict] | None:
                        "falling back to local faster-whisper", e)
         return None
     try:
-        return _map_groq_response(payload)
+        segments = _map_groq_response(payload)
     except Exception as e:  # noqa: BLE001 — unexpected response shape
         logger.warning("Groq response could not be parsed (%s); "
                        "falling back to local faster-whisper", e)
         return None
+    if not segments:
+        logger.warning("Groq transcription returned no segments; "
+                       "falling back to local faster-whisper")
+        return None
+    return segments
 
 
 

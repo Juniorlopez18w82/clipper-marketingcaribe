@@ -251,6 +251,8 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .icon-btn svg{width:20px;height:20px}
 .panel .icon-btn.dl{background:#E10600;color:#fff}
 .panel .icon-btn.edit{background:#27272a;color:#f4f4f5}
+.panel .icon-btn.del{background:#27272a;color:#f4f4f5}
+.panel .icon-btn.del.confirm{background:#E10600;color:#fff}
 .panel .clip-thumb{cursor:pointer}
 .panel .clip-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;border:3px solid rgba(255,255,255,.9);background:rgba(225,6,0,.92);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:4;box-shadow:0 4px 18px rgba(0,0,0,.55);transition:transform .15s}
 .panel .clip-play:hover{transform:translate(-50%,-50%) scale(1.08)}
@@ -701,6 +703,18 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
       <p id="accMsg" class="muted"></p>
       </div>
+      <div class="card" style="margin-top:16px">
+      <h4 style="margin:0 0 4px">Cambiar contraseña</h4>
+      <p class="muted" style="margin:0 0 10px">Tu contraseña actual es necesaria para cambiarla.</p>
+      <label>Contraseña actual</label>
+      <input id="pwCurrent" type="password" autocomplete="current-password" style="width:100%">
+      <label style="margin-top:10px">Contraseña nueva</label>
+      <input id="pwNew" type="password" autocomplete="new-password" style="width:100%">
+      <label style="margin-top:10px">Confirmar contraseña nueva</label>
+      <input id="pwConfirm" type="password" autocomplete="new-password" style="width:100%">
+      <div style="margin-top:14px"><button id="btnChangePassword">Cambiar contraseña</button></div>
+      <p id="pwMsg" class="muted"></p>
+      </div>
       </div>
     </div>
 
@@ -865,6 +879,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

@@ -1415,10 +1415,14 @@ def _live_set_status(session_id: int, status: str,
                      user: User | None, db: Session) -> dict:
     _require_plan(db, user)
     session = _live_owner(db, user, session_id)
-    if status == STATUS_ACTIVE and session.status == STATUS_PAUSED:
+    if status == STATUS_ACTIVE and session.status in (STATUS_PAUSED,
+                                                      STATUS_STOPPED):
         # On resume, restart from the live edge (don't process the
-        # backlog that aired while paused).
+        # backlog that aired while paused/stopped) and run the first
+        # round right away: last_run_at=None makes the session due on
+        # the next monitor tick instead of waiting for the interval.
         session.last_end = None
+        session.last_run_at = None
     session.status = status
     session.updated_at = datetime.now(timezone.utc)
     db.commit()

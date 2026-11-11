@@ -158,6 +158,7 @@ def live_status(url: str) -> dict | None:
         "uploader": info.get("uploader") or "",
         "video_id": info.get("id") or "",
         "duration": info.get("duration"),
+        "thumbnail": info.get("thumbnail") or "",
         "edge": None,
     }
     if not base["is_live"]:

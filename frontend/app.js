@@ -9,9 +9,10 @@ const state = { clipsJob: null, transcript: null, selected: null, words: null,
   // Estilo de la portada (modal Configurar portada, 2026-11-11): color
   // del texto, borde de la letra, fondo de las letras y tamaño. Los
   // defaults son lo que ya quemaba el backend: texto blanco, borde
-  // negro 3 px, caja negra, tamaño 96.
+  // negro 3 px, caja negra, tamaño 96. Posición: 0.0 = arriba/izquierda,
+  // 0.5 = centrado, 1.0 = abajo/derecha (antes era siempre centrado).
   coverStyle: { color: "#FFFFFF", borderColor: "#000000", borderW: 3,
-    bgColor: "#000000", bg: true, size: 96 } };
+    bgColor: "#000000", bg: true, size: 96, posX: 0.5, posY: 0.5 } };
 
 // Plantillas (mismo preset que app/render.py: TEMPLATES). El editor
 // aplica la plantilla a los controles; si el usuario toca un control de
@@ -1717,7 +1718,14 @@ function coverTitleText() {
 }
 function updateCoverTitle() {
   const el = $("pvCoverTitle");
-  if (el) el.textContent = coverTitleText();
+  if (el) {
+    el.textContent = coverTitleText();
+    // Misma posición que en el modal y que en el video (posX/posY).
+    el.style.left = (state.coverStyle.posX * 100) + "%";
+    el.style.right = "auto";
+    el.style.top = (state.coverStyle.posY * 100) + "%";
+    el.style.transform = `translate(${-state.coverStyle.posX * 100}%, ${-state.coverStyle.posY * 100}%)`;
+  }
 }
 function setCoverMode(on) {
   const phone = $("phone");
@@ -1794,6 +1802,13 @@ function updateCoverModalPreview() {
       : "none";
     titleEl.style.background = st.bg ? "rgba(0,0,0,0.55)" : "transparent";
     if (st.bg) titleEl.style.background = hexToRgba(st.bgColor, 0.55);
+    // Posición del texto (igual que el backend: la esquina del bloque
+    // queda a posX/posY del espacio disponible; 0 = arriba/izquierda,
+    // 0.5 = centrado, 1 = abajo/derecha).
+    titleEl.style.left = (st.posX * 100) + "%";
+    titleEl.style.right = "auto";
+    titleEl.style.top = (st.posY * 100) + "%";
+    titleEl.style.transform = `translate(${-st.posX * 100}%, ${-st.posY * 100}%)`;
   }
   const v = $("coverVideo");
   if (v && state.selected) {
@@ -1805,8 +1820,13 @@ function updateCoverModalPreview() {
   sync("coverBorderColor", st.borderColor); sync("coverBorderHex", st.borderColor);
   sync("coverBgColor", st.bgColor); sync("coverBgHex", st.bgColor);
   sync("coverBorderW", st.borderW); sync("coverSize", st.size);
+  sync("coverPosX", Math.round(st.posX * 100)); sync("coverPosY", Math.round(st.posY * 100));
   const bw = $("coverBorderWVal"); if (bw) bw.textContent = st.borderW + " px";
   const sv = $("coverSizeVal"); if (sv) sv.textContent = st.size;
+  const posName = (v) => v < 0.35 ? "Arriba" : v > 0.65 ? "Abajo" : "Centro";
+  const posNameX = (v) => v < 0.35 ? "Izquierda" : v > 0.65 ? "Derecha" : "Centro";
+  const pyv = $("coverPosYVal"); if (pyv) pyv.textContent = posName(st.posY);
+  const pxv = $("coverPosXVal"); if (pxv) pxv.textContent = posNameX(st.posX);
   const bgOn = $("coverBgOn"); if (bgOn) bgOn.checked = !!st.bg;
   ["coverColorSwatches", "coverBorderSwatches", "coverBgSwatches"].forEach((id) => {
     const box = $(id);
@@ -1861,6 +1881,8 @@ $("coverBgColor").addEventListener("input", () => { state.coverStyle.bgColor = $
 $("coverBgHex").addEventListener("input", () => { state.coverStyle.bgColor = $("coverBgHex").value; updateCoverModalPreview(); });
 $("coverBgOn").addEventListener("change", () => { state.coverStyle.bg = $("coverBgOn").checked; updateCoverModalPreview(); });
 $("coverSize").addEventListener("input", () => { state.coverStyle.size = parseInt($("coverSize").value || "96", 10); updateCoverModalPreview(); });
+$("coverPosY").addEventListener("input", () => { state.coverStyle.posY = parseInt($("coverPosY").value || "50", 10) / 100; updateCoverModalPreview(); });
+$("coverPosX").addEventListener("input", () => { state.coverStyle.posX = parseInt($("coverPosX").value || "50", 10) / 100; updateCoverModalPreview(); });
 buildSwatches("coverColorSwatches", () => state.coverStyle.color, (c) => { state.coverStyle.color = c; });
 buildSwatches("coverBorderSwatches", () => state.coverStyle.borderColor, (c) => { state.coverStyle.borderColor = c; });
 buildSwatches("coverBgSwatches", () => state.coverStyle.bgColor, (c) => { state.coverStyle.bgColor = c; });
@@ -2054,6 +2076,8 @@ function buildRenderBody(start, end, edited) {
     title_bg_color: state.coverStyle.bgColor,
     title_bg: state.coverStyle.bg,
     title_size: state.coverStyle.size,
+    title_pos_x: state.coverStyle.posX,
+    title_pos_y: state.coverStyle.posY,
   };
 }
 $("btnRender").onclick = async () => {

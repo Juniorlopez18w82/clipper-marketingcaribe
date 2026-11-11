@@ -101,6 +101,34 @@ def _ensure_user_pref_columns() -> None:
         logger.warning("User columns migration failed: %s", e)
 
 
+def _ensure_clip_columns() -> None:
+    """Add the score/section_start columns to an existing clips table.
+
+    Same pattern as _ensure_user_pref_columns: create_all() never adds
+    columns to an existing table, so the live VPS SQLite and Render
+    Postgres need ALTER TABLE on boot. Both engines support ADD COLUMN;
+    the columns are nullable so old rows stay valid.
+    """
+    from sqlalchemy import inspect
+
+    cols = {
+        "score": "FLOAT",
+        "section_start": "FLOAT",
+    }
+    try:
+        existing = {c["name"] for c in inspect(engine).get_columns("clips")}
+        missing = [k for k in cols if k not in existing]
+        if not missing:
+            return
+        with engine.begin() as conn:
+            for name in missing:
+                conn.exec_driver_sql(
+                    f'ALTER TABLE clips ADD COLUMN "{name}" {cols[name]}')
+        logger.info("Migrated clips table: added %s", ", ".join(missing))
+    except Exception as e:  # noqa: BLE001 — migration is best-effort
+        logger.warning("Clip columns migration failed: %s", e)
+
+
 def init_db() -> None:
     """Create tables if they do not exist. Safe to call on every boot.
 
@@ -119,6 +147,7 @@ def init_db() -> None:
         logger.warning("DB init failed (%s): %s", db_backend(), e)
         return
     _ensure_user_pref_columns()
+    _ensure_clip_columns()
     try:
         db = SessionLocal()
         try:

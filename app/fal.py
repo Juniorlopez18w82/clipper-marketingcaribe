@@ -26,7 +26,7 @@ import urllib.request
 QUEUE_BASE = "https://queue.fal.run"
 MODELS_BASE = "https://fal.ai/models"
 FAL_KEY_ERROR = "Configura tu clave de fal.ai en el servidor"
-USER_AGENT = "ClipViral/1.4.0"
+USER_AGENT = "ClipViral/1.5.0"
 
 
 class FalError(ValueError):

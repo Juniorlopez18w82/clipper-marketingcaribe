@@ -912,7 +912,7 @@ def api_my_stats(db: Session = Depends(get_db),
                             LiveSession.status == STATUS_ACTIVE).count())
     # Últimos 3 clips generados (para el Inicio).
     recent = (db.query(Clip).filter(Clip.user_id == user.id)
-              .order_by(Clip.id.desc()).limit(3).all())
+              .order_by(Clip.id.desc()).limit(4).all())
     # Videos en proceso: jobs en cola o corriendo de este usuario (v1: JSON).
     in_process = 0
     try:

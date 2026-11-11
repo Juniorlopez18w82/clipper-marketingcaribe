@@ -5,7 +5,13 @@ const state = { clipsJob: null, transcript: null, selected: null, words: null,
   editingClipId: null, coverAt: 0, canImages: false, canVideos: false,
   videoModels: null, vidPollTimer: null, imageModels: null, imgPollTimer: null,
   userTemplate: "Gancho grande", templateTouched: false,
-  rangeEndTouched: false };
+  rangeEndTouched: false,
+  // Estilo de la portada (modal Configurar portada, 2026-11-11): color
+  // del texto, borde de la letra, fondo de las letras y tamaño. Los
+  // defaults son lo que ya quemaba el backend: texto blanco, borde
+  // negro 3 px, caja negra, tamaño 96.
+  coverStyle: { color: "#FFFFFF", borderColor: "#000000", borderW: 3,
+    bgColor: "#000000", bg: true, size: 96 } };
 
 // Plantillas (mismo preset que app/render.py: TEMPLATES). El editor
 // aplica la plantilla a los controles; si el usuario toca un control de
@@ -1736,6 +1742,141 @@ $("hookTitle").addEventListener("input", () => {
   updateCoverTitle();
   setCoverMode(true);
 });
+
+// ---------- Modal Configurar portada (2026-11-11, petición de Juan) ----------
+// Un popup SOLO para la portada, antes de recortar el video: vista
+// previa 9:16 en vivo (fotograma + título, sin marco ni marca ni
+// subtítulos), selector del fotograma, texto editable, color del texto,
+// borde de la letra (color + grosor), fondo de las letras (color + si
+// lleva caja) y tamaño. "Aplicar portada" guarda todo en el paso 3 y en
+// el render; "Cancelar" no cambia nada.
+const COVER_SWATCHES = ["#FFFFFF", "#FADE4C", "#E10600", "#000000", "#00E676", "#00B0FF", "#FF6D00", "#B388FF"];
+function buildSwatches(elId, getVal, setVal) {
+  const box = $(elId);
+  if (!box) return;
+  box.innerHTML = "";
+  COVER_SWATCHES.forEach((c) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.style.background = c;
+    b.title = c;
+    b.onclick = () => { setVal(c); updateCoverModalPreview(); };
+    box.appendChild(b);
+  });
+  const mark = () => {
+    [...box.children].forEach((ch) => ch.classList.toggle("sel", ch.title.toUpperCase() === (getVal() || "").toUpperCase()));
+  };
+  box._mark = mark;
+  mark();
+}
+function wrapTitle(text) {
+  // Igual que el backend (textwrap width=18): envuelve el título en
+  // líneas cortas para que se lea grande.
+  const words = (text || "").trim().split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    if ((cur + " " + w).trim().length > 18 && cur) { lines.push(cur); cur = w; }
+    else cur = (cur + " " + w).trim();
+  }
+  if (cur) lines.push(cur);
+  return lines.join("\n") || "Título de enganche";
+}
+function updateCoverModalPreview() {
+  const st = state.coverStyle;
+  const titleEl = $("coverModalTitle2");
+  if (titleEl) {
+    titleEl.textContent = wrapTitle($("coverModalTitleInput").value || coverTitleText());
+    titleEl.style.color = st.color;
+    titleEl.style.fontSize = Math.round(st.size * 0.22) + "px";
+    titleEl.style.textShadow = st.borderW > 0
+      ? `0 0 ${st.borderW}px ${st.borderColor}, 0 ${Math.max(1, Math.round(st.borderW / 2))}px 0 ${st.borderColor}, 0 0 ${st.borderW * 2}px ${st.borderColor}`
+      : "none";
+    titleEl.style.background = st.bg ? "rgba(0,0,0,0.55)" : "transparent";
+    if (st.bg) titleEl.style.background = hexToRgba(st.bgColor, 0.55);
+  }
+  const v = $("coverVideo");
+  if (v && state.selected) {
+    try { v.currentTime = Math.max(0, state.selected.start + state.coverAt + 0.01); } catch (e) { /* aún sin metadatos */ }
+  }
+  // Sincroniza los controles con el estado.
+  const sync = (id, val) => { const el = $(id); if (el && el.value !== String(val)) el.value = val; };
+  sync("coverColor", st.color); sync("coverColorHex", st.color);
+  sync("coverBorderColor", st.borderColor); sync("coverBorderHex", st.borderColor);
+  sync("coverBgColor", st.bgColor); sync("coverBgHex", st.bgColor);
+  sync("coverBorderW", st.borderW); sync("coverSize", st.size);
+  const bw = $("coverBorderWVal"); if (bw) bw.textContent = st.borderW + " px";
+  const sv = $("coverSizeVal"); if (sv) sv.textContent = st.size;
+  const bgOn = $("coverBgOn"); if (bgOn) bgOn.checked = !!st.bg;
+  ["coverColorSwatches", "coverBorderSwatches", "coverBgSwatches"].forEach((id) => {
+    const box = $(id);
+    if (box && box._mark) box._mark();
+  });
+}
+function hexToRgba(hex, alpha) {
+  const h = (hex || "#000000").replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  if (isNaN(n)) return `rgba(0,0,0,${alpha})`;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+function openCoverModal() {
+  if (!state.selected || !state.clipsJob) { alert("Primero elige un clip para configurar su portada."); return; }
+  const m = $("coverModal");
+  // Carga el estado actual en los controles del modal.
+  $("coverModalTitleInput").value = $("hookTitle").value.trim() || (state.selected.title || "");
+  const clipDur = Math.max(0, (state.selected.end - state.selected.start) || 0);
+  const rng = $("coverModalRange");
+  rng.max = Math.max(clipDur, 0.1);
+  rng.value = state.coverAt;
+  $("coverModalVal").textContent = state.coverAt.toFixed(1) + " s";
+  const cv = $("coverVideo");
+  const src = `/api/jobs/${state.clipsJob.id}/source`;
+  if (cv.dataset.src !== src) { cv.dataset.src = src; cv.src = src; cv.load(); }
+  m.hidden = false;
+  updateCoverModalPreview();
+  try { cv.currentTime = Math.max(0, state.selected.start + state.coverAt + 0.01); } catch (e) {}
+}
+function closeCoverModal() { $("coverModal").hidden = true; }
+$("btnCoverModal").onclick = openCoverModal;
+$("coverModalClose").onclick = closeCoverModal;
+$("coverModalCancel").onclick = closeCoverModal;
+$("coverModal").addEventListener("click", (e) => { if (e.target === $("coverModal")) closeCoverModal(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("coverModal").hidden) closeCoverModal();
+});
+$("coverModalRange").addEventListener("input", () => {
+  const v = parseFloat($("coverModalRange").value || "0");
+  state.coverAt = v;
+  $("coverModalVal").textContent = v.toFixed(1) + " s";
+  updateCoverModalPreview();
+});
+$("coverModalTitleInput").addEventListener("input", updateCoverModalPreview);
+$("coverColor").addEventListener("input", () => { state.coverStyle.color = $("coverColor").value; updateCoverModalPreview(); });
+$("coverColorHex").addEventListener("input", () => { state.coverStyle.color = $("coverColorHex").value; updateCoverModalPreview(); });
+$("coverBorderColor").addEventListener("input", () => { state.coverStyle.borderColor = $("coverBorderColor").value; updateCoverModalPreview(); });
+$("coverBorderHex").addEventListener("input", () => { state.coverStyle.borderColor = $("coverBorderHex").value; updateCoverModalPreview(); });
+$("coverBorderW").addEventListener("input", () => { state.coverStyle.borderW = parseInt($("coverBorderW").value || "0", 10); updateCoverModalPreview(); });
+$("coverBgColor").addEventListener("input", () => { state.coverStyle.bgColor = $("coverBgColor").value; updateCoverModalPreview(); });
+$("coverBgHex").addEventListener("input", () => { state.coverStyle.bgColor = $("coverBgHex").value; updateCoverModalPreview(); });
+$("coverBgOn").addEventListener("change", () => { state.coverStyle.bg = $("coverBgOn").checked; updateCoverModalPreview(); });
+$("coverSize").addEventListener("input", () => { state.coverStyle.size = parseInt($("coverSize").value || "96", 10); updateCoverModalPreview(); });
+buildSwatches("coverColorSwatches", () => state.coverStyle.color, (c) => { state.coverStyle.color = c; });
+buildSwatches("coverBorderSwatches", () => state.coverStyle.borderColor, (c) => { state.coverStyle.borderColor = c; });
+buildSwatches("coverBgSwatches", () => state.coverStyle.bgColor, (c) => { state.coverStyle.bgColor = c; });
+$("coverModalApply").onclick = () => {
+  // Aplica la portada al paso 3: título + fotograma + estilo. El render
+  // (Render / Guardar título y portada) ya los toma de buildRenderBody.
+  const title = $("coverModalTitleInput").value.trim();
+  $("hookTitle").value = title;
+  const cov = $("coverRange");
+  cov.max = $("coverModalRange").max;
+  cov.value = state.coverAt;
+  $("coverVal").textContent = state.coverAt.toFixed(1) + " s";
+  updateCoverTitle();
+  setCoverMode(true);
+  closeCoverModal();
+};
 $("pvVideo").addEventListener("timeupdate", () => {
   const pv = $("pvVideo");
   if (!state.pvClip) return;
@@ -1905,6 +2046,14 @@ function buildRenderBody(start, end, edited) {
     template: state.templateTouched ? null : (state.userTemplate || "Gancho grande"),
     highlight_color: $("hlColor").value,
     edited_words: edited,
+    // Estilo de la portada (modal Configurar portada): color del texto,
+    // borde de la letra, fondo de las letras y tamaño del título.
+    title_color: state.coverStyle.color,
+    title_border_color: state.coverStyle.borderColor,
+    title_border_w: state.coverStyle.borderW,
+    title_bg_color: state.coverStyle.bgColor,
+    title_bg: state.coverStyle.bg,
+    title_size: state.coverStyle.size,
   };
 }
 $("btnRender").onclick = async () => {

@@ -467,11 +467,11 @@ async function loadAdminUsers() {
         return `<tr><td>${esc(u.name)}${susp}${adminTag}</td><td>${esc(u.email)}</td><td>${esc(u.plan)}</td><td>${fmtDate(u.plan_started)}</td><td>${fmtDate(u.plan_expires)}</td>
         <td><div class="user-menu-wrap"><button class="small ghost user-menu-btn" data-menu="${u.id}" title="Opciones" aria-label="Opciones">${MENU_SVG}</button>
         <div class="user-menu" id="user-menu-${u.id}" hidden>
-          ${u.is_admin ? "" : `<button data-assign="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">${hasPlan ? "Cambiar plan" : "Asignar plan"}</button>`}
-          ${u.is_admin ? "" : `<button data-imp="${u.id}" data-name="${esc(u.name)}">Entrar como usuario</button>`}
-          <button data-edit="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">Editar</button>
-          <button data-susp="${u.id}" data-name="${esc(u.name)}" data-suspended="${u.is_suspended ? "1" : "0"}">${u.is_suspended ? "Reactivar cuenta" : "Suspender cuenta"}</button>
-          <button class="danger" data-del="${u.id}" data-name="${esc(u.name)}">Eliminar</button>
+          ${u.is_admin ? "" : `<button data-assign="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">${ICON_PLAN}<span>${hasPlan ? "Cambiar plan" : "Asignar plan"}</span></button>`}
+          ${u.is_admin ? "" : `<button data-imp="${u.id}" data-name="${esc(u.name)}">${ICON_IMP}<span>Entrar como usuario</span></button>`}
+          <button data-edit="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">${ICON_EDIT}<span>Editar</span></button>
+          <button data-susp="${u.id}" data-name="${esc(u.name)}" data-suspended="${u.is_suspended ? "1" : "0"}">${u.is_suspended ? ICON_PLAY : ICON_PAUSE}<span>${u.is_suspended ? "Reactivar cuenta" : "Suspender cuenta"}</span></button>
+          <button class="danger" data-del="${u.id}" data-name="${esc(u.name)}">${ICON_TRASH}<span>Eliminar</span></button>
         </div></div></td></tr>`;
       }).join("") + "</table><p id=\"usersMsg\" class=\"muted\"></p>";
     // Menú ⋮: abre uno a la vez; cierra con clic fuera o Escape.
@@ -777,6 +777,15 @@ const DL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const EDIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
 const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 const MENU_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+// Iconos del menú ⋮ de usuarios (2026-11-11, petición de Juan: los
+// botones del menú iban sin icono y pegados). Stroke currentColor para
+// que hereden el color del texto (rojo en Eliminar).
+const ICON_PLAN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>';
+const ICON_IMP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>';
+const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 const TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 function fmtDur(s) {
   s = Math.max(0, Math.round(s || 0));

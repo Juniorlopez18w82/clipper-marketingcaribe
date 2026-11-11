@@ -410,18 +410,23 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
     FIJO arriba).
 
     El cuadro de la facecam es un rectángulo fijo (overlay con borde)
-    en una esquina. Se detecta por bordes: Canny + contornos, se busca
-    el cuadrilátero más grande de la zona de la esquina en 3
-    fotogramas y se toma la mediana. Devuelve (w, h, x, y) del cuadro
-    completo, ya recortado al aspecto del panel 9/8 (cover, centrado).
-    Devuelve None si no se encuentra un rectángulo claro.
+    en una esquina. Se localiza por la cara (Haar, mediana de 3
+    fotogramas — UN solo rectángulo para todo el clip, sin
+    seguimiento) y se toma el cuadro completo alrededor de ella: un
+    rectángulo fijo de 20% del ancho x 26% del alto centrado en la
+    cara, que contiene el cuadro entero (RDjavi: ~14% x 19%) con
+    margen. Devuelve (w, h, x, y) del cuadro. None si no hay cara.
     """
     import cv2
 
     try:
+        cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        if cascade.empty():
+            return None
         vw, vh = probe_size(source)
         corner = (corner or "top-left").strip().lower()
-        zw, zh = vw * 0.5, vh * 0.6
+        zw, zh = vw * 0.45, vh * 0.55
         if corner == "top-left":
             zx, zy = 0, 0
         elif corner == "top-right":
@@ -430,8 +435,7 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
             zx, zy = 0, vh - zh
         else:
             zx, zy = vw - zw, vh - zh
-        panel_aspect = 9 / 8
-        boxes: list[tuple[float, float, float, float]] = []
+        centers: list[tuple[float, float]] = []
         with tempfile.TemporaryDirectory(prefix="facecam_") as td:
             td = Path(td)
             for i, frac in enumerate((0.25, 0.5, 0.75)):
@@ -445,50 +449,24 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
                     continue
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 roi = gray[int(zy):int(zy + zh), int(zx):int(zx + zw)]
-                edges = cv2.Canny(roi, 50, 150)
-                contours, _ = cv2.findContours(
-                    edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                best: tuple[float, float, float, float] | None = None
-                best_area = 0.0
-                for cnt in contours:
-                    area = cv2.contourArea(cnt)
-                    if area < (zw * zh) * 0.04:
-                        continue
-                    peri = cv2.arcLength(cnt, True)
-                    approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-                    if len(approx) != 4:
-                        continue
-                    x, y, w, h = cv2.boundingRect(approx)
-                    # El cuadro debe ser un rectángulo apaisado y no
-                    # ocupar casi toda la zona (eso sería el juego).
-                    if w < zw * 0.15 or h < zh * 0.15:
-                        continue
-                    if w > zw * 0.95 and h > zh * 0.95:
-                        continue
-                    if area > best_area:
-                        best_area = area
-                        best = (float(x), float(y), float(w), float(h))
-                if best is not None:
-                    boxes.append(best)
-        if not boxes:
+                faces = cascade.detectMultiScale(
+                    roi, scaleFactor=1.1, minNeighbors=4,
+                    minSize=(30, 30))
+                if len(faces) == 0:
+                    continue
+                x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
+                centers.append((zx + x + fw / 2, zy + y + fh / 2))
+        if not centers:
             return None
-        boxes.sort(key=lambda b: b[0])
-        bx, by, bw, bh = boxes[len(boxes) // 2]
-        # El cuadro completo, recortado al aspecto del panel (cover)
-        # y a los límites del fotograma. El cuadro es FIJO: un solo
-        # rectángulo para todo el clip, sin seguimiento.
-        if bw / bh >= panel_aspect:
-            cw, ch = bh * panel_aspect, bh
-            cx = zx + bx + (bw - cw) / 2
-            cy = zy + by
-        else:
-            cw, ch = bw, bw / panel_aspect
-            cx = zx + bx
-            cy = zy + by + (bh - ch) / 2
-        cx = max(0.0, min(cx, vw - cw))
-        cy = max(0.0, min(cy, vh - ch))
-        return (int(round(cw / 2) * 2), int(round(ch / 2) * 2),
-                int(round(cx / 2) * 2), int(round(cy / 2) * 2))
+        centers.sort(key=lambda c: c[0])
+        cx, cy = centers[len(centers) // 2]
+        # Cuadro completo alrededor de la cara: tamaño fijo, centrado
+        # en la cara, con margen para el borde y el rótulo.
+        bw, bh = vw * 0.20, vh * 0.26
+        x = max(0.0, min(cx - bw / 2, vw - bw))
+        y = max(0.0, min(cy - bh * 0.42, vh - bh))
+        return (int(round(bw / 2) * 2), int(round(bh / 2) * 2),
+                int(round(x / 2) * 2), int(round(y / 2) * 2))
     except Exception:
         return None
 
@@ -816,6 +794,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 # Pantalla dividida: facecam arriba, juego abajo.
                 # La cara se localiza por detección (fija y precisa);
                 # si no hay cara en la esquina, se usa el recorte fijo.
+                # El panel superior muestra el cuadro COMPLETO (contain
+                # + pad): nada del cuadro se recorta, queda fijo.
                 vw, vh = probe_size(source)
                 fc = _detect_facecam_box(source, start_in_source,
                                          duration, facecam_corner)
@@ -823,10 +803,13 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                     fc, _ = _split_crop(vw, vh, facecam_corner)
                 _, (gw, gh, gx, gy) = _split_crop(vw, vh, facecam_corner)
                 fcw, fch, fcx, fcy = fc
+                half_h = out_h // 2
                 base = (
                     f"[0:v]split=2[fc][gm];"
-                    f"[fc]crop={fcw}:{fch}:{fcx}:{fcy},scale={out_w}:{out_h // 2}[top];"
-                    f"[gm]crop={gw}:{gh}:{gx}:{gy},scale={out_w}:{out_h // 2}[bot];"
+                    f"[fc]crop={fcw}:{fch}:{fcx}:{fcy},"
+                    f"scale={out_w}:{half_h}:force_original_aspect_ratio=decrease,"
+                    f"pad={out_w}:{half_h}:(ow-iw)/2:(oh-ih)/2:black[top];"
+                    f"[gm]crop={gw}:{gh}:{gx}:{gy},scale={out_w}:{half_h}[bot];"
                     f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
                 )
             else:  # center — exactly the approved behavior

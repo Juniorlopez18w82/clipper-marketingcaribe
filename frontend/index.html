@@ -9,42 +9,43 @@
    la landing y sale "Cargando tu panel…" hasta validar el token. */
 try { if (localStorage.getItem("clipper_token")) { document.documentElement.className += " booting"; } } catch (e) {}</script>
 <style>
-:root{--bg:#040017;--yellow:#FADE4C;--card:#0d1230;--text:#f2f2f7;--muted:#9aa0b5}
+:root{--bg:#111113;--red:#E10600;--yellow:#FADE4C;--card:#1a1a1e;--text:#f4f4f5;--muted:#a1a1aa}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
-header{padding:18px 20px;border-bottom:3px solid var(--yellow);display:flex;justify-content:space-between;align-items:center}
-header b{color:var(--yellow);font-size:22px}
+header{padding:18px 20px;border-bottom:3px solid var(--red);display:flex;justify-content:space-between;align-items:center}
+header b{color:var(--red);font-size:22px}
 /* Estado de carga inicial (mientras se valida el token guardado) */
 #bootLoading{display:none;min-height:70vh;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#f2f2f7}
-#bootLoading .spin{width:40px;height:40px;border:4px solid #333a66;border-top-color:var(--yellow);border-radius:50%;animation:spin 1s linear infinite}
+#bootLoading .spin{width:40px;height:40px;border:4px solid #27272a;border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 html.booting header,html.booting main{display:none}
 html.booting #bootLoading{display:flex}
 /* Landing: solo hero + tarjeta Mi cuenta (el creador vive dentro del panel) */
 main{max-width:640px;margin:0 auto;padding:40px 20px 60px}
 .hero-line{color:#f2f2f7;font-size:18px;line-height:1.6;text-align:center;margin:0 0 28px}
-.hero-line b{color:var(--yellow)}
-.card{background:var(--card);border:1px solid #222a55;border-radius:16px;padding:18px;margin-bottom:16px}
+.hero-line b{color:var(--red)}
+.card{background:var(--card);border:1px solid #27272a;border-radius:16px;padding:18px;margin-bottom:16px}
 h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
-input[type=text],input[type=url],input[type=email],input[type=password],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #333a66;background:#040017;color:var(--text);font-size:15px}
-input[type=color]{width:60px;height:40px;padding:2px;background:#040017;border:1px solid #333a66;border-radius:10px}
-button{background:var(--yellow);color:#040017;border:0;border-radius:999px;padding:12px 20px;font-weight:700;cursor:pointer;font-size:15px}
+input[type=text],input[type=url],input[type=email],input[type=password],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #27272a;background:#111113;color:var(--text);font-size:15px}
+input::placeholder,textarea::placeholder{color:#71717a}
+input[type=color]{width:60px;height:40px;padding:2px;background:#111113;border:1px solid #27272a;border-radius:10px}
+button{background:var(--red);color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:700;cursor:pointer;font-size:15px}
 button:disabled{opacity:.5;cursor:wait}
-button.ghost{background:transparent;color:var(--yellow);border:2px solid var(--yellow)}
+button.ghost{background:transparent;color:var(--red);border:2px solid var(--red)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .row>*{flex:1;min-width:110px}
-.clip{border:1px solid #333a66;border-radius:12px;padding:12px;margin:8px 0;cursor:pointer}
-.clip.sel{border-color:var(--yellow);background:#171d45}
+.clip{border:1px solid #27272a;border-radius:12px;padding:12px;margin:8px 0;cursor:pointer}
+.clip.sel{border-color:var(--red);background:rgba(225,6,0,.15)}
 .clip small{color:var(--muted)}
-#status{color:var(--yellow);min-height:20px;font-size:14px}
+#status{color:var(--red);min-height:20px;font-size:14px}
 .muted{color:var(--muted);font-size:13px}
 /* Switch Con marco / Sin marco */
 .switchrow{display:flex;align-items:center;gap:12px;padding:10px 0}
 .switch{position:relative;width:56px;height:30px;flex:none}
 .switch input{opacity:0;width:0;height:0}
-.slider{position:absolute;inset:0;background:#333a66;border-radius:999px;cursor:pointer;transition:.2s}
+.slider{position:absolute;inset:0;background:#3f3f46;border-radius:999px;cursor:pointer;transition:.2s}
 .slider:before{content:"";position:absolute;width:24px;height:24px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
-.switch input:checked+.slider{background:var(--yellow)}
-.switch input:checked+.slider:before{transform:translateX(26px);background:#040017}
+.switch input:checked+.slider{background:var(--red)}
+.switch input:checked+.slider:before{transform:translateX(26px);background:#fff}
 /* Vista previa 9:16 */
 .phone{width:270px;height:480px;margin:0 auto;position:relative;background:#000;overflow:hidden;border-radius:12px}
 .phone video{width:100%;height:100%;object-fit:cover;display:block}
@@ -56,37 +57,37 @@ video#result{width:100%;border-radius:12px;background:#000}
 /* Takeover del panel: cuando el panel está abierto, la landing desaparece.
    (El atributo hidden NO bastaba: header{display:flex} y main{display:grid}
    lo anulaban. La clase en body con !important sí los oculta.) */
-body.panel-open{background:#f7f7f8}
+body.panel-open{background:#111113}
 body.panel-open>header,body.panel-open>main{display:none !important}
 /* ===== Mi cuenta (landing): blanco / negro / rojo, botones estilo panel ===== */
-#accountCard{background:#fff;color:#111;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.25)}
-#accountCard h2{color:#111;font-size:22px;font-weight:700}
-#accountCard label{color:#333}
-#accountCard input{background:#fff;color:#111;border:1px solid #d4d4d4;padding:11px 12px}
+#accountCard{background:#1a1a1e;color:#f4f4f5;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+#accountCard h2{color:#f4f4f5;font-size:22px;font-weight:700}
+#accountCard label{color:#a1a1aa}
+#accountCard input{background:#111113;color:#f4f4f5;border:1px solid #27272a;padding:11px 12px}
 #accountCard .btn-red{background:#E10600;color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px}
-#accountCard .btn-black{background:#000;color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px}
-#accountCard .muted{color:#555}
+#accountCard .btn-black{background:#27272a;color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px}
+#accountCard .muted{color:#a1a1aa}
 /* ===== Panel ClipViral: app shell blanco / negro / rojo #E10600 ===== */
-.panel{background:#f7f7f8;color:#111;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.panel{background:#111113;color:#f4f4f5;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
 .panel [hidden]{display:none !important}
 #impBanner{display:flex;align-items:center;gap:12px;justify-content:center;background:#111;color:#fff;padding:10px 16px;font-size:14px}
 #impBanner b{color:#FADE4C}
 #impBanner button{background:#E10600;color:#fff;border:0;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;font-size:13px}
-.panel-top{display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #e5e5e5;padding:0 24px;height:60px;position:sticky;top:0;z-index:10}
-.panel-top .brand{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#111}
+.panel-top{display:flex;align-items:center;gap:14px;background:#18181b;border-bottom:1px solid #27272a;padding:0 24px;height:60px;position:sticky;top:0;z-index:10}
+.panel-top .brand{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#f4f4f5}
 .panel-top .brand img{width:26px;height:26px}
 .panel-top .spacer{flex:1}
-.panel-top .who{font-size:14px;color:#555}
-.panel-top .who b{color:#111}
-.panel .planbadge{display:inline-block;background:#111;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;margin-left:6px}
+.panel-top .who{font-size:14px;color:#a1a1aa}
+.panel-top .who b{color:#f4f4f5}
+.panel .planbadge{display:inline-block;background:#27272a;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;margin-left:6px}
 .panel .planbadge.admin{background:#E10600}
 .panel-shell{display:flex;align-items:stretch;max-width:1280px;margin:0 auto}
-.panel-nav{width:248px;flex:none;background:#fff;border-right:1px solid #e5e5e5;padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:60px;height:calc(100vh - 60px)}
-.panel-nav .nav-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#999;padding:6px 12px 8px}
-.panel-nav .tab{display:block;width:100%;text-align:left;background:transparent;color:#111;border:0;border-radius:10px;padding:11px 14px;font-size:15px;font-weight:600;cursor:pointer;text-transform:none}
-.panel-nav .tab:hover{background:#f2f2f3}
-.panel-nav .tab.on{background:#111;color:#fff}
-.panel-nav .tab.creator{margin-top:auto;border:1px solid #e5e5e5;color:#333}
+.panel-nav{width:248px;flex:none;background:#18181b;border-right:1px solid #27272a;padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:60px;height:calc(100vh - 60px)}
+.panel-nav .nav-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#71717a;padding:6px 12px 8px}
+.panel-nav .tab{display:block;width:100%;text-align:left;background:transparent;color:#f4f4f5;border:0;border-radius:10px;padding:11px 14px;font-size:15px;font-weight:600;cursor:pointer;text-transform:none}
+.panel-nav .tab:hover{background:#27272a}
+.panel-nav .tab.on{background:#E10600;color:#fff}
+.panel-nav .tab.creator{margin-top:auto;border:1px solid #27272a;color:#a1a1aa}
 /* Crear Clip a lo ancho: al entrar, el menú lateral se desliza fuera y la
    sección usa todo el ancho. Solo en escritorio (en móvil el menú ya es
    una fila horizontal y no se toca). */
@@ -99,45 +100,45 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 }
 .panel-content{flex:1;min-width:0;padding:32px}
 .panel-inner{max-width:960px;margin:0 auto}
-.panel .pane h3{font-size:26px;font-weight:700;color:#111;margin:0 0 6px}
-.panel .sub{color:#555;font-size:15px;line-height:1.6;margin:0 0 20px}
-.panel .card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px 24px;margin-bottom:16px}
-.panel .card h4{font-size:17px;font-weight:700;color:#111;margin:0 0 12px}
+.panel .pane h3{font-size:26px;font-weight:700;color:#f4f4f5;margin:0 0 6px}
+.panel .sub{color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 20px}
+.panel .card{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4);padding:20px 24px;margin-bottom:16px}
+.panel .card h4{font-size:17px;font-weight:700;color:#f4f4f5;margin:0 0 12px}
 .panel .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
-.panel .stat{background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px}
-.panel .stat b{display:block;font-size:32px;font-weight:700;line-height:1.1;color:#111}
+.panel .stat{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4);padding:20px}
+.panel .stat b{display:block;font-size:32px;font-weight:700;line-height:1.1;color:#f4f4f5}
 .panel .stat.red b{color:#E10600}
-.panel .stat span{font-size:13px;font-weight:600;color:#666}
-.panel .rowline{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:14px 16px;margin:10px 0;flex-wrap:wrap}
+.panel .stat span{font-size:13px;font-weight:600;color:#a1a1aa}
+.panel .rowline{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#1a1a1e;border:1px solid #27272a;border-radius:12px;padding:14px 16px;margin:10px 0;flex-wrap:wrap}
 .panel .rowline b{font-size:15px}
-.panel .badge{display:inline-block;background:#111;color:#fff;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
+.panel .badge{display:inline-block;background:#27272a;color:#fff;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
 .panel .badge.aprobado{background:#E10600}
-.panel .badge.rechazado{background:#888}
-.panel label{display:block;font-size:13px;font-weight:600;color:#333;margin:16px 0 6px}
-.panel input[type=text],.panel input[type=url],.panel input[type=email],.panel input[type=number],.panel select,.panel textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d4d4d4;background:#fff;color:#111;font-size:15px}
+.panel .badge.rechazado{background:#52525b}
+.panel label{display:block;font-size:13px;font-weight:600;color:#a1a1aa;margin:16px 0 6px}
+.panel input[type=text],.panel input[type=url],.panel input[type=email],.panel input[type=number],.panel select,.panel textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid #27272a;background:#111113;color:#f4f4f5;font-size:15px}
 .panel input:focus,.panel select:focus,.panel textarea:focus{outline:none;border-color:#E10600;box-shadow:0 0 0 3px rgba(225,6,0,.12)}
-.panel input:disabled{background:#f5f5f6;color:#999}
+.panel input:disabled{background:#1a1a1e;color:#71717a}
 .panel button{background:#E10600;color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px}
-.panel button.black{background:#111}
-.panel button.ghost{background:#fff;color:#111;border:1px solid #d4d4d4}
+.panel button.black{background:#27272a}
+.panel button.ghost{background:transparent;color:#f4f4f5;border:1px solid #3f3f46}
 .panel button.small{padding:8px 12px;font-size:13px}
-.panel .muted{color:#666;font-size:14px;line-height:1.6}
+.panel .muted{color:#a1a1aa;font-size:14px;line-height:1.6}
 .panel table{width:100%;border-collapse:collapse;font-size:14px}
-.panel th,.panel td{border-bottom:1px solid #eee;padding:10px 8px;text-align:left}
-.panel th{text-transform:uppercase;font-size:12px;letter-spacing:.05em;color:#666}
+.panel th,.panel td{border-bottom:1px solid #27272a;padding:10px 8px;text-align:left}
+.panel th{text-transform:uppercase;font-size:12px;letter-spacing:.05em;color:#a1a1aa}
 /* Bloqueo sin plan (solo usuarios sin plan; el admin nunca lo ve) */
-.panel .locked{display:none;background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:32px 24px;margin:16px 0;text-align:center}
+.panel .locked{display:none;background:#1a1a1e;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4);padding:32px 24px;margin:16px 0;text-align:center}
 .panel .locked .lock-icon{width:56px;height:56px;border-radius:50%;background:#E10600;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
-.panel .locked p{font-size:17px;font-weight:600;color:#111;margin:0 0 6px}
+.panel .locked p{font-size:17px;font-weight:600;color:#f4f4f5;margin:0 0 6px}
 .panel .locked button{margin-top:16px}
 .panel .pane.is-locked .locked{display:block}
 .panel .pane.is-locked .pane-body{display:none}
 /* Creador dentro del panel (Crear Clip): 2 columnas, izquierda flujo, derecha config+preview */
 .panel .create-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
-.panel .create-grid .card h2{font-size:18px;font-weight:700;color:#111;margin:0 0 12px}
-.panel .clip{border:1px solid #d4d4d4;background:#fff;color:#111}
-.panel .clip.sel{border-color:#E10600;background:#fff5f5}
-.panel .clip small{color:#666}
+.panel .create-grid .card h2{font-size:18px;font-weight:700;color:#f4f4f5;margin:0 0 12px}
+.panel .clip{border:1px solid #27272a;background:#1a1a1e;color:#f4f4f5}
+.panel .clip.sel{border-color:#E10600;background:rgba(225,6,0,.15)}
+.panel .clip small{color:#a1a1aa}
 /* Candidatos: rejilla visual 3 columnas (2 tablet, 1 móvil) con miniatura
    de video real arriba y texto abajo. La tarjeta es la vista previa. */
 .panel #candidates{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
@@ -146,26 +147,26 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .clip{margin:0;padding:0;overflow:hidden;display:flex;flex-direction:column}
 .panel .clip video{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000}
 .panel .clip .clip-body{padding:10px 12px 12px}
-.panel .clip .clip-meta{font-weight:700;font-size:14px;color:#111}
+.panel .clip .clip-meta{font-weight:700;font-size:14px;color:#f4f4f5}
 .panel .clip .clip-score{float:right;color:#E10600;white-space:nowrap}
 .panel .clip .clip-text{display:block;margin-top:4px}
 .panel #status{color:#E10600}
-.panel .slider{background:#d4d4d4}
+.panel .slider{background:#3f3f46}
 .panel .switch input:checked+.slider{background:#E10600}
 .panel .switch input:checked+.slider:before{background:#fff}
-.panel input[type=color]{background:#fff;border:1px solid #d4d4d4}
+.panel input[type=color]{background:#111113;border:1px solid #27272a}
 /* Pasos de generación (Descargar → Transcribir → IA elige → Cortar → Listo) */
 .panel .steps{display:flex;align-items:flex-start;gap:0;margin:6px 0 4px}
-.panel .step{flex:1;text-align:center;position:relative;font-size:13px;font-weight:600;color:#999}
-.panel .step .dot{width:34px;height:34px;border-radius:50%;background:#eee;color:#999;display:flex;align-items:center;justify-content:center;margin:0 auto 6px;font-size:15px;font-weight:700;border:2px solid #e5e5e5}
-.panel .step::before{content:"";position:absolute;top:17px;left:calc(-50% + 20px);right:calc(50% + 20px);height:2px;background:#e5e5e5}
+.panel .step{flex:1;text-align:center;position:relative;font-size:13px;font-weight:600;color:#71717a}
+.panel .step .dot{width:34px;height:34px;border-radius:50%;background:#27272a;color:#a1a1aa;display:flex;align-items:center;justify-content:center;margin:0 auto 6px;font-size:15px;font-weight:700;border:2px solid #3f3f46}
+.panel .step::before{content:"";position:absolute;top:17px;left:calc(-50% + 20px);right:calc(50% + 20px);height:2px;background:#27272a}
 .panel .step:first-child::before{display:none}
-.panel .step.active{color:#111}
+.panel .step.active{color:#f4f4f5}
 .panel .step.active .dot{background:#E10600;border-color:#E10600;color:#fff}
-.panel .step.done{color:#111}
-.panel .step.done .dot{background:#111;border-color:#111;color:#fff}
-.panel .step.done::before{background:#111}
-.panel .step-status{font-size:15px;color:#111;font-weight:600;margin:10px 0 0;min-height:22px}
+.panel .step.done{color:#f4f4f5}
+.panel .step.done .dot{background:#3f3f46;border-color:#3f3f46;color:#fff}
+.panel .step.done::before{background:#3f3f46}
+.panel .step-status{font-size:15px;color:#f4f4f5;font-weight:600;margin:10px 0 0;min-height:22px}
 /* ===== Animación de los pasos y del estado (solo CSS + clases) ===== */
 .panel .step .dot{position:relative;transition:background .3s,border-color .3s,color .3s}
 .panel .step::before{transition:background .4s ease}
@@ -175,7 +176,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 @keyframes pulseRing{0%,100%{box-shadow:0 0 0 0 rgba(225,6,0,.35)}50%{box-shadow:0 0 0 9px rgba(225,6,0,0)}}
 @keyframes checkPop{0%{transform:scale(.4)}60%{transform:scale(1.3)}100%{transform:scale(1)}}
 /* Barra de progreso con brillo que se mueve */
-.panel .progress-track{height:8px;background:#eee;border-radius:999px;overflow:hidden;margin:14px 0 2px}
+.panel .progress-track{height:8px;background:#27272a;border-radius:999px;overflow:hidden;margin:14px 0 2px}
 .panel .progress-fill{height:100%;width:0%;border-radius:999px;background:#E10600;position:relative;overflow:hidden;transition:width .5s ease}
 .panel .progress-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transform:translateX(-100%);animation:shimmerSlide 1.4s ease-in-out infinite}
 @keyframes shimmerSlide{to{transform:translateX(100%)}}
@@ -191,37 +192,37 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 /* Las tarjetas del flujo aparecen con un fade al mostrarse */
 .panel #stepsCard:not([hidden]),.panel #candidatesCard:not([hidden]),.panel #step3Card:not([hidden]),.panel #resultCard:not([hidden]),.panel #previewCard:not([hidden]){animation:cardIn .35s ease}
 @keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-.panel .job-error{display:none;background:#fff5f5;border:1px solid #E10600;border-radius:12px;padding:16px 18px;margin-top:14px;font-size:15px;color:#111}
+.panel .job-error{display:none;background:#2a1214;border:1px solid #E10600;border-radius:12px;padding:16px 18px;margin-top:14px;font-size:15px;color:#f4f4f5}
 .panel .job-error b{color:#E10600}
 /* Pestañas de configuración (Plantilla / Clips / Video) y del admin */
 .panel .mini-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.panel .mini-tab{background:#f2f2f3;color:#111;border:1px solid #e5e5e5;border-radius:999px;padding:8px 16px;font-weight:600;cursor:pointer;font-size:14px}
-.panel .mini-tab.on{background:#111;color:#fff;border-color:#111}
+.panel .mini-tab{background:#1a1a1e;color:#f4f4f5;border:1px solid #27272a;border-radius:999px;padding:8px 16px;font-weight:600;cursor:pointer;font-size:14px}
+.panel .mini-tab.on{background:#E10600;color:#fff;border-color:#E10600}
 /* Planes */
 .panel .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-.panel .plan{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:22px;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column}
+.panel .plan{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;padding:22px;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;flex-direction:column}
 .panel .plan.popular{border:2px solid #E10600}
 .panel .plan h4{font-size:20px;font-weight:700;margin:0}
 .panel .plan .price{font-size:32px;font-weight:800;line-height:1.1;margin:10px 0 4px}
-.panel .plan .price small{font-size:14px;font-weight:600;color:#666}
+.panel .plan .price small{font-size:14px;font-weight:600;color:#a1a1aa}
 .panel .plan ul{list-style:none;padding:0;margin:14px 0;flex:1}
-.panel .plan li{padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px;font-weight:500}
-.panel .plan li.no{color:#999}
+.panel .plan li{padding:7px 0;border-bottom:1px solid #27272a;font-size:14px;font-weight:500}
+.panel .plan li.no{color:#71717a}
 .panel .plan .tag{display:inline-block;background:#E10600;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700}
-.panel .plan .tag.mine{background:#111}
+.panel .plan .tag.mine{background:#27272a}
 .panel .plan button{width:100%;margin-top:14px}
-.panel .buybox{background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px 24px;margin-top:16px}
-.panel .buybox h3{font-size:18px;font-weight:700;margin:0 0 4px}
-.panel .buybox select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d4d4d4;background:#fff;color:#111;font-size:15px}
+.panel .buybox{background:#1a1a1e;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4);padding:20px 24px;margin-top:16px}
+.panel .buybox h3{font-size:18px;font-weight:700;margin:0 0 4px;color:#f4f4f5}
+.panel .buybox select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid #27272a;background:#111113;color:#f4f4f5;font-size:15px}
 .panel .buybox input[type=file]{font-size:14px}
-.panel .bankbox{background:#f5f5f6;color:#111;border-radius:10px;padding:14px 16px;margin-top:12px;font-size:14px;line-height:1.7}
-.panel .bankbox b{color:#111}
+.panel .bankbox{background:#27272a;color:#f4f4f5;border-radius:10px;padding:14px 16px;margin-top:12px;font-size:14px;line-height:1.7}
+.panel .bankbox b{color:#f4f4f5}
 @media(max-width:900px){
   .panel .create-grid{grid-template-columns:1fr}
 }
 @media(max-width:800px){
   .panel-shell{flex-direction:column}
-  .panel-nav{width:auto;height:auto;position:static;flex-direction:row;overflow-x:auto;padding:12px;border-right:0;border-bottom:1px solid #e5e5e5}
+  .panel-nav{width:auto;height:auto;position:static;flex-direction:row;overflow-x:auto;padding:12px;border-right:0;border-bottom:1px solid #27272a}
   .panel-nav .nav-label{display:none}
   .panel-nav .tab{white-space:nowrap;width:auto}
   .panel-nav .tab.creator{margin-top:0}
@@ -567,6 +568,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

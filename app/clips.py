@@ -172,7 +172,9 @@ def _groq_chat(prompt: str) -> str | None:
         req = urllib.request.Request(
             GROQ_CHAT_URL, data=body, method="POST",
             headers={"Authorization": f"Bearer {key}",
-                     "Content-Type": "application/json"})
+                     "Content-Type": "application/json",
+                     # Groq (Cloudflare) 403s Python-urllib's default UA.
+                     "User-Agent": "ClipViral/1.4.0"})
         try:
             with urllib.request.urlopen(req, timeout=GROQ_LLM_TIMEOUT) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))

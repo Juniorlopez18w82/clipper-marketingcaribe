@@ -387,6 +387,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <div><label>Hasta (seg)</label><input id="rangeEnd" type="number" value="120" min="10"></div>
           <div><label>Modelo Whisper</label><select id="model"><option value="base" selected>base (recomendado)</option><option value="tiny">tiny (rápido)</option><option value="small">small (más preciso, lento)</option></select></div>
         </div>
+        <p class="muted">Por defecto se analiza el video completo: los clips pueden salir de cualquier minuto. Los videos largos tardan más (la transcripción se hace por partes).</p>
         <span id="videoMeta" class="muted"></span>
       </section>
 
@@ -758,6 +759,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

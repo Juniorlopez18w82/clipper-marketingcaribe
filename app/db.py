@@ -115,6 +115,7 @@ def _ensure_clip_columns() -> None:
         "score": "FLOAT",
         "section_start": "FLOAT",
         "cover_at": "FLOAT",
+        "live_session_id": "INTEGER",
     }
     try:
         existing = {c["name"] for c in inspect(engine).get_columns("clips")}
@@ -140,7 +141,8 @@ def init_db() -> None:
     wrong DATABASE_URL), log a warning and let the app start — auth
     endpoints will surface the real error.
     """
-    from . import auth, billing, clips_db, images, settings, videos  # noqa: F401 — registers models
+    from . import (auth, billing, clips_db, images, lives, settings,  # noqa: F401 — registers models
+                    videos)
 
     try:
         Base.metadata.create_all(bind=engine)

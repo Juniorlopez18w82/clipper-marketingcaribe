@@ -467,34 +467,39 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
     title_file.write_text(wrapped, encoding="utf-8")
     card = tmpdir / "card.mp4"
     size = int(round(96 * scale))
+    # La portada lleva TAMBIÉN 2 s de audio en silencio (anullsrc), para
+    # que tenga los mismos streams que el clip y el concat demuxer pueda
+    # copiar sin re-codificar (el re-encode del concat filter era
+    # lentísimo: 9+ min de CPU para un clip de 32 s).
     _run([
         "ffmpeg", "-y", "-v", "error",
-        "-loop", "1", "-i", str(cover), "-t", str(TITLE_CARD_SECONDS),
+        "-loop", "1", "-i", str(cover),
+        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+        "-t", str(TITLE_CARD_SECONDS),
         "-vf",
         "drawtext=fontfile=" + FONT_BOLD +
         f":textfile={title_file}:fontsize={size}:fontcolor=white:"
         "x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.55:boxborderw=28:"
         "line_spacing=12",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-r", "30", "-pix_fmt", "yuv420p", "-an", str(card),
+        "-r", "30", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-shortest", str(card),
     ], "title card video")
     return card
 
 
 def _concat_title_card(card: Path, clip: Path, output: Path) -> None:
-    """Antepone la portada (2 s, sin audio) al clip. El audio del clip
-    se retrasa 2 s (adelay) para que siga en sync con su video, y se
-    rellena con silencio (apad) hasta la duración del video. Sin
-    -shortest: el audio recortaría el final del video."""
+    """Antepone la portada (2 s) al clip con el concat DEMUXER y copia
+    de streams (-c copy): sin re-codificar, es casi instantáneo. La
+    portada trae 2 s de silencio, así que el audio del clip empieza
+    justo cuando termina la portada, en sync con su video."""
+    concat_list = card.parent / "concat.txt"
+    concat_list.write_text(
+        f"file '{card}'\nfile '{clip}'\n", encoding="utf-8")
     _run([
         "ffmpeg", "-y", "-v", "error",
-        "-i", str(card), "-i", str(clip),
-        "-filter_complex",
-        "[0:v][1:v]concat=n=2:v=1:a=0[vout];"
-        f"[1:a]adelay={int(TITLE_CARD_SECONDS * 1000)}:all=1,apad[aout]",
-        "-map", "[vout]", "-map", "[aout]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k", str(output),
+        "-f", "concat", "-safe", "0", "-i", str(concat_list),
+        "-c", "copy", str(output),
     ], "title card concat")
 
 

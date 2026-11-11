@@ -6,7 +6,9 @@ Proven 2026-11-10 (clipper-prueba/transcribe2.py + transcribe_base.py):
 - faster-whisper 1.2.1 + av 19.x breaks decode_audio() (``metadata_errors``
   kwarg). Fix, proven in the test: load the WAV with the stdlib ``wave``
   module and pass a numpy float32 array to model.transcribe().
-- Model "base", CPU, int8, language="es", word_timestamps=True.
+- Model "base", CPU, int8, word_timestamps=True. El idioma NO se
+  fuerza: Whisper lo detecta solo (antes language="es" hacía que un
+  video en inglés saliera con subtítulos en español).
 
 Groq (added 2026-11-10, Juan's choice): local faster-whisper is too slow
 on Render's free server (shared CPU, 512 MB), so when GROQ_API_KEY is
@@ -156,14 +158,18 @@ def _split_wav(wav_path: Path,
     return out
 
 
-def _transcribe_groq_one(wav_path: Path, key: str) -> list[dict] | None:
-    """Una llamada a Groq Whisper. Devuelve los segmentos (posiblemente
-    vacíos si el trozo no tiene habla) o None si la llamada falló —
-    el llamador decide si reintenta en local."""
+def _transcribe_groq_one(wav_path: Path, key: str) -> tuple[list[dict] | None, str]:
+    """Una llamada a Groq Whisper. Devuelve (segmentos, idioma detectado)
+    — los segmentos posiblemente vacíos si el trozo no tiene habla, o
+    (None, "es") si la llamada falló; el llamador decide si reintenta
+    en local. El idioma NO se fuerza: si se manda language="es", un
+    video en inglés se transcribe como español (subtítulos en español
+    sobre audio en inglés, visto 2026-11-10 con el live de KaiCenat
+    en Twitch). Sin el parámetro, Whisper detecta el idioma solo y
+    la respuesta verbose_json trae "language" (p. ej. "en" o "es")."""
     boundary = uuid.uuid4().hex
     fields = [
         ("model", GROQ_MODEL),
-        ("language", "es"),
         ("response_format", "verbose_json"),
         ("timestamp_granularities[]", "word"),
         ("timestamp_granularities[]", "segment"),
@@ -193,40 +199,42 @@ def _transcribe_groq_one(wav_path: Path, key: str) -> list[dict] | None:
     except urllib.error.HTTPError as e:
         logger.warning("Groq transcription failed (HTTP %s); "
                        "falling back to local faster-whisper", e.code)
-        return None
+        return None, "es"
     except Exception as e:  # noqa: BLE001 — timeout / DNS / network, any
         logger.warning("Groq transcription failed (%s); "
                        "falling back to local faster-whisper", e)
-        return None
+        return None, "es"
     try:
-        return _map_groq_response(payload)
+        lang = (payload.get("language") or "es").lower()
+        return _map_groq_response(payload), lang
     except Exception as e:  # noqa: BLE001 — unexpected response shape
         logger.warning("Groq response could not be parsed (%s); "
                        "falling back to local faster-whisper", e)
-        return None
+        return None, "es"
 
 
-def _transcribe_groq(wav_path: Path) -> list[dict] | None:
-    """Try Groq Whisper. Returns segments on success, None when Groq
-    was not attempted or failed — the caller then falls back to local
-    faster-whisper. An EMPTY result is treated as a failure too: a
-    real 60 s clip of speech must not transcribe to zero segments
-    (seen 2026-11-10: Groq answered 200 with no segments for a WAV
-    that curl transcribed into 18 segments), so returning None lets
-    the local engine retry instead of the job ending with 0 clips.
-    A genuinely silent video then transcribes empty locally as well,
-    and the clips job fails with a clear message (see main.py).
+def _transcribe_groq(wav_path: Path) -> tuple[list[dict] | None, str]:
+    """Try Groq Whisper. Returns (segments, detected language) on
+    success, (None, "es") when Groq was not attempted or failed — the
+    caller then falls back to local faster-whisper. An EMPTY result is
+    treated as a failure too: a real 60 s clip of speech must not
+    transcribe to zero segments (seen 2026-11-10: Groq answered 200
+    with no segments for a WAV that curl transcribed into 18
+    segments), so returning None lets the local engine retry instead
+    of the job ending with 0 clips. A genuinely silent video then
+    transcribes empty locally as well, and the clips job fails with a
+    clear message (see main.py).
     Audios largos: Groq solo acepta 25 MB por llamada, así que un WAV
     mayor se parte en trozos de ~12 min, se transcribe cada uno y se
     unen los segmentos con sus desplazamientos — la transcripción
     rápida funciona para videos de cualquier duración."""
     key = os.environ.get("GROQ_API_KEY")
     if not key:
-        return None
+        return None, "es"
     if _groq_eligible(wav_path):
-        segments = _transcribe_groq_one(wav_path, key)
+        segments, lang = _transcribe_groq_one(wav_path, key)
         if segments is None:
-            return None
+            return None, "es"
     else:
         # Audio largo: partir en trozos y unir. Si un trozo falla,
         # todo el intento cae al motor local (como antes).
@@ -236,13 +244,15 @@ def _transcribe_groq(wav_path: Path) -> list[dict] | None:
             parts = _split_wav(wav_path)
         except Exception as e:  # noqa: BLE001 — ffmpeg split failed
             logger.warning("Groq split failed (%s); falling back to local", e)
-            return None
+            return None, "es"
         segments = []
+        lang = "es"
         try:
             for chunk_path, offset in parts:
-                chunk_segs = _transcribe_groq_one(chunk_path, key)
+                chunk_segs, chunk_lang = _transcribe_groq_one(chunk_path, key)
                 if chunk_segs is None:
-                    return None
+                    return None, "es"
+                lang = chunk_lang
                 segments.extend(_offset_segments(chunk_segs, offset))
         finally:
             for chunk_path, _ in parts:
@@ -253,7 +263,7 @@ def _transcribe_groq(wav_path: Path) -> list[dict] | None:
     if not segments:
         logger.warning("Groq transcription returned no segments; "
                        "falling back to local faster-whisper")
-        return None
+        return None, "es"
     # Calidad mínima: una transcripción real de N segundos de habla
     # tiene del orden de 2 palabras por segundo. Si Groq devuelve
     # poquísimas palabras para el tramo (visto 2026-11-10: 8 palabras
@@ -266,8 +276,8 @@ def _transcribe_groq(wav_path: Path) -> list[dict] | None:
         logger.warning("Groq transcription too sparse (%d words in %.0f s); "
                        "falling back to local faster-whisper",
                        total_words, span)
-        return None
-    return segments
+        return None, "es"
+    return segments, lang
 
 
 
@@ -318,14 +328,19 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None) -> dict
     """
     wav_path = TRANSCRIPTS_DIR / f"{job_id}.wav"
     extract_wav(source, wav_path)
-    groq_segments = _transcribe_groq(wav_path)
+    groq_segments, groq_lang = _transcribe_groq(wav_path)
     if groq_segments is not None:
         out_segments = groq_segments
         used_model = GROQ_MODEL
+        detected_lang = groq_lang
     else:
         audio = load_wav_array(wav_path)
         whisper = _get_model(model)
-        segments, _info = whisper.transcribe(audio, language="es", word_timestamps=True)
+        # Sin language="es": faster-whisper detecta el idioma solo.
+        # Forzar "es" hacía que un video en inglés se transcribiera
+        # como español (subtítulos en español sobre audio en inglés).
+        segments, _info = whisper.transcribe(audio, language=None, word_timestamps=True)
+        detected_lang = (_info.language or "es").lower()
         out_segments = []
         for s in segments:
             out_segments.append({
@@ -339,7 +354,7 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None) -> dict
             })
         used_model = model or WHISPER_MODEL
     result = {"job_id": job_id, "model": used_model,
-              "language": "es", "segments": out_segments}
+              "language": detected_lang, "segments": out_segments}
     out_path = TRANSCRIPTS_DIR / f"{job_id}.json"
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return {**result, "path": str(out_path)}

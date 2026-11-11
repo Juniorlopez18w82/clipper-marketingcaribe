@@ -54,7 +54,7 @@ from sqlalchemy.orm import Session
 from . import auth, billing, clips_db, jobs, settings
 from .auth import User, get_current_user, get_optional_user
 from .billing import (PaymentMethod, PaymentRequest, Plan, UserSubscription,
-                      approve_request, get_active_subscription,
+                      approve_request, assign_plan, get_active_subscription,
                       has_active_subscription, method_out, plan_out,
                       reject_request, request_out, subscription_out)
 from .clips import build_candidates, build_candidates_llm
@@ -142,6 +142,13 @@ class RenderRequest(BaseModel):
     # Cover offset (s, relative to the clip start) chosen in the editor.
     # Stored on the clip; only changes the thumbnail in Mis Clips.
     cover_at: float | None = None
+    # --- Configuración: cámara (paso 3) ---
+    # center (recorte fijo en el centro, como siempre) | dual (dos
+    # personas, izquierda arriba y derecha abajo) | follow_speaker
+    # (sigue a quien habla) | follow_person (sigue a una persona).
+    camera_mode: str = "center"
+    # left | center | right — solo para follow_person.
+    camera_person: str = "center"
     # --- Configuración: subtítulos ---
     show_subtitles: bool = True
     subtitle_style: str = "viral"  # viral | plain | yellow
@@ -257,8 +264,7 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             source = download_section(url, start, end, job_id)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=model)
-        if not transcript["segments"] or not any(
-                s.get("words") for s in transcript["segments"]):
+        if not transcript["segments"]:
             raise RuntimeError(
                 "No se pudo transcribir el audio de este video. "
                 "Prueba con otro rango u otro video.")
@@ -355,6 +361,7 @@ def _run_render_job(job_id: str, req: RenderRequest):
             subtitle_position=req.subtitle_position,
             show_subtitles=req.show_subtitles,
             quality=req.quality,
+            camera_mode=req.camera_mode, camera_person=req.camera_person,
         )
         info = probe(out_path)
         jobs.update(job_id, status="done", progress=100, message="Clip listo.",
@@ -533,7 +540,33 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 def api_admin_users(db: Session = Depends(get_db),
                     _admin: User = Depends(require_admin)):
     users = db.query(User).order_by(User.created_at.asc()).all()
-    return [auth.user_out(u) for u in users]
+    out = []
+    for u in users:
+        row = auth.user_out(u)
+        sub = get_active_subscription(db, u.id)
+        row["plan_expires"] = sub.ends_at.isoformat() if sub else None
+        out.append(row)
+    return out
+
+
+class AssignPlanRequest(BaseModel):
+    plan_id: int
+
+
+@app.post("/api/admin/users/{user_id}/assign-plan")
+def api_admin_assign_plan(user_id: int, req: AssignPlanRequest,
+                          db: Session = Depends(get_db),
+                          _admin: User = Depends(require_admin)):
+    """El admin asigna una membresía manualmente a un usuario, sin
+    solicitud de pago ni comprobante (2026-11-10, pedido de Juan)."""
+    try:
+        sub = assign_plan(db, user_id, req.plan_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    plan = db.query(Plan).filter(Plan.id == sub.plan_id).first()
+    return {"ok": True, "subscription": subscription_out(sub, plan=plan),
+            "user": auth.user_out(
+                db.query(User).filter(User.id == user_id).first())}
 
 
 @app.get("/api/admin/clips")

@@ -405,70 +405,29 @@ def _split_crop(w: int, h: int, corner: str = "top-left") -> tuple[tuple[int, in
 
 def _detect_facecam_box(source: Path, start: float, duration: float,
                         corner: str = "top-left") -> tuple[int, int, int, int] | None:
-    """Localiza el CUADRO de la facecam (2026-11-11, queja de Juan: el
-    recorte que seguía la cara se movía; el cuadro completo debe quedar
-    FIJO arriba).
+    """Cuadro de la facecam (2026-11-11, queja de Juan: el cuadro debe
+    quedar COMPLETO y FIJO arriba, sin moverse).
 
-    El cuadro de la facecam es un rectángulo fijo (overlay con borde)
-    en una esquina. Se localiza por la cara (Haar, mediana de 3
-    fotogramas — UN solo rectángulo para todo el clip, sin
-    seguimiento) y se toma el cuadro completo alrededor de ella: un
-    rectángulo fijo de 20% del ancho x 26% del alto centrado en la
-    cara, que contiene el cuadro entero (RDjavi: ~14% x 19%) con
-    margen. Devuelve (w, h, x, y) del cuadro. None si no hay cara.
+    El cuadro es un rectángulo fijo anclado a una esquina del video
+    (RDjavi: arriba a la izquierda, ~14% del ancho x ~19% del alto,
+    con borde negro y rótulo "RD JAVI"). NO se sigue la cara: centrar
+    en la cara desplazaba el cuadro y recortaba su lado derecho. Se
+    usa un rectángulo fijo anclado a la esquina (16% x 22% con
+    margen), el mismo para todo el clip. Devuelve (w, h, x, y).
     """
-    import cv2
-
-    try:
-        cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-        if cascade.empty():
-            return None
-        vw, vh = probe_size(source)
-        corner = (corner or "top-left").strip().lower()
-        zw, zh = vw * 0.45, vh * 0.55
-        if corner == "top-left":
-            zx, zy = 0, 0
-        elif corner == "top-right":
-            zx, zy = vw - zw, 0
-        elif corner == "bottom-left":
-            zx, zy = 0, vh - zh
-        else:
-            zx, zy = vw - zw, vh - zh
-        centers: list[tuple[float, float]] = []
-        with tempfile.TemporaryDirectory(prefix="facecam_") as td:
-            td = Path(td)
-            for i, frac in enumerate((0.25, 0.5, 0.75)):
-                t = start + duration * frac
-                frame = td / f"f{i}.png"
-                _run(["ffmpeg", "-y", "-v", "error", "-ss", str(t),
-                      "-i", str(source), "-frames:v", "1", str(frame)],
-                     "facecam frame")
-                img = cv2.imread(str(frame))
-                if img is None:
-                    continue
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                roi = gray[int(zy):int(zy + zh), int(zx):int(zx + zw)]
-                faces = cascade.detectMultiScale(
-                    roi, scaleFactor=1.1, minNeighbors=4,
-                    minSize=(30, 30))
-                if len(faces) == 0:
-                    continue
-                x, y, fw, fh = max(faces, key=lambda b: b[2] * b[3])
-                centers.append((zx + x + fw / 2, zy + y + fh / 2))
-        if not centers:
-            return None
-        centers.sort(key=lambda c: c[0])
-        cx, cy = centers[len(centers) // 2]
-        # Cuadro completo alrededor de la cara: tamaño fijo, centrado
-        # en la cara, con margen para el borde y el rótulo.
-        bw, bh = vw * 0.20, vh * 0.26
-        x = max(0.0, min(cx - bw / 2, vw - bw))
-        y = max(0.0, min(cy - bh * 0.42, vh - bh))
-        return (int(round(bw / 2) * 2), int(round(bh / 2) * 2),
-                int(round(x / 2) * 2), int(round(y / 2) * 2))
-    except Exception:
-        return None
+    vw, vh = probe_size(source)
+    corner = (corner or "top-left").strip().lower()
+    bw, bh = vw * 0.16, vh * 0.22
+    if corner == "top-left":
+        x, y = 0.0, 0.0
+    elif corner == "top-right":
+        x, y = vw - bw, 0.0
+    elif corner == "bottom-left":
+        x, y = 0.0, vh - bh
+    else:
+        x, y = vw - bw, vh - bh
+    return (int(round(bw / 2) * 2), int(round(bh / 2) * 2),
+            int(round(x / 2) * 2), int(round(y / 2) * 2))
 
 
 def _path_x_at(path: list, t: float) -> float:

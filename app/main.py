@@ -1356,13 +1356,14 @@ def api_lives_create(req: LiveCreateRequest,
     st = live_status(url)
     if st is None:
         raise HTTPException(
-            502, "YouTube bloqueó la lectura del live, inténtalo de nuevo")
+            502, "No se pudo leer el live, inténtalo de nuevo")
     if not st.get("is_live"):
         raise HTTPException(400, "Ese link no es un live en curso")
     session = LiveSession(
         user_id=(user.id if user is not None else None), url=url,
         video_id=st.get("video_id") or "", title=st.get("title") or "",
-        uploader=st.get("uploader") or "", interval_minutes=interval,
+        uploader=st.get("uploader") or "",
+        thumbnail=st.get("thumbnail") or "", interval_minutes=interval,
         clips_per_round=per_round, min_len=min_len, max_len=max_len,
         status=STATUS_ACTIVE)
     db.add(session)

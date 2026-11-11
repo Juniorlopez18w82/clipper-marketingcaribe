@@ -45,6 +45,11 @@ class Clip(Base):
     # needed to reopen the clip in the subtitle editor (words in the
     # transcript are relative to the section).
     section_start = Column(Float, nullable=True)
+    # Cover offset (s, relative to the clip start) chosen by the user in
+    # the editor. NULL = default thumbnail (video start). Only changes
+    # the thumbnail shown in Mis Clips (via #t= media fragment), NOT
+    # the first frame inside the mp4 file itself.
+    cover_at = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 
@@ -63,19 +68,23 @@ def clip_out(clip: Clip) -> dict:
         "file": clip.file,
         "score": clip.score,
         "section_start": clip.section_start,
+        "cover_at": clip.cover_at,
         "download_url": f"/api/download/{clip.file}" if clip.file else None,
         "created_at": clip.created_at.isoformat() if clip.created_at else None,
     }
 
 
 def create_clip(db, *, user_id, video_url, title, uploader, start, end,
-                job_id, file, score=None, section_start=None) -> Clip:
+                job_id, file, score=None, section_start=None,
+                cover_at=None) -> Clip:
     clip = Clip(user_id=user_id, video_url=video_url or "", title=title or "",
                 uploader=uploader or "", start=float(start), end=float(end),
                 status=STATUS_LISTO, job_id=job_id, file=file,
                 score=(float(score) if score is not None else None),
                 section_start=(float(section_start)
-                               if section_start is not None else None))
+                               if section_start is not None else None),
+                cover_at=(float(cover_at)
+                          if cover_at is not None else None))
     db.add(clip)
     db.commit()
     db.refresh(clip)

@@ -282,7 +282,7 @@ document.querySelectorAll("#adminTabs .mini-tab").forEach((btn) => {
     $("adminPane-" + btn.dataset.admin).hidden = false;
     const loaders = { users: loadAdminUsers, clips: loadAdminClips, requests: loadAdminRequests,
       plans: loadAdminPlans, methods: loadAdminMethods,
-      settings: loadAdminSettings };
+      earnings: loadAdminEarnings, settings: loadAdminSettings };
     if (loaders[btn.dataset.admin]) loaders[btn.dataset.admin]();
   };
 });
@@ -454,17 +454,117 @@ async function loadAdminUsers() {
       apiFetch("/api/admin/users", { headers: authHeaders() }),
       apiFetch("/api/plans"),
     ]);
-    // Tabla limpia: sin selects dentro de las celdas. Cada usuario
-    // (no admin) tiene UN botón "Asignar plan" que abre el modal.
-    $("adminUsers").innerHTML = "<table><tr><th>Nombre</th><th>Correo</th><th>Plan</th><th>Admin</th><th></th></tr>" +
+    // Tabla con fechas de la membresía (inicio / fin) y un menú ⋮ por
+    // usuario con Asignar plan, Entrar como usuario, Editar, Eliminar
+    // y Suspender/Reactivar cuenta.
+    const fmtDate = (iso) => (iso ? iso.slice(0, 10) : "—");
+    $("adminUsers").innerHTML = "<table><tr><th>Nombre</th><th>Correo</th><th>Plan</th><th>Inicio</th><th>Fin</th><th></th></tr>" +
       users.map((u) => {
-        const exp = u.plan_expires ? ` <small>· hasta ${u.plan_expires.slice(0, 10)}</small>` : "";
-        return `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.plan}${exp}</td><td>${u.is_admin ? "SÍ" : "No"}</td>
-        <td>${u.is_admin ? "" : `<button class="small" data-imp="${u.id}" data-name="${u.name}">Entrar como usuario</button> <button class="small" data-assign="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">Asignar plan</button>`}</td></tr>`;
+        const susp = u.is_suspended ? ` <span class="susp-badge">⛔ Suspendida</span>` : "";
+        const adminTag = u.is_admin ? " <small>· Admin</small>" : "";
+        return `<tr><td>${esc(u.name)}${susp}${adminTag}</td><td>${esc(u.email)}</td><td>${esc(u.plan)}</td><td>${fmtDate(u.plan_started)}</td><td>${fmtDate(u.plan_expires)}</td>
+        <td><div class="user-menu-wrap"><button class="small ghost user-menu-btn" data-menu="${u.id}" title="Opciones" aria-label="Opciones">⋮</button>
+        <div class="user-menu" id="user-menu-${u.id}" hidden>
+          ${u.is_admin ? "" : `<button data-assign="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">Asignar plan</button>`}
+          ${u.is_admin ? "" : `<button data-imp="${u.id}" data-name="${esc(u.name)}">Entrar como usuario</button>`}
+          <button data-edit="${u.id}" data-name="${esc(u.name)}" data-email="${esc(u.email)}">Editar</button>
+          <button data-susp="${u.id}" data-name="${esc(u.name)}" data-suspended="${u.is_suspended ? "1" : "0"}">${u.is_suspended ? "Reactivar cuenta" : "Suspender cuenta"}</button>
+          <button class="danger" data-del="${u.id}" data-name="${esc(u.name)}">Eliminar</button>
+        </div></div></td></tr>`;
       }).join("") + "</table><p id=\"usersMsg\" class=\"muted\"></p>";
-    $("adminUsers").querySelectorAll("[data-imp]").forEach((b) => b.onclick = () => impersonateUser(b.dataset.imp, b.dataset.name));
-    $("adminUsers").querySelectorAll("[data-assign]").forEach((b) => b.onclick = () => openAssignModal(b.dataset.assign, b.dataset.name, b.dataset.email, plans));
+    // Menú ⋮: abre uno a la vez; cierra con clic fuera o Escape.
+    const closeAllMenus = () => document.querySelectorAll(".user-menu").forEach((m) => { m.hidden = true; });
+    $("adminUsers").querySelectorAll("[data-menu]").forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const m = $("user-menu-" + b.dataset.menu);
+      const wasHidden = m.hidden;
+      closeAllMenus();
+      m.hidden = !wasHidden;
+    });
+    document.addEventListener("click", closeAllMenus);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllMenus(); });
+    $("adminUsers").querySelectorAll("[data-imp]").forEach((b) => b.onclick = () => { closeAllMenus(); impersonateUser(b.dataset.imp, b.dataset.name); });
+    $("adminUsers").querySelectorAll("[data-assign]").forEach((b) => b.onclick = () => { closeAllMenus(); openAssignModal(b.dataset.assign, b.dataset.name, b.dataset.email, plans); });
+    $("adminUsers").querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { closeAllMenus(); openEditUserModal(b.dataset.edit, b.dataset.name, b.dataset.email); });
+    $("adminUsers").querySelectorAll("[data-susp]").forEach((b) => b.onclick = () => { closeAllMenus(); toggleSuspendUser(b.dataset.susp, b.dataset.name, b.dataset.suspended === "1"); });
+    $("adminUsers").querySelectorAll("[data-del]").forEach((b) => b.onclick = () => deleteUser(b));
   } catch { $("adminUsers").innerHTML = "<p class='muted'>No se pudieron cargar los usuarios.</p>"; }
+}
+// Editar usuario (nombre y correo) — modal como el de añadir usuario.
+function openEditUserModal(userId, name, email) {
+  $("editUserId").value = userId;
+  $("editUserName").value = name;
+  $("editUserEmail").value = email;
+  $("editUserMsg").textContent = "";
+  $("editUserModal").hidden = false;
+  $("editUserName").focus();
+}
+function closeEditUserModal() { $("editUserModal").hidden = true; }
+// Suspender / reactivar una cuenta.
+async function toggleSuspendUser(userId, name, isSuspended) {
+  const action = isSuspended ? "unsuspend" : "suspend";
+  try {
+    await apiFetch(`/api/admin/users/${userId}/${action}`, { method: "POST", headers: authHeaders() });
+    await loadAdminUsers();
+    const m2 = $("usersMsg");
+    if (m2) m2.textContent = isSuspended ? `Cuenta de ${name} reactivada.` : `Cuenta de ${name} suspendida.`;
+  } catch (e) {
+    const m2 = $("usersMsg");
+    if (m2) m2.textContent = "Error: " + e.message;
+  }
+}
+// Eliminar usuario: dos toques para confirmar (sin diálogo nativo).
+async function deleteUser(btn) {
+  if (btn.dataset.confirm !== "1") {
+    btn.dataset.confirm = "1";
+    btn.textContent = "¿Seguro? Toca de nuevo";
+    setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "Eliminar"; }, 4000);
+    return;
+  }
+  try {
+    await apiFetch(`/api/admin/users/${btn.dataset.del}`, { method: "DELETE", headers: authHeaders() });
+    await loadAdminUsers();
+    const m2 = $("usersMsg");
+    if (m2) m2.textContent = `Usuario ${btn.dataset.name} eliminado.`;
+  } catch (e) {
+    const m2 = $("usersMsg");
+    if (m2) m2.textContent = "Error: " + e.message;
+  }
+}
+// Ganancias: total de ventas aprobadas, próximos pagos (renovaciones
+// que vencen en 7 días), usuarios activos y suspendidos.
+async function loadAdminEarnings() {
+  const box = $("adminEarnings");
+  try {
+    const d = await apiFetch("/api/admin/earnings", { headers: authHeaders() });
+    const fmt = (n) => "RD$" + Number(n || 0).toLocaleString("es-DO");
+    const byPlan = Object.entries(d.users_by_plan || {}).map(([p, n]) => `${esc(p)}: ${n}`).join(" · ") || "—";
+    const upcoming = (d.upcoming_renewals || []).length
+      ? `<table><tr><th>Usuario</th><th>Plan</th><th>Monto</th><th>Vence</th></tr>` +
+        d.upcoming_renewals.map((r) => `<tr><td>${esc(r.user_name)}<br><small class="muted">${esc(r.user_email)}</small></td><td>${esc(r.plan_name)}</td><td>${fmt(r.amount_dop)}</td><td>${esc((r.ends_at || "").slice(0, 10))}</td></tr>`).join("") + "</table>"
+      : "<p class='muted'>Ninguna membresía vence en los próximos 7 días.</p>";
+    const recent = (d.recent_sales || []).length
+      ? `<table><tr><th>Usuario</th><th>Plan</th><th>Monto</th><th>Fecha</th></tr>` +
+        d.recent_sales.map((r) => `<tr><td>${esc(r.user_name)}<br><small class="muted">${esc(r.user_email)}</small></td><td>${esc(r.plan_name)}</td><td>${fmt(r.amount_dop)}</td><td>${esc((r.decided_at || "").slice(0, 10))}</td></tr>`).join("") + "</table>"
+      : "<p class='muted'>Aún no hay ventas aprobadas.</p>";
+    const susp = (d.suspended_users || []).length
+      ? `<table><tr><th>Usuario</th><th>Correo</th><th>Plan</th></tr>` +
+        d.suspended_users.map((u) => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.plan)}</td></tr>`).join("") + "</table>"
+      : "<p class='muted'>Ninguna cuenta suspendida.</p>";
+    box.innerHTML = `<div class="stats">
+        <div class="stat red"><b>${fmt(d.total_sales_dop)}</b><span>Total de ventas (${d.total_sales_count} aprobadas)</span></div>
+        <div class="stat"><b>${fmt(d.month_sales_dop)}</b><span>Ventas este mes</span></div>
+        <div class="stat"><b>${d.active_users}</b><span>Usuarios activos</span></div>
+        <div class="stat"><b>${d.suspended_count}</b><span>Cuentas suspendidas</span></div>
+        <div class="stat"><b>${d.total_users}</b><span>Usuarios en total</span></div>
+        <div class="stat"><b>${esc(byPlan)}</b><span>Activos por plan</span></div>
+      </div>
+      <h4 style="margin:18px 0 6px">Próximos pagos (vencen en 7 días)</h4>${upcoming}
+      <h4 style="margin:18px 0 6px">Últimas ventas</h4>${recent}
+      <h4 style="margin:18px 0 6px">Cuentas suspendidas</h4>${susp}`;
+  } catch {
+    box.innerHTML = "<p class='muted'>No se pudieron cargar las ganancias.</p>";
+  }
 }
 // Modal "Asignar plan": una tarjeta centrada con el usuario arriba y
 // los planes como filas seleccionables (nombre, precio, duración, ⭐).
@@ -546,6 +646,28 @@ $("addUserConfirm").onclick = async () => {
     await loadAdminUsers();
     const m2 = $("usersMsg");
     if (m2) m2.textContent = `Usuario ${r.name} (${r.email}) creado como ${r.is_admin ? "Administrador" : "Cliente"}.`;
+  } catch (e) {
+    msg.textContent = "Error: " + e.message;
+  }
+};
+// Editar usuario: guardar nombre y correo.
+$("editUserClose").onclick = closeEditUserModal;
+$("editUserCancel").onclick = closeEditUserModal;
+$("editUserModal").addEventListener("click", (e) => { if (e.target === $("editUserModal")) closeEditUserModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("editUserModal").hidden) closeEditUserModal(); });
+$("editUserConfirm").onclick = async () => {
+  const id = $("editUserId").value;
+  const name = $("editUserName").value.trim();
+  const email = $("editUserEmail").value.trim();
+  const msg = $("editUserMsg");
+  if (!name || !email) { msg.textContent = "Completa nombre y correo."; return; }
+  msg.textContent = "Guardando…";
+  try {
+    await apiFetch(`/api/admin/users/${id}`, { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ name, email }) });
+    closeEditUserModal();
+    await loadAdminUsers();
+    const m2 = $("usersMsg");
+    if (m2) m2.textContent = `Usuario ${name} actualizado.`;
   } catch (e) {
     msg.textContent = "Error: " + e.message;
   }

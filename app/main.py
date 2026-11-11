@@ -174,6 +174,10 @@ class RenderRequest(BaseModel):
     title_bg_color: str | None = None
     title_bg: bool = True
     title_size: int | None = None
+    # Posición del título en la portada (0.0 = arriba/izquierda,
+    # 0.5 = centrado, 1.0 = abajo/derecha). Antes era siempre centrado.
+    title_pos_x: float | None = None
+    title_pos_y: float | None = None
     # --- Configuración: cámara (paso 3) ---
     # center (recorte fijo en el centro, como siempre) | dual (dos
     # personas, izquierda arriba y derecha abajo) | follow_speaker
@@ -539,6 +543,8 @@ def _run_render_job(job_id: str, req: RenderRequest):
             title_bg_color=req.title_bg_color,
             title_bg=req.title_bg,
             title_size=req.title_size,
+            title_pos_x=req.title_pos_x,
+            title_pos_y=req.title_pos_y,
         )
         info = probe(out_path)
         jobs.update(job_id, status="done", progress=100, message="Clip listo.",

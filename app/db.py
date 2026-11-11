@@ -133,13 +133,14 @@ def _ensure_clip_columns() -> None:
 def init_db() -> None:
     """Create tables if they do not exist. Safe to call on every boot.
 
-    Importing auth and clips_db registers the User and Clip models on
-    Base. After creating tables, seed the two demo users if the users
-    table is empty (see auth.seed_users). If the database is unreachable
-    at boot (e.g. wrong DATABASE_URL), log a warning and let the app
-    start — auth endpoints will surface the real error.
+    Importing auth, clips_db, images and videos registers the User,
+    Clip, GeneratedImage and AIVideoJob models on Base. After creating
+    tables, seed the two demo users if the users table is empty (see
+    auth.seed_users). If the database is unreachable at boot (e.g.
+    wrong DATABASE_URL), log a warning and let the app start — auth
+    endpoints will surface the real error.
     """
-    from . import auth, billing, clips_db, settings  # noqa: F401 — registers models
+    from . import auth, billing, clips_db, images, settings, videos  # noqa: F401 — registers models
 
     try:
         Base.metadata.create_all(bind=engine)

@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .camera import analyze_camera, probe_size
 from .config import DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR, DEFAULT_FRAME_WIDTH, FONT_BOLD
+from .framing import analyze_framing
 
 logger = logging.getLogger(__name__)
 
@@ -805,6 +806,121 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
     return output
 
 
+def _framing_at(framing: dict, t: float) -> dict:
+    """Framing sample active at time t (clip-relative seconds)."""
+    samples = framing.get("samples") or []
+    if not samples:
+        return {}
+    best = samples[0]
+    for s in samples:
+        if s["t"] <= t:
+            best = s
+        else:
+            break
+    return best
+
+
+def _render_auto(source: Path, start_in_source: float, duration: float,
+                 output: Path, framing: dict, *, out_w: int, out_h: int,
+                 tmpdir: Path, overlay_kwargs: dict,
+                 progress_cb=None) -> Path:
+    """Auto interview framing: 2 s chunks, each rendered with the layout
+    the framing timeline says at its midpoint, then concatenated and
+    overlaid in one final pass (same chunk+concat+overlay pattern as
+    _render_follow).
+
+    * SINGLE (one person): a 9:16 crop on that person (head + face +
+      shoulders), from the timeline's crop box.
+    * DUAL (two people): two INDEPENDENT crops, one person on top and
+      the other below (1080x960 each, vstack) — never a single wide
+      crop trying to fit both.
+    * UNKNOWN: the timeline already holds the last valid crop, so the
+      chunk just uses it — no sudden moves.
+    A scene cut switches the layout at once (the timeline changes at
+    the cut), so the frame follows the new speaker immediately.
+    """
+    chunk_dur = 2.0
+    chunks: list[Path] = []
+    n_chunks = max(1, math.ceil(duration / chunk_dur))
+    t = 0.0
+    i = 0
+    while t < duration:
+        cd = min(chunk_dur, duration - t)
+        sample = _framing_at(framing, t + cd / 2)
+        chunk = tmpdir / f"auto_{i:03d}.mp4"
+        crops = sample.get("crops")
+        crop = sample.get("crop")
+        if crops:
+            (w1, h1, x1, y1), (w2, h2, x2, y2) = crops
+            _run([
+                "ffmpeg", "-y", "-v", "error",
+                "-ss", str(start_in_source + t), "-i", str(source),
+                "-t", str(cd),
+                "-filter_complex",
+                f"[0:v]split=2[tp][bt];"
+                f"[tp]crop={w1}:{h1}:{x1}:{y1},scale={out_w}:{out_h // 2}[top];"
+                f"[bt]crop={w2}:{h2}:{x2}:{y2},scale={out_w}:{out_h // 2}[bot];"
+                f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid];"
+                f"[0:a]asetpts=PTS-STARTPTS[aout]",
+                "-map", "[vid]", "-map", "[aout]",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-r", "30", "-c:a", "aac", "-b:a", "128k", str(chunk),
+            ], f"auto dual chunk {i}")
+        elif crop:
+            w, h, x, y = crop
+            _run([
+                "ffmpeg", "-y", "-v", "error",
+                "-ss", str(start_in_source + t), "-i", str(source),
+                "-t", str(cd),
+                "-vf", f"crop={w}:{h}:{x}:{y},scale={out_w}:{out_h},setpts=PTS-STARTPTS",
+                "-af", "asetpts=PTS-STARTPTS",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-r", "30", "-c:a", "aac", "-b:a", "128k", str(chunk),
+            ], f"auto single chunk {i}")
+        else:
+            # No crop at all (should not happen — the timeline always
+            # carries one): centre 9:16, exactly the approved behavior.
+            _run([
+                "ffmpeg", "-y", "-v", "error",
+                "-ss", str(start_in_source + t), "-i", str(source),
+                "-t", str(cd),
+                "-vf", f"crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},setpts=PTS-STARTPTS",
+                "-af", "asetpts=PTS-STARTPTS",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-r", "30", "-c:a", "aac", "-b:a", "128k", str(chunk),
+            ], f"auto centre chunk {i}")
+        chunks.append(chunk)
+        if progress_cb:
+            try:
+                progress_cb((i + 1) / n_chunks * 0.5)
+            except Exception:
+                pass
+        t += cd
+        i += 1
+    concat_file = tmpdir / "concat.txt"
+    concat_file.write_text(
+        "".join(f"file '{c}'\n" for c in chunks), encoding="utf-8")
+    base = "[0:v]setpts=PTS-STARTPTS[vid]"
+    chain = _overlay_chain(tmpdir, out_w=out_w, out_h=out_h, **overlay_kwargs)
+
+    def _final_frac(frac: float):
+        if progress_cb:
+            try:
+                progress_cb(0.5 + 0.5 * frac)
+            except Exception:
+                pass
+
+    _run([
+        "ffmpeg", "-y", "-v", "error",
+        "-f", "concat", "-safe", "0", "-i", str(concat_file),
+        "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
+        "-map", "[out]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
+        "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
+    ], "auto final pass", progress_cb=_final_frac, total_seconds=duration)
+    return output
+
+
 def render_clip(source: Path, start_in_source: float, duration: float,
                 output: Path, words: list[dict] | None = None, *,
                 frame_enabled: bool | None = None,
@@ -863,15 +979,20 @@ def render_clip(source: Path, start_in_source: float, duration: float,
     "dual" (left half on top, right half below, for two-person
     interviews), "split" (facecam on top, game below — pantalla
     dividida para videos de gaming), "follow_speaker" (9:16 crop
-    follows whoever is speaking, face detection + mouth-movement score)
-    or "follow_person" (follows the face in the requested zone: ``camera_person`` left /
-    center / right). Follow modes fall back to the center crop when no
-    face is found, so tracking can never fail a render.
+    follows whoever is speaking, face detection + mouth-movement score),
+    "follow_person" (follows the face in the requested zone:
+    ``camera_person`` left / center / right), or "auto" (encuadre
+    inteligente para entrevistas: detecta por plano si hay una o dos
+    personas — SINGLE centra a la persona, DUAL pone una arriba y otra
+    abajo con recortes independientes, y los cambios de cámara cambian
+    el encuadre al instante; si no hay cara, mantiene el último
+    encuadre válido). Follow and auto modes fall back to the center
+    crop when no face is found, so tracking can never fail a render.
     """
     if duration <= 0:
         raise ValueError("duration must be > 0")
     mode = (camera_mode or "center").strip().lower()
-    if mode not in ("center", "dual", "split", "follow_speaker", "follow_person"):
+    if mode not in ("center", "dual", "split", "follow_speaker", "follow_person", "auto"):
         mode = "center"
     person = (camera_person or "center").strip().lower()
     if person not in ("left", "center", "right"):
@@ -914,7 +1035,35 @@ def render_clip(source: Path, start_in_source: float, duration: float,
         # hay título de enganche) se antepone después.
         main_path = tmpdir / "main.mp4"
         rendered = False
-        if mode in ("follow_speaker", "follow_person"):
+        if mode == "auto":
+            # Encuadre inteligente para entrevistas (2026-11-12):
+            # el analizador (app/framing.py) decide por plano si hay
+            # una o dos personas y el render sigue su línea de tiempo.
+            # Las palabras de los subtítulos van como señal de habla
+            # complementaria (la composición manda, no la boca).
+            framing = analyze_framing(source, start_in_source, duration,
+                                      words=words)
+            if not framing["fallback"]:
+                logger.info(
+                    "framing auto (%s): %s shots, %s cuts, "
+                    "single %.1fs / dual %.1fs / unknown %.1fs",
+                    framing["detector"], framing["stats"]["shots"],
+                    framing["stats"]["cuts"],
+                    framing["stats"]["single_s"],
+                    framing["stats"]["dual_s"],
+                    framing["stats"]["unknown_s"])
+                _render_auto(source, start_in_source, duration,
+                             main_path, framing,
+                             out_w=out_w, out_h=out_h,
+                             tmpdir=tmpdir,
+                             overlay_kwargs=overlay_kwargs,
+                             progress_cb=progress_cb)
+                rendered = True
+            else:
+                logger.warning(
+                    "framing auto: analysis failed, using follow_speaker")
+                mode = "follow_speaker"
+        if mode in ("follow_speaker", "follow_person") and not rendered:
             cam = analyze_camera(source, start_in_source, duration, mode, person)
             if not cam["fallback"]:
                 logger.info("camera %s: %s/%s samples with faces, "

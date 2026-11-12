@@ -114,6 +114,41 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .final-cta p{color:#a1a1aa;margin:0 0 24px}
 .quick-login{display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid #27272a}
 .quick-login .small{padding:7px 12px;font-size:13px}
+/* ---------- Home moderna v62 (2026-11-12, Juan: "muy básica" — más
+   moderna, con animaciones): orbes de color que flotan, titular con
+   degradado en movimiento, chips flotantes alrededor del teléfono,
+   marquesina infinita, tarjetas de cristal con brillo al pasar el
+   mouse y botón principal con destello. ---------- */
+@keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(40px,-30px) scale(1.15)}66%{transform:translate(-30px,25px) scale(.92)}}
+@keyframes gradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes chipFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes marquee{to{transform:translateX(-50%)}}
+@keyframes shine{to{transform:translateX(220%) skewX(-18deg)}}
+.hero-orbs{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.hero-orbs .orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.5}
+.hero-orbs .o1{width:420px;height:420px;background:#A855F7;top:-120px;right:-40px;animation:orbFloat 14s ease-in-out infinite}
+.hero-orbs .o2{width:320px;height:320px;background:#3B82F6;bottom:-100px;left:-60px;animation:orbFloat 18s ease-in-out infinite reverse}
+.hero-orbs .o3{width:220px;height:220px;background:#D946EF;top:38%;left:44%;opacity:.32;animation:orbFloat 11s ease-in-out infinite}
+.hero h1 .red{background:linear-gradient(90deg,#A855F7,#3B82F6,#D946EF,#A855F7);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:gradShift 6s ease infinite}
+.hero-visual{position:relative}
+.hero-chip{position:absolute;z-index:3;background:rgba(18,18,43,.82);backdrop-filter:blur(8px);border:1px solid rgba(168,85,247,.45);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.45);animation:chipFloat 4s ease-in-out infinite;white-space:nowrap}
+.hero-chip.c1{top:6%;left:-14px;animation-delay:0s}
+.hero-chip.c2{top:42%;right:-30px;animation-delay:1.2s}
+.hero-chip.c3{bottom:10%;left:-34px;animation-delay:2.1s}
+.marquee{overflow:hidden;padding:18px 0;border-top:1px solid #27272a;border-bottom:1px solid #27272a;white-space:nowrap}
+.marquee-track{display:inline-flex;gap:0;animation:marquee 26s linear infinite;will-change:transform}
+.marquee-track span{font-size:15px;font-weight:700;color:#a1a1aa;padding:0 18px}
+.marquee-track span b{color:#C084FC}
+.stats-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:36px 0 8px}
+.stat-card{background:rgba(18,18,43,.6);backdrop-filter:blur(8px);border:1px solid #27272a;border-radius:16px;padding:20px 12px;text-align:center}
+.stat-card b{display:block;font-size:30px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat-card span{font-size:13px;color:#a1a1aa}
+.feat-card,.step-card{background:rgba(18,18,43,.6);backdrop-filter:blur(8px)}
+.feat-card:hover,.step-card:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(168,85,247,.22);border-color:rgba(168,85,247,.55)}
+.plan-card.popular{animation:glowPulse 5s ease-in-out infinite}
+.btn-brand{position:relative;overflow:hidden}
+.btn-brand::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-18deg);animation:shine 3.5s ease infinite}
+.landing-sec h2 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 @media(max-width:800px){
   .hero{grid-template-columns:1fr;padding:56px 0 44px;gap:36px}
   .hero h1{font-size:40px}
@@ -121,6 +156,11 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
   .landing-nav .nav-links{display:none}
   .steps-grid,.features-grid,.landing-plans{grid-template-columns:1fr}
   .landing-sec h2{font-size:26px}
+  .hero-chip.c1{left:0}
+  .hero-chip.c2{right:0}
+  .hero-chip.c3{left:0}
+  .stats-strip{grid-template-columns:repeat(2,1fr)}
+}
 }
 .card{background:var(--card);border:1px solid #27272a;border-radius:16px;padding:18px;margin-bottom:16px}
 h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
@@ -1189,6 +1229,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
   <!-- Hero -->
   <section class="hero">
+    <div class="hero-orbs"><span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span></div>
     <div>
       <img src="/logo-wordmark.jpg" class="hero-logo" alt="Clipzio Pro">
       <span class="hero-badge">✦ IA · Sin API de YouTube</span>
@@ -1205,8 +1246,17 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <video src="/api/download/clip_d198e5f1b930.mp4" autoplay muted loop playsinline></video>
         <div class="phone-cap">🔥 95% · Anuel y Cosculluela en Alofoke</div>
       </div>
+      <span class="hero-chip c1">🔥 95% viral</span>
+      <span class="hero-chip c2">📱 9:16 · 1080p</span>
+      <span class="hero-chip c3">💬 Subtítulos IA</span>
     </div>
   </section>
+
+  <!-- Marquesina -->
+  <div class="marquee" aria-hidden="true"><div class="marquee-track">
+    <span><b>✦</b> Subtítulos automáticos</span><span><b>✦</b> Clips de lives</span><span><b>✦</b> Doble cámara</span><span><b>✦</b> Portada con tu título</span><span><b>✦</b> Sin API de YouTube</span><span><b>✦</b> 1080p vertical</span><span><b>✦</b> Videos e imágenes con IA</span>
+    <span><b>✦</b> Subtítulos automáticos</span><span><b>✦</b> Clips de lives</span><span><b>✦</b> Doble cámara</span><span><b>✦</b> Portada con tu título</span><span><b>✦</b> Sin API de YouTube</span><span><b>✦</b> 1080p vertical</span><span><b>✦</b> Videos e imágenes con IA</span>
+  </div></div>
 
   <!-- Plataformas -->
   <section class="platforms reveal">
@@ -1214,9 +1264,17 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     <b>YouTube</b><b>Twitch</b><b>TikTok</b><b>Instagram Reels</b><b>YouTube Shorts</b>
   </section>
 
+  <!-- Datos -->
+  <section class="stats-strip reveal">
+    <div class="stat-card"><b>1080p</b><span>Calidad Full HD vertical</span></div>
+    <div class="stat-card"><b>9:16</b><span>Formato TikTok · Reels · Shorts</span></div>
+    <div class="stat-card"><b>15</b><span>Clips por video (plan Full)</span></div>
+    <div class="stat-card"><b>3 pasos</b><span>Link → IA → Descarga</span></div>
+  </section>
+
   <!-- Cómo funciona -->
   <section class="landing-sec reveal" id="como-funciona">
-    <h2>De video largo a clip viral en 3 pasos</h2>
+    <h2>De video largo a <span class="grad">clip viral</span> en 3 pasos</h2>
     <p class="sec-sub">Sin editar a mano, sin buscar el momento, sin API de YouTube.</p>
     <div class="steps-grid">
       <div class="step-card reveal"><div class="step-num">1</div><h3>Pega el link</h3><p>Un video o un live de YouTube o Twitch. También puedes subir tu propio archivo de video.</p></div>
@@ -1227,7 +1285,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
   <!-- Funciones -->
   <section class="landing-sec reveal" id="funciones">
-    <h2>Todo lo que necesitas para clips que pegan</h2>
+    <h2>Todo lo que necesitas para <span class="grad">clips que pegan</span></h2>
     <p class="sec-sub">Hecho para creadores, podcasts, entrevistas y lives.</p>
     <div class="features-grid">
       <div class="feat-card reveal"><div class="feat-ico">🎯</div><h3>Momentos virales con IA</h3><p>La IA busca lo gracioso, lo sorprendente, lo polémico y lo exclusivo — nunca el intro ni el relleno. Cada clip lleva su % viral.</p></div>
@@ -1241,7 +1299,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
   <!-- Planes -->
   <section class="landing-sec reveal" id="planes">
-    <h2>Planes simples, sin sorpresas</h2>
+    <h2>Planes simples, <span class="grad">sin sorpresas</span></h2>
     <p class="sec-sub">Paga por transferencia, sube tu comprobante y empieza. 30 días por plan.</p>
     <div class="landing-plans">
       <div class="plan-card reveal">
@@ -1346,6 +1404,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=61"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>

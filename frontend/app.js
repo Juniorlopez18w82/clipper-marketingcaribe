@@ -222,6 +222,22 @@ $("btnRegister").onclick = async () => {
 $("btnLogout").onclick = doLogout;
 $("btnLogoutTop").onclick = doLogout;
 $("btnShowPanel").onclick = () => openPanel();
+// ---------- Landing (2026-11-12, Juan: tipo wayin.ai/clip-maker) ----------
+// Si hay sesión, los CTA llevan al panel; si no, bajan al formulario
+// de acceso. Los botones de plan llevan al formulario y, al entrar,
+// el panel abre solo (showUser ya lo hace).
+function landingGoToAccount() {
+  if (state.user) { openPanel(); return; }
+  $("accountCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("authEmail").focus({ preventScroll: true });
+}
+const _landingBtn = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+_landingBtn("btnNavLogin", landingGoToAccount);
+_landingBtn("btnNavRegister", landingGoToAccount);
+_landingBtn("btnHeroStart", landingGoToAccount);
+_landingBtn("btnFinalStart", landingGoToAccount);
+_landingBtn("btnHeroPlans", () => { $("planes").scrollIntoView({ behavior: "smooth" }); });
+document.querySelectorAll("[data-plan-cta]").forEach((b) => { b.onclick = landingGoToAccount; });
 $("btnBackAdmin").onclick = () => {
   const adminToken = localStorage.getItem("clipper_admin_token");
   if (adminToken) localStorage.setItem("clipper_token", adminToken);

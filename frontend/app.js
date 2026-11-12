@@ -174,10 +174,11 @@ function showUser(user) {
     fillConfig(user);
     updatePreview();
     loadPanel();
-    // Con sesión el HOME es la landing (2026-11-12, Juan: la veía igual
-    // porque el panel se abría solo y nunca veía el inicio). El panel se
-    // abre con "Ver mi panel" / "Ir a mi panel", no solo.
-    closePanel();
+    // Con sesión, al entrar o recargar se abre el PANEL (tu espacio de
+    // trabajo). La landing es la puerta para visitantes; se ve con el
+    // logo de arriba (brandHome) o cerrando sesión. (2026-11-12, Juan:
+    // recargar lo dejaba en la landing y parecía que lo sacaba.)
+    openPanel();
     // La nav muestra "Ir a mi panel" en vez de "Entrar" cuando hay sesión.
     const navLogin = $("btnNavLogin");
     if (navLogin) { navLogin.textContent = "Ir a mi panel"; navLogin.onclick = () => openPanel(); }
@@ -352,7 +353,7 @@ document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
   };
 });
 $("btnBackToPanel").onclick = () => document.querySelector('[data-tab="home"]').click();
-$("brandHome").onclick = () => document.querySelector('[data-tab="home"]').click();
+$("brandHome").onclick = () => { closePanel(); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
 // ---------- Panel Admin: pestañas (una sección a la vez) ----------
 document.querySelectorAll("#adminTabs .mini-tab").forEach((btn) => {

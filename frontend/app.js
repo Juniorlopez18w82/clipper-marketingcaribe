@@ -163,14 +163,29 @@ function updateTopBar() {
 setInterval(() => { if (state.user) updateTopBar(); }, 60000);
 function doLogout() {
   localStorage.removeItem("clipper_token");
+  localStorage.removeItem("clipper_user");
   localStorage.removeItem("clipper_admin_token");
   localStorage.removeItem("clipper_impersonating");
+  try { sessionStorage.removeItem("clipper_tab"); } catch (e) {}
   showUser(null);
   // Al salir se vuelve a la landing, con su URL limpia.
   history.pushState({}, "", "/");
 }
+function saveUser(u) {
+  try { localStorage.setItem("clipper_user", JSON.stringify(u)); } catch (e) {}
+}
+function savedUser() {
+  try {
+    const s = localStorage.getItem("clipper_user");
+    return s ? JSON.parse(s) : null;
+  } catch (e) { return null; }
+}
 function showUser(user) {
   state.user = user;
+  // Guardar el usuario para abrir el panel al instante en la próxima
+  // recarga, sin esperar al servidor (sesión optimista, v65).
+  if (user) saveUser(user);
+  else localStorage.removeItem("clipper_user");
   $("authLoggedOut").hidden = !!user;
   $("authLoggedIn").hidden = !user;
   if (user) {
@@ -209,33 +224,34 @@ function showUser(user) {
 }
 async function refreshMe() {
   const t = localStorage.getItem("clipper_token");
+  const u = savedUser();
   if (!t) {
     document.documentElement.classList.remove("booting");
     return showUser(null);
   }
-  // Reintenta ante fallos transitorios (servidor despertando / reinicio
-  // tras un despliegue): un error de red NO es un cierre de sesión.
-  // Solo un 401 (token inválido o vencido) borra el token y muestra el
-  // login. (2026-11-12, Juan: recargar lo sacaba aunque el token era
-  // válido — el servidor tardaba y el primer intento fallaba.)
-  let lastErr = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // SESIÓN OPTIMISTA (v65, Juan: recargar lo sacaba y lo mandaba al
+  // home): si hay token y usuario guardados, abrir el panel DE
+  // INMEDIATO con la pestaña de la URL, sin esperar al servidor. La
+  // validación va en segundo plano. Solo un 401 real (token inválido o
+  // vencido) cierra la sesión; un fallo de red NO te saca: se reintenta
+  // sin mostrar el login.
+  document.documentElement.classList.remove("booting");
+  if (u) showUser(u);
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const me = await apiFetch("/api/auth/me", { headers: authHeaders() });
-      document.documentElement.classList.remove("booting");
       return showUser(me);
     } catch (e) {
-      lastErr = e;
       if (e.status === 401) {
         localStorage.removeItem("clipper_token");
-        break;
+        localStorage.removeItem("clipper_user");
+        return showUser(null);
       }
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 3000));
     }
   }
-  document.documentElement.classList.remove("booting");
-  if (lastErr && lastErr.status !== 401) $("authMsg").textContent = FRIENDLY_ERROR;
-  showUser(null);
+  // Sin conexión tras varios intentos: te quedas dentro con los datos
+  // guardados (no se muestra el login). Se revalidará al recargar.
 }
 $("btnLogin").onclick = async () => {
   try {
@@ -372,10 +388,19 @@ function goTab(tab, { push = false } = {}) {
   const url = ROUTES[tab] || "/inicio";
   if (push) history.pushState({ tab }, "", url);
   else history.replaceState({ tab }, "", url);
+  // Guardar la pestaña para restaurarla al recargar (v65, Juan:
+  // recargar no se quedaba en el mismo lugar).
+  try { sessionStorage.setItem("clipper_tab", tab); } catch (e) {}
   return true;
 }
 function openTabFromUrl() {
-  goTab(tabFromUrl());
+  // La URL manda; si es la raíz (/) y hay una pestaña guardada de esta
+  // sesión, usarla (así recargar en / vuelve a donde estabas).
+  const fromUrl = tabFromUrl();
+  let saved = null;
+  try { saved = sessionStorage.getItem("clipper_tab"); } catch (e) {}
+  const tab = (fromUrl === "home" && saved && ROUTES[saved]) ? saved : fromUrl;
+  goTab(tab);
 }
 window.addEventListener("popstate", () => {
   if (!$("panel").hidden) openTabFromUrl();

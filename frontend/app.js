@@ -101,7 +101,6 @@ function authHeaders(extra = {}) {
 // el atributo hidden solo NO bastaba, porque header{display:flex} y
 // main{display:grid} lo anulaban). Al cerrarse vuelve la landing.
 function openPanel() {
-  try { document.title = "[3 openPanel] Clipzio Pro"; } catch (e) {}
   $("panel").hidden = false;
   document.body.classList.add("panel-open");
   // El <header> original se eliminó en v56 (la landing-nav es el único
@@ -191,7 +190,6 @@ function savedUser() {
   } catch (e) { return null; }
 }
 function showUser(user) {
-  try { document.title = "[2 showUser " + (user ? "con-usuario" : "null") + "] Clipzio Pro"; } catch (e) {}
   state.user = user;
   // Guardar el usuario para abrir el panel al instante en la próxima
   // recarga, sin esperar al servidor (sesión optimista, v65).
@@ -234,8 +232,6 @@ function showUser(user) {
   }
 }
 async function refreshMe() {
-  // DEBUG v68: marcar cada etapa en el título para ver dónde se para.
-  try { document.title = "[1 refreshMe] Clipzio Pro"; } catch (e) {}
   const t = localStorage.getItem("clipper_token");
   const u = savedUser();
   if (!t) {
@@ -352,7 +348,6 @@ $("btnBackAdmin").onclick = () => {
   localStorage.removeItem("clipper_impersonating");
   location.reload();
 };
-refreshMe();
 
 // ---------- URLs limpias por sección ----------
 // Cada pestaña del panel tiene su propia URL (Juan, 2026-11-10: antes
@@ -413,14 +408,18 @@ function openTabFromUrl() {
   let saved = null;
   try { saved = sessionStorage.getItem("clipper_tab"); } catch (e) {}
   const tab = (fromUrl === "home" && saved && ROUTES[saved]) ? saved : fromUrl;
-  // DEBUG temporal (v66): dejar la pestaña resuelta en el título para
-  // diagnosticar por qué recargar cae en Inicio.
-  try { document.title = "[tab:" + tab + " url:" + location.pathname + "] Clipzio Pro"; } catch (e) {}
   goTab(tab);
 }
 window.addEventListener("popstate", () => {
   if (!$("panel").hidden) openTabFromUrl();
 });
+// Arrancar la sesión DESPUÉS de que ROUTES/ROUTE_TABS y las pestañas
+// estén definidos: refreshMe() corre showUser → openPanel →
+// openTabFromUrl → tabFromUrl, que lee ROUTE_TABS; si se llamaba antes
+// (línea 355, v68) caía en ReferenceError por la zona muerta temporal
+// de const y la recarga en /crear-clip o /mis-clips se quedaba en
+// Inicio. (v69, causa raíz del bug de recarga.)
+refreshMe();
 
 // ---------- Panel: pestañas ----------
 // Al entrar en Crear Clip el menú lateral se cierra (body.create-wide) para

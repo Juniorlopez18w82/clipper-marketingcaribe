@@ -538,63 +538,90 @@ def download_section(url: str, start: float, end: float, job_id: str,
     section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
     errors: list[str] = []
     attempt = 0
-    for client in PLAYER_CLIENTS:
-        # Solo audio: itag 250 (Opus ~70 kbps) ANTES que bestaudio.
-        # Medido 2026-11-11 (180 s del video de Juan, tv_embedded, WARP):
-        # bestaudio (itag 251, Opus ~160 kbps, 3.2 MB) tarda 96-97 s
-        # (~33 KB/s: YouTube limita ESE flujo); itag 250 (1.6 MB) tarda
-        # 6 s, y el cliente android también baja rápido (6 s). El límite
-        # no es de YouTube en general, es por flujo/cliente. 70 kbps
-        # Opus es más que suficiente para transcribir voz con Whisper.
-        # Si 250 no existe en un video, cae a 251 y luego a bestaudio.
-        formats = (["250/251/bestaudio/best"] if audio_only
-                   else ["18/best[height<=360]/best"] if lowres
-                   else FORMAT_SELECTORS)
-        for fmt in formats:
-            attempt += 1
-            for old in SOURCES_DIR.glob(f"{job_id}.*"):
-                old.unlink()
-            cmd = [
-                sys.executable, "-m", "yt_dlp", "--no-warnings",
-                "--extractor-args", f"youtube:player_client={client}",
-                "--download-sections", section,
-                "-f", fmt,
-                "-o", out_tmpl,
-                url,
-            ]
-            cookies = _cookies_file()
-            if cookies:
-                cmd[3:3] = ["--cookies", cookies]
-            proxy = _proxy()
-            if proxy:
-                cmd[3:3] = ["--proxy", proxy]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            if proc.returncode != 0:
-                err = proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "yt-dlp failed"
-                errors.append(f"{client}/{fmt}: {err}")
-                # Bot block: no point retrying this client, try the next one.
-                if _is_bot_block(proc.stderr):
-                    break
-                continue
-            files = sorted(SOURCES_DIR.glob(f"{job_id}.*"))
-            if not files:
-                errors.append(f"{client}/{fmt}: yt-dlp finished but produced no file")
-                continue
-            v_dur, a_dur = _stream_durations(files[0])
-            # Audio must cover (nearly) the whole section; video is ~10 s long
-            # because of keyframes, so compare audio against the requested length.
-            # Y para VIDEO (2026-11-11): exigir también que el archivo
-            # tenga video Y que se pueda decodificar. Sin esto, un video
-            # cuyo mejor flujo es HLS (qjn_zvadIdM) baja solo el audio
-            # (video 0 KiB) o un webm con cabecera válida pero sin
-            # fotogramas, el audio pasa la verificación, pero el render
-            # falla después porque ffmpeg no encuentra video
-            # ("Cannot determine format").
-            if a_dur >= (end - start) * 0.8 and (audio_only or (
-                    v_dur >= (end - start) * 0.8 and _video_decodable(files[0]))):
-                return files[0]
-            errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s video {v_dur:.1f}s for a "
-                          f"{end - start:.0f}s section (truncated)")
+    # Hilo que vigila el archivo mientras baja (2026-11-11, Juan: la
+    # carga debe verse en vivo). El método en serie (video del render,
+    # audio corto) es una sola llamada a yt-dlp sin progreso propio:
+    # este hilo suma los bytes del archivo parcial cada 2 s y reporta
+    # MB y velocidad reales.
+    _serial_stop = threading.Event()
+    _serial_t0 = time.monotonic()
+
+    def _watch_serial():
+        while not _serial_stop.wait(2.0):
+            try:
+                cur = 0
+                for p in SOURCES_DIR.glob(f"{job_id}.*"):
+                    if p.is_file():
+                        cur += p.stat().st_size
+                if progress_cb:
+                    progress_cb(0, 1, cur, time.monotonic() - _serial_t0)
+            except Exception:
+                pass
+
+    _serial_watcher = None
+    if progress_cb:
+        _serial_watcher = threading.Thread(target=_watch_serial, daemon=True)
+        _serial_watcher.start()
+    try:
+        for client in PLAYER_CLIENTS:
+            # Solo audio: itag 250 (Opus ~70 kbps) ANTES que bestaudio.
+            # Medido 2026-11-11 (180 s del video de Juan, tv_embedded, WARP):
+            # bestaudio (itag 251, Opus ~160 kbps, 3.2 MB) tarda 96-97 s
+            # (~33 KB/s: YouTube limita ESE flujo); itag 250 (1.6 MB) tarda
+            # 6 s, y el cliente android también baja rápido (6 s). El límite
+            # no es de YouTube en general, es por flujo/cliente. 70 kbps
+            # Opus es más que suficiente para transcribir voz con Whisper.
+            # Si 250 no existe en un video, cae a 251 y luego a bestaudio.
+            formats = (["250/251/bestaudio/best"] if audio_only
+                       else ["18/best[height<=360]/best"] if lowres
+                       else FORMAT_SELECTORS)
+            for fmt in formats:
+                attempt += 1
+                for old in SOURCES_DIR.glob(f"{job_id}.*"):
+                    old.unlink()
+                cmd = [
+                    sys.executable, "-m", "yt_dlp", "--no-warnings",
+                    "--extractor-args", f"youtube:player_client={client}",
+                    "--download-sections", section,
+                    "-f", fmt,
+                    "-o", out_tmpl,
+                    url,
+                ]
+                cookies = _cookies_file()
+                if cookies:
+                    cmd[3:3] = ["--cookies", cookies]
+                proxy = _proxy()
+                if proxy:
+                    cmd[3:3] = ["--proxy", proxy]
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                if proc.returncode != 0:
+                    err = proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "yt-dlp failed"
+                    errors.append(f"{client}/{fmt}: {err}")
+                    # Bot block: no point retrying this client, try the next one.
+                    if _is_bot_block(proc.stderr):
+                        break
+                    continue
+                files = sorted(SOURCES_DIR.glob(f"{job_id}.*"))
+                if not files:
+                    errors.append(f"{client}/{fmt}: yt-dlp finished but produced no file")
+                    continue
+                v_dur, a_dur = _stream_durations(files[0])
+                # Audio must cover (nearly) the whole section; video is ~10 s long
+                # because of keyframes, so compare audio against the requested length.
+                # Y para VIDEO (2026-11-11): exigir también que el archivo
+                # tenga video Y que se pueda decodificar. Sin esto, un video
+                # cuyo mejor flujo es HLS (qjn_zvadIdM) baja solo el audio
+                # (video 0 KiB) o un webm con cabecera válida pero sin
+                # fotogramas, el audio pasa la verificación, pero el render
+                # falla después porque ffmpeg no encuentra video
+                # ("Cannot determine format").
+                if a_dur >= (end - start) * 0.8 and (audio_only or (
+                        v_dur >= (end - start) * 0.8 and _video_decodable(files[0]))):
+                    return files[0]
+                errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s video {v_dur:.1f}s for a "
+                              f"{end - start:.0f}s section (truncated)")
+    finally:
+        _serial_stop.set()
     if _proxy() and _proxy().startswith("socks"):
         errors.append("hint: YTDLP_PROXY is SOCKS5 — ffmpeg cannot use it; "
                       "use the wireproxy HTTP proxy instead (see entrypoint.sh)")

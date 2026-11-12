@@ -273,6 +273,14 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .live-actions .icon-btn.del.confirm{background:#E10600;color:#fff}
 @media(max-width:640px){.panel .live-head{flex-direction:column}.panel .live-thumb{flex:none;width:100%}}
 .panel .clip-card{background:#000;border:3px solid #2e2e33;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.panel .clip-card.selected{border-color:#E10600}
+.bulk-bar{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #27272a;border-radius:12px;background:#1a1a1e;margin-bottom:12px}
+.bulk-bar .bulk-all{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer}
+.bulk-bar .bulk-all input{width:18px;height:18px;accent-color:#E10600;cursor:pointer}
+.bulk-bar #bulkDeleteBtn{background:#E10600;color:#fff;border:none}
+.bulk-bar #bulkDeleteBtn:disabled{opacity:.4;cursor:not-allowed}
+.clip-select{position:absolute;top:10px;left:10px;z-index:4;width:24px;height:24px;accent-color:#E10600;cursor:pointer;display:none}
+.clip-card.select-mode .clip-select{display:block}
 .panel .clip-thumb{position:relative;aspect-ratio:9/16;background:#000;border-radius:22px;overflow:hidden}
 .panel .clip-thumb video{width:100%;height:100%;object-fit:cover;display:block}
 .panel .clip-thumb-empty{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#71717a}
@@ -460,7 +468,18 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <h3>Mis Clips</h3>
       <p class="sub">Todos tus clips renderizados, listos para descargar.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar ClipViral</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
-      <div class="pane-body"><div id="myClips"><p class="muted">Cargando…</p></div><div id="clipsPagination" style="display:flex;gap:12px;justify-content:center;margin-top:18px"></div></div>
+      <div class="pane-body">
+      <div class="bulk-bar" id="bulkBar" hidden>
+        <label class="bulk-all"><input type="checkbox" id="bulkSelectAll"> Todos</label>
+        <span id="bulkCount" class="muted">0 seleccionados</span>
+        <span style="flex:1"></span>
+        <button class="small" id="bulkDeleteBtn" disabled>🗑 Eliminar seleccionados</button>
+        <button class="small ghost" id="bulkCancelBtn">Cancelar</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="small ghost" id="bulkToggleBtn">☑ Seleccionar</button>
+      </div>
+      <div id="myClips"><p class="muted">Cargando…</p></div><div id="clipsPagination" style="display:flex;gap:12px;justify-content:center;margin-top:18px"></div></div>
     </div>
 
     <div class="pane" id="pane-create" hidden>
@@ -1078,6 +1097,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=52"></script>
+<script src="app.js?v=53"></script>
 </body>
 </html>

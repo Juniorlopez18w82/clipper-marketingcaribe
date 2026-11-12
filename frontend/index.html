@@ -123,7 +123,7 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 @keyframes gradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 @keyframes chipFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
 @keyframes marquee{to{transform:translateX(-50%)}}
-@keyframes shine{to{transform:translateX(220%) skewX(-18deg)}}
+@keyframes shine{from{transform:translateX(0) skewX(-18deg)}to{transform:translateX(480%) skewX(-18deg)}}
 .hero-orbs{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
 .hero-orbs .orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.5}
 .hero-orbs .o1{width:420px;height:420px;background:#A855F7;top:-120px;right:-40px;animation:orbFloat 14s ease-in-out infinite}
@@ -147,7 +147,7 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .feat-card:hover,.step-card:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(168,85,247,.22);border-color:rgba(168,85,247,.55)}
 .plan-card.popular{animation:glowPulse 5s ease-in-out infinite}
 .btn-brand{position:relative;overflow:hidden}
-.btn-brand::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-18deg);animation:shine 3.5s ease infinite}
+.btn-brand::after{content:"";position:absolute;top:0;left:-60%;width:55%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);transform:skewX(-18deg);animation:shine 2.8s ease infinite}
 .landing-sec h2 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 @media(max-width:800px){
   .hero{grid-template-columns:1fr;padding:56px 0 44px;gap:36px}
@@ -204,7 +204,7 @@ video#result{width:100%;border-radius:12px;background:#000}
 body.panel-open{background:#111113}
 body.panel-open>header,body.panel-open>main{display:none !important}
 /* ===== Mi cuenta (landing): blanco / negro / rojo, botones estilo panel ===== */
-#accountCard{background:var(--card);color:#f4f4f5;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+#accountCard{background:var(--card);color:#f4f4f5;border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4);padding:28px}
 #accountCard h2{color:#f4f4f5;font-size:22px;font-weight:700}
 #accountCard label{color:#a1a1aa}
 #accountCard input{background:#111113;color:#f4f4f5;border:1px solid #27272a;padding:11px 12px}
@@ -1400,10 +1400,11 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
   <footer class="landing-foot">
     <span><b style="color:#fff">Clipzio Pro</b> · Convierte videos en clips virales</span>
+    <span style="color:#71717a">·</span>
     <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;font-weight:700">Marketingcaribe.com</a></span>
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=62"></script>
+<script src="app.js?v=63"></script>
 </body>
 </html>

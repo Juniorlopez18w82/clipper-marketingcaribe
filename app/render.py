@@ -16,6 +16,7 @@ NEW REQUIREMENT (Juan 2026-11-10, Configuración):
   "Nombre que saldrá en el marco". Empty string = frame kept, name omitted.
 """
 import logging
+import math
 import shutil
 import subprocess
 import tempfile
@@ -743,16 +744,21 @@ def _concat_title_card(card: Path, clip: Path, output: Path) -> None:
 
 def _render_follow(source: Path, start_in_source: float, duration: float,
                    output: Path, cam_path: list, *, out_w: int, out_h: int,
-                   tmpdir: Path, overlay_kwargs: dict) -> Path:
+                   tmpdir: Path, overlay_kwargs: dict,
+                   progress_cb=None) -> Path:
     """Follow modes: 2 s chunks, each cropped at the smoothed crop-x of
     its midpoint, then concatenated and overlaid in one final pass.
 
     Each chunk carries its own audio cut at the same timestamps, so
     audio stays in sync; the final pass re-encodes the concatenated
     timeline (no -c copy), which absorbs any timestamp gaps.
-    """
+
+    progress_cb (v52): la primera mitad son los trozos (cada uno que
+    termina mueve la barra); la segunda es el pase final, con el
+    progreso real de ffmpeg (tiempo codificado / duración)."""
     chunk_dur = 2.0
     chunks: list[Path] = []
+    n_chunks = max(1, math.ceil(duration / chunk_dur))
     t = 0.0
     i = 0
     while t < duration:
@@ -768,6 +774,11 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
             "-c:a", "aac", "-b:a", "128k", str(chunk),
         ], f"follow chunk {i}")
         chunks.append(chunk)
+        if progress_cb:
+            try:
+                progress_cb((i + 1) / n_chunks * 0.5)
+            except Exception:
+                pass
         t += cd
         i += 1
     concat_file = tmpdir / "concat.txt"
@@ -775,6 +786,14 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
         "".join(f"file '{c}'\n" for c in chunks), encoding="utf-8")
     base = "[0:v]setpts=PTS-STARTPTS[vid]"
     chain = _overlay_chain(tmpdir, out_w=out_w, out_h=out_h, **overlay_kwargs)
+
+    def _final_frac(frac: float):
+        if progress_cb:
+            try:
+                progress_cb(0.5 + 0.5 * frac)
+            except Exception:
+                pass
+
     _run([
         "ffmpeg", "-y", "-v", "error",
         "-f", "concat", "-safe", "0", "-i", str(concat_file),
@@ -782,7 +801,7 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
         "-map", "[out]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
         "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
-    ], "follow final pass")
+    ], "follow final pass", progress_cb=_final_frac, total_seconds=duration)
     return output
 
 
@@ -908,7 +927,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                                main_path, cam["path"],
                                out_w=out_w, out_h=out_h,
                                tmpdir=tmpdir,
-                               overlay_kwargs=overlay_kwargs)
+                               overlay_kwargs=overlay_kwargs,
+                               progress_cb=progress_cb)
                 rendered = True
             else:
                 logger.warning("camera %s: no faces found, using center crop",

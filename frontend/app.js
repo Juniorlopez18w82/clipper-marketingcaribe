@@ -1467,6 +1467,17 @@ $("btnChangePassword").onclick = async () => {
 // ---------- Poll de jobs (con reintentos ante respuestas vacías) ----------
 async function pollJob(jobId, onProgress) {
   let fails = 0;
+  // Tiempo que lleva el trabajo (2026-11-11, Juan: que se vea el
+  // tiempo real). Se muestra bajo el estado y se actualiza en cada
+  // sondeo (cada 2 s).
+  const _jobT0 = Date.now();
+  const _elapsedEl = $("jobElapsed");
+  const _fmtElapsed = () => {
+    const s = Math.floor((Date.now() - _jobT0) / 1000);
+    return `⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  if (_elapsedEl) { _elapsedEl.hidden = false; _elapsedEl.textContent = _fmtElapsed(); }
+  try {
   while (true) {
     let j;
     try {
@@ -1479,6 +1490,7 @@ async function pollJob(jobId, onProgress) {
       await sleep(3000);
       continue;
     }
+    if (_elapsedEl) _elapsedEl.textContent = _fmtElapsed();
     if (onProgress) onProgress(j);
     if (j.status === "done") return j;
     if (j.status === "error") {
@@ -1487,6 +1499,9 @@ async function pollJob(jobId, onProgress) {
       throw err;
     }
     await sleep(2000);
+  }
+  } finally {
+    if (_elapsedEl) _elapsedEl.hidden = true;
   }
 }
 
@@ -1626,6 +1641,35 @@ $("url").addEventListener("input", hidePreview);
 // cargar un video; si pega otro link o sube otro archivo, se resetea
 // para que el nuevo video ponga su duración completa.
 $("url").addEventListener("input", () => { state.rangeEndTouched = false; });
+// Miniatura + título al pegar el link (2026-11-11, Juan: que se vea el
+// video de una vez). Espera 800 ms tras dejar de escribir para no
+// llamar al servidor por cada letra; si el link no es válido o
+// YouTube lo bloquea, la vista previa se esconde sin molestar.
+let _urlPreviewTimer = null;
+$("url").addEventListener("input", () => {
+  clearTimeout(_urlPreviewTimer);
+  const url = $("url").value.trim();
+  if (!url || !/youtube\.com|youtu\.be/.test(url)) {
+    $("urlPreview").hidden = true;
+    return;
+  }
+  _urlPreviewTimer = setTimeout(async () => {
+    if ($("url").value.trim() !== url) return;
+    try {
+      const info = await apiFetch("/api/video-info", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ url }) });
+      if ($("url").value.trim() !== url) return;
+      const mins = info.duration ? `${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}` : "live";
+      $("urlPreviewThumb").src = info.thumbnail || "";
+      $("urlPreviewTitle").textContent = info.title || url;
+      $("urlPreviewMeta").textContent = `${info.uploader || ""} · ${mins}`.replace(/^ · /, "");
+      $("urlPreview").hidden = false;
+      state.videoTitle = info.title || "";
+      if (!state.rangeEndTouched && info.duration) $("rangeEnd").value = info.duration;
+    } catch (e) {
+      $("urlPreview").hidden = true;
+    }
+  }, 800);
+});
 $("rangeEnd").addEventListener("input", () => { state.rangeEndTouched = true; });
 $("btnUpload").onclick = () => $("uploadFile").click();
 $("uploadFile").onchange = async () => {

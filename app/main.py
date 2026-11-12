@@ -1096,6 +1096,36 @@ def api_delete_my_clip(clip_id: int,
     return {"deleted": clip_id}
 
 
+class BulkDeleteRequest(BaseModel):
+    clip_ids: list[int]
+
+
+@app.post("/api/me/clips/bulk-delete")
+def api_bulk_delete_my_clips(req: BulkDeleteRequest,
+                             db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user)):
+    """Eliminar varios clips a la vez (2026-11-12, Juan). Por cada id
+    se exige ser dueño o admin; los que no existen o no son propios
+    se reportan en not_found sin fallar el resto. Borra la fila y el
+    mp4 de cada uno (el archivo es best effort)."""
+    deleted: list[int] = []
+    not_found: list[int] = []
+    for clip_id in req.clip_ids:
+        clip = db.query(Clip).filter(Clip.id == clip_id).first()
+        if not clip or (clip.user_id != user.id and not user.is_admin):
+            not_found.append(clip_id)
+            continue
+        if clip.file:
+            try:
+                (OUTPUTS_DIR / clip.file).unlink(missing_ok=True)
+            except OSError:
+                pass
+        db.delete(clip)
+        deleted.append(clip_id)
+    db.commit()
+    return {"deleted": deleted, "not_found": not_found}
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str

@@ -26,6 +26,32 @@ html.booting #bootLoading{display:flex}
 main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .hero-line{color:#f2f2f7;font-size:18px;line-height:1.6;text-align:center;margin:0 0 28px}
 .hero-line b{color:var(--red)}
+/* ---------- Animaciones de la landing (2026-11-12, Juan: más moderna) ---------- */
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes floatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@keyframes glowPulse{0%,100%{box-shadow:0 24px 64px rgba(0,0,0,.6),0 0 0 rgba(225,6,0,0)}50%{box-shadow:0 24px 64px rgba(0,0,0,.6),0 0 60px rgba(225,6,0,.35)}}
+@keyframes badgePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+.hero-badge{animation:fadeUp .6s ease both,badgePulse 3s ease-in-out 1s infinite}
+.hero h1{animation:fadeUp .7s .1s ease both}
+.hero-sub{animation:fadeUp .7s .2s ease both}
+.hero-cta{animation:fadeUp .7s .3s ease both}
+.hero-trust{animation:fadeUp .7s .4s ease both}
+.hero-phone{animation:floatY 5s ease-in-out infinite,glowPulse 5s ease-in-out infinite}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.step-card,.feat-card,.plan-card{transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease}
+.step-card:hover,.feat-card:hover{transform:translateY(-6px);box-shadow:0 16px 32px rgba(0,0,0,.45);border-color:#3f3f46}
+.plan-card:hover{transform:translateY(-6px)}
+.plan-card.popular:hover{box-shadow:0 0 0 1px var(--red),0 24px 48px rgba(225,6,0,.28)}
+.hero-cta .btn-red,.hero-cta .btn-black,.final-cta .btn-red{transition:transform .2s ease,box-shadow .2s ease}
+.hero-cta .btn-red:hover,.final-cta .btn-red:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 12px 28px rgba(225,6,0,.4)}
+.hero-cta .btn-black:hover{transform:translateY(-2px) scale(1.02)}
+.landing-nav .btn-red,.landing-nav .ghost{transition:transform .2s ease}
+.landing-nav .btn-red:hover{transform:translateY(-1px)}
+@media(prefers-reduced-motion:reduce){
+  .hero-badge,.hero h1,.hero-sub,.hero-cta,.hero-trust,.hero-phone{animation:none}
+  .reveal{opacity:1;transform:none;transition:none}
+}
 /* ---------- Landing moderna (2026-11-12, Juan: tipo wayin.ai/clip-maker) ---------- */
 .landing-nav{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:24px;padding:14px 0;background:rgba(17,17,19,.92);backdrop-filter:blur(8px);border-bottom:1px solid #27272a}
 .landing-nav .brand{font-size:20px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px}
@@ -1170,42 +1196,42 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </section>
 
   <!-- Plataformas -->
-  <section class="platforms">
+  <section class="platforms reveal">
     <span>Funciona con</span>
     <b>YouTube</b><b>Twitch</b><b>TikTok</b><b>Instagram Reels</b><b>YouTube Shorts</b>
   </section>
 
   <!-- Cómo funciona -->
-  <section class="landing-sec" id="como-funciona">
+  <section class="landing-sec reveal" id="como-funciona">
     <h2>De video largo a clip viral en 3 pasos</h2>
     <p class="sec-sub">Sin editar a mano, sin buscar el momento, sin API de YouTube.</p>
     <div class="steps-grid">
-      <div class="step-card"><div class="step-num">1</div><h3>Pega el link</h3><p>Un video o un live de YouTube o Twitch. También puedes subir tu propio archivo de video.</p></div>
-      <div class="step-card"><div class="step-num">2</div><h3>La IA elige los momentos</h3><p>Transcribe todo el audio y te propone los mejores clips con su % de potencial viral y su título de enganche.</p></div>
-      <div class="step-card"><div class="step-num">3</div><h3>Descarga y publica</h3><p>El clip sale en vertical 9:16, 1080p, con subtítulos, marco y portada. Descárgalo y súbelo a TikTok, Reels o Shorts.</p></div>
+      <div class="step-card reveal"><div class="step-num">1</div><h3>Pega el link</h3><p>Un video o un live de YouTube o Twitch. También puedes subir tu propio archivo de video.</p></div>
+      <div class="step-card reveal"><div class="step-num">2</div><h3>La IA elige los momentos</h3><p>Transcribe todo el audio y te propone los mejores clips con su % de potencial viral y su título de enganche.</p></div>
+      <div class="step-card reveal"><div class="step-num">3</div><h3>Descarga y publica</h3><p>El clip sale en vertical 9:16, 1080p, con subtítulos, marco y portada. Descárgalo y súbelo a TikTok, Reels o Shorts.</p></div>
     </div>
   </section>
 
   <!-- Funciones -->
-  <section class="landing-sec" id="funciones">
+  <section class="landing-sec reveal" id="funciones">
     <h2>Todo lo que necesitas para clips que pegan</h2>
     <p class="sec-sub">Hecho para creadores, podcasts, entrevistas y lives.</p>
     <div class="features-grid">
-      <div class="feat-card"><div class="feat-ico">🎯</div><h3>Momentos virales con IA</h3><p>La IA busca lo gracioso, lo sorprendente, lo polémico y lo exclusivo — nunca el intro ni el relleno. Cada clip lleva su % viral.</p></div>
-      <div class="feat-card"><div class="feat-ico">💬</div><h3>Subtítulos virales y portada</h3><p>Subtítulos grandes con palabra clave resaltada y una portada con tu título de enganche: color, borde, fondo y posición a tu gusto.</p></div>
-      <div class="feat-card"><div class="feat-ico">🎥</div><h3>Cámara inteligente</h3><p>Sigue al que está hablando, doble cámara para entrevistas (uno arriba y otro abajo) o pantalla dividida para reacciones y gaming.</p></div>
-      <div class="feat-card"><div class="feat-ico">📺</div><h3>Clips automáticos de lives</h3><p>Conecta un live de YouTube o Twitch y los clips aparecen solos cada pocos minutos, sin que tengas que estar pendiente.</p></div>
-      <div class="feat-card"><div class="feat-ico">🖼️</div><h3>Videos e imágenes con IA</h3><p>Genera imágenes y videos con IA para tus portadas y tu contenido, sin salir de ClipViral.</p></div>
-      <div class="feat-card"><div class="feat-ico">⚡</div><h3>Rápido de verdad</h3><p>El audio se baja en paralelo y la transcripción va por trozos: un video de 43 minutos se analiza en unos 5 minutos.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico">🎯</div><h3>Momentos virales con IA</h3><p>La IA busca lo gracioso, lo sorprendente, lo polémico y lo exclusivo — nunca el intro ni el relleno. Cada clip lleva su % viral.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico">💬</div><h3>Subtítulos virales y portada</h3><p>Subtítulos grandes con palabra clave resaltada y una portada con tu título de enganche: color, borde, fondo y posición a tu gusto.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico">🎥</div><h3>Cámara inteligente</h3><p>Sigue al que está hablando, doble cámara para entrevistas (uno arriba y otro abajo) o pantalla dividida para reacciones y gaming.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico">📺</div><h3>Clips automáticos de lives</h3><p>Conecta un live de YouTube o Twitch y los clips aparecen solos cada pocos minutos, sin que tengas que estar pendiente.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico">🖼️</div><h3>Videos e imágenes con IA</h3><p>Genera imágenes y videos con IA para tus portadas y tu contenido, sin salir de ClipViral.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico">⚡</div><h3>Rápido de verdad</h3><p>El audio se baja en paralelo y la transcripción va por trozos: un video de 43 minutos se analiza en unos 5 minutos.</p></div>
     </div>
   </section>
 
   <!-- Planes -->
-  <section class="landing-sec" id="planes">
+  <section class="landing-sec reveal" id="planes">
     <h2>Planes simples, sin sorpresas</h2>
     <p class="sec-sub">Paga por transferencia, sube tu comprobante y empieza. 30 días por plan.</p>
     <div class="landing-plans">
-      <div class="plan-card">
+      <div class="plan-card reveal">
         <h3>Básico</h3>
         <div class="plan-price">RD$1,000 <small>/ mes</small></div>
         <p class="plan-per">Para empezar a publicar clips</p>
@@ -1217,7 +1243,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         </ul>
         <button class="btn-black" data-plan-cta>Empezar con Básico</button>
       </div>
-      <div class="plan-card popular">
+      <div class="plan-card popular reveal">
         <span class="pop-tag">⭐ Más popular</span>
         <h3>Full</h3>
         <div class="plan-price">RD$3,500 <small>/ mes</small></div>
@@ -1232,7 +1258,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         </ul>
         <button class="btn-red" data-plan-cta>Empezar con Full</button>
       </div>
-      <div class="plan-card">
+      <div class="plan-card reveal">
         <h3>Pro</h3>
         <div class="plan-price">RD$2,000 <small>/ mes</small></div>
         <p class="plan-per">Para publicar todas las semanas</p>
@@ -1250,7 +1276,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </section>
 
   <!-- FAQ -->
-  <section class="landing-sec" id="faq">
+  <section class="landing-sec reveal" id="faq">
     <h2>Preguntas frecuentes</h2>
     <p class="sec-sub">Lo que más nos preguntan antes de empezar.</p>
     <div class="faq-list">
@@ -1263,7 +1289,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </section>
 
   <!-- Cuenta / acceso -->
-  <section class="card" id="accountCard" style="margin-top:64px">
+  <section class="card reveal" id="accountCard" style="margin-top:64px">
     <h2>Empieza ahora</h2>
     <p class="muted" style="margin:0 0 16px">Crea tu cuenta o entra si ya tienes una. Después eliges tu plan.</p>
     <div id="authLoggedOut">
@@ -1290,7 +1316,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </section>
 
   <!-- CTA final -->
-  <section class="final-cta">
+  <section class="final-cta reveal">
     <h2>Tu próximo clip viral está en un video que ya tienes</h2>
     <p>Pega el link y deja que la IA haga el trabajo pesado.</p>
     <button class="btn-red big" id="btnFinalStart">Crear mi primer clip →</button>
@@ -1298,9 +1324,9 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
   <footer class="landing-foot">
     <span><b style="color:#fff">ClipViral</b> · Convierte videos en clips virales</span>
-    <span>Hecho por <b style="color:#fff">MarketingCaribe</b> · Santo Domingo, República Dominicana</span>
+    <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;font-weight:700">Marketingcaribe.com</a></span>
   </footer>
 </main>
-<script src="app.js?v=54"></script>
+<script src="app.js?v=55"></script>
 </body>
 </html>

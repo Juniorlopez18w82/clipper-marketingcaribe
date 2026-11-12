@@ -1,5 +1,18 @@
 // Clipzio Pro — frontend (same origin, talks to /api/*)
 const $ = (id) => document.getElementById(id);
+// toast(): aviso DENTRO del sistema (barra superior de la página).
+// Reemplaza a alert() del navegador: ningún mensaje sale en ventana
+// emergente. (2026-11-12, Juan.)
+let _toastTimer = null;
+function toast(msg) {
+  const t = $("toast");
+  if (!t) return;
+  $("toastMsg").textContent = String(msg);
+  t.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove("show"), 5000);
+}
+$("toastClose").onclick = () => $("toast").classList.remove("show");
 const state = { clipsJob: null, transcript: null, selected: null, words: null,
   user: null, uploadedFile: null, busy: false, pvClip: null,
   // camTrack: recorrido de cámara (crop-x cada 2 s) para la vista
@@ -806,7 +819,7 @@ async function impersonateUser(userId, name) {
     localStorage.setItem("clipper_impersonating", name);
     localStorage.setItem("clipper_token", d.access_token);
     location.reload();
-  } catch (e) { alert("Error: " + e.message); }
+  } catch (e) { toast("Error: " + e.message); }
 }
 async function loadAdminRequests() {
   try {
@@ -858,22 +871,22 @@ async function loadAdminMethods() {
 $("btnNewPlan").onclick = async () => {
   const body = { name: $("npName").value.trim(), price_dop: parseInt($("npPrice").value || "0", 10), duration_days: parseInt($("npDays").value || "30", 10),
     features: $("npFeatures").value.split("\n").map((s) => s.trim()).filter(Boolean), is_popular: $("npPopular").checked, is_active: true, sort_order: 99 };
-  if (!body.name) return alert("Ponle un nombre al plan");
+  if (!body.name) return toast("Ponle un nombre al plan");
   try {
     await apiFetch("/api/admin/plans", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     $("npName").value = ""; $("npFeatures").value = "";
     loadAdminPlans(); renderPlans();
-  } catch { alert("No se pudo crear el plan"); }
+  } catch { toast("No se pudo crear el plan"); }
 };
 $("btnNewMethod").onclick = async () => {
   const body = { name: $("nmName").value.trim(), bank: $("nmBank").value.trim(), account_number: $("nmAccount").value.trim(),
     account_holder: $("nmHolder").value.trim(), account_type: $("nmType").value.trim(), instructions: $("nmInstr").value.trim(), is_active: true };
-  if (!body.name) return alert("Ponle un nombre al método");
+  if (!body.name) return toast("Ponle un nombre al método");
   try {
     await apiFetch("/api/admin/payment-methods", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     ["nmName", "nmBank", "nmAccount", "nmHolder", "nmType", "nmInstr"].forEach((id) => $(id).value = "");
     loadAdminMethods();
-  } catch { alert("No se pudo crear el método"); }
+  } catch { toast("No se pudo crear el método"); }
 };
 async function loadAdminSettings() {
   try {
@@ -1031,13 +1044,13 @@ $("confirmDeleteOk").onclick = async () => {
       _myClips = _myClips.filter((c) => !gone.has(c.id));
       setBulkSelectMode(false);
       renderMyClipsPage();
-      if ((res.not_found || []).length) alert(`Se eliminaron ${gone.size} clips. ${(res.not_found || []).length} ya no existían.`);
+      if ((res.not_found || []).length) toast(`Se eliminaron ${gone.size} clips. ${(res.not_found || []).length} ya no existían.`);
     } else {
       await apiFetch(`/api/me/clips/${t.clip.id}`, { method: "DELETE", headers: authHeaders() });
       if (t.cardEl) t.cardEl.remove();
     }
   } catch (e) {
-    alert("No se pudo eliminar: " + e.message);
+    toast("No se pudo eliminar: " + e.message);
   }
 };
 
@@ -1052,13 +1065,13 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("soon
 // y volver a renderizar. Re-renderizar crea un clip nuevo en Mis Clips
 // (el original queda intacto).
 async function editClip(c) {
-  if (!c.job_id) return alert("Este clip no tiene su trabajo original para editar.");
+  if (!c.job_id) return toast("Este clip no tiene su trabajo original para editar.");
   try {
     const d = await apiFetch(`/api/jobs/${c.job_id}/transcript`, { headers: authHeaders() });
     const sec = (typeof c.section_start === "number") ? c.section_start
       : (typeof d.section_start === "number" ? d.section_start : null);
     if (sec === null || !d.transcript || !Array.isArray(d.transcript.segments)) {
-      return alert("No se pudo cargar la transcripción de este clip.");
+      return toast("No se pudo cargar la transcripción de este clip.");
     }
     state.clipsJob = { id: c.job_id, result: { section_start: sec } };
     state.transcript = d.transcript;
@@ -1075,7 +1088,7 @@ async function editClip(c) {
     document.querySelector('[data-tab="create"]').click();
     selectClip(cand, null);
   } catch (e) {
-    alert("No se pudo abrir el editor: " + (e.message || "error"));
+    toast("No se pudo abrir el editor: " + (e.message || "error"));
   }
 }
 
@@ -1885,7 +1898,7 @@ $("uploadFile").onchange = async () => {
 $("btnClips").onclick = async () => {
   if (state.busy) return;
   const url = $("url").value.trim();
-  if (!state.uploadedFile && !url) return alert("Pega un link de YouTube o sube un video");
+  if (!state.uploadedFile && !url) return toast("Pega un link de YouTube o sube un video");
   state.busy = true;
   $("btnClips").disabled = true;
   $("btnUpload").disabled = true;
@@ -2281,7 +2294,7 @@ function hexToRgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 function openCoverModal() {
-  if (!state.selected || !state.clipsJob) { alert("Primero elige un clip para configurar su portada."); return; }
+  if (!state.selected || !state.clipsJob) { toast("Primero elige un clip para configurar su portada."); return; }
   const m = $("coverModal");
   // Carga el estado actual en los controles del modal.
   $("coverModalTitleInput").value = $("hookTitle").value.trim() || (state.selected.title || "");
@@ -2551,10 +2564,10 @@ function buildRenderBody(start, end, edited) {
   };
 }
 $("btnRender").onclick = async () => {
-  if (!state.clipsJob) return alert("Primero genera los clips y elige uno");
+  if (!state.clipsJob) return toast("Primero genera los clips y elige uno");
   if (state.busy) return;
   const start = parseFloat($("clipStart").value), end = parseFloat($("clipEnd").value);
-  if (!(end > start)) return alert("El fin debe ser mayor que el inicio");
+  if (!(end > start)) return toast("El fin debe ser mayor que el inicio");
   // Palabras editadas: reparte el texto corregido en el tiempo del clip.
   let edited = null;
   const editedText = $("subText").value.trim();

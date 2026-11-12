@@ -402,7 +402,21 @@ def _download_audio_parallel(url: str, start: float, end: float,
             old.unlink()
     results: dict[int, Path] = {}
     t0 = time.monotonic()
-    done_bytes = 0
+
+    def _current_bytes() -> int:
+        """Bytes bajados hasta ahora: suma de todos los trozos (los
+        parciales .part y los ya terminados). La misma medida para el
+        hilo vigilante y para el aviso al terminar un trozo: si cada
+        uno midiera distinto, la barra retrocedería (lo visto en la
+        primera prueba: 33% → 16%)."""
+        cur = 0
+        for p in SOURCES_DIR.glob(f"{job_id}_c*"):
+            try:
+                if p.is_file():
+                    cur += p.stat().st_size
+            except Exception:
+                pass
+        return cur
     # Hilo que mira el tamaño de los trozos mientras bajan (2026-11-11,
     # Juan: la carga debe verse en vivo). Los trozos bajan en paralelo
     # y terminan casi a la vez, así que contar solo los terminados deja
@@ -413,12 +427,8 @@ def _download_audio_parallel(url: str, start: float, end: float,
     def _watch_bytes():
         while not stop_watch.wait(2.0):
             try:
-                cur = 0
-                for p in SOURCES_DIR.glob(f"{job_id}_c*"):
-                    if p.is_file():
-                        cur += p.stat().st_size
                 if progress_cb:
-                    progress_cb(len(results), n_chunks, cur,
+                    progress_cb(len(results), n_chunks, _current_bytes(),
                                 time.monotonic() - t0)
             except Exception:
                 pass
@@ -436,13 +446,9 @@ def _download_audio_parallel(url: str, start: float, end: float,
                 path = None
             if path is not None:
                 results[i] = path
-                try:
-                    done_bytes += path.stat().st_size
-                except Exception:
-                    pass
             if progress_cb:
                 try:
-                    progress_cb(len(results), n_chunks, done_bytes,
+                    progress_cb(len(results), n_chunks, _current_bytes(),
                                 time.monotonic() - t0)
                 except Exception:
                     pass

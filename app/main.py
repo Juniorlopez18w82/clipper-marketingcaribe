@@ -330,7 +330,18 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             # partes, MB y velocidad reales.
             def _dl_progress(done: int, total: int, nbytes: int,
                              elapsed: float):
-                pct = 10 + int(30 * done / max(1, total))
+                # La barra se mueve con los BYTES reales (el hilo que
+                # vigila los parciales), no solo con los trozos
+                # terminados: los trozos bajan en paralelo y terminan
+                # casi a la vez. El total se estima a ~14.5 KB/s (itag
+                # 250 medido) y se limita a 95% hasta que el último
+                # trozo termina (entonces 40%).
+                est_total = max(1.0, (end - start) * 14500)
+                frac = max(done / max(1, total),
+                           min(0.95, nbytes / est_total))
+                if done >= total:
+                    frac = 1.0
+                pct = 10 + int(30 * frac)
                 mb = nbytes / 1048576
                 kbps = int(nbytes / max(1.0, elapsed) / 1024)
                 jobs.update(job_id, progress=pct,

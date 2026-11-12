@@ -2122,7 +2122,7 @@ async function loadCamTrack() {
   state.camTrackKey = key;
   const mode = $("cameraMode") && $("cameraMode").value;
   if (!pv || !state.clipsJob || !state.selected
-      || (mode !== "follow_speaker" && mode !== "follow_person")) {
+      || (mode !== "follow_speaker" && mode !== "follow_person" && mode !== "auto")) {
     state.camTrack = null;
     if (pv) pv.style.objectPosition = "50% 50%";
     return;
@@ -2523,6 +2523,7 @@ const CAMERA_HINTS = {
   follow_person: "Sigue siempre a la persona de la zona que elijas. Si no se la ve, queda centrada.",
   dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo, cada una centrada.",
   split: "Para videos con una cara en una esquina (reacción, entrevista, juego): la cara arriba y el contenido abajo, en dos pantallas.",
+  auto: "Automático para entrevistas: detecta por escena si hay una o dos personas. Una persona sale centrada a pantalla completa; dos personas salen una arriba y otra abajo, cada una en su recorte. Los cambios de cámara cambian el encuadre al instante.",
 };
 // Mini diagrama del modo de cámara (2026-11-11, Juan: los textos
 // decían "el juego abajo" y no todo video es un juego; además pidió
@@ -2533,6 +2534,7 @@ const CAMERA_PREVIEWS = {
   follow_person: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="38" r="12" fill="none" stroke="#A855F7" stroke-width="2" stroke-dasharray="4 3"/><circle cx="28" cy="38" r="9" fill="#e4e4e7"/><path d="M13 76 Q28 58 43 76 L43 100 L13 100 Z" fill="#e4e4e7"/></svg>`,
   dual: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="16" r="7" fill="#e4e4e7"/><path d="M16 38 Q28 26 40 38 L40 50 L16 50 Z" fill="#e4e4e7"/><line x1="0" y1="50" x2="56" y2="50" stroke="#A855F7" stroke-width="2"/><circle cx="28" cy="66" r="7" fill="#FADE4C"/><path d="M16 88 Q28 76 40 88 L40 100 L16 100 Z" fill="#FADE4C"/></svg>`,
   split: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><rect x="6" y="6" width="44" height="34" rx="4" fill="#27272a" stroke="#A855F7" stroke-width="1.5"/><circle cx="28" cy="18" r="6" fill="#e4e4e7"/><path d="M18 36 Q28 28 38 36 L38 40 L18 40 Z" fill="#e4e4e7"/><rect x="6" y="46" width="44" height="48" rx="4" fill="#1f1f23"/><path d="M24 62 L38 70 L24 78 Z" fill="#A855F7"/></svg>`,
+  auto: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="16" r="7" fill="#e4e4e7"/><path d="M16 38 Q28 26 40 38 L40 50 L16 50 Z" fill="#e4e4e7"/><line x1="0" y1="50" x2="56" y2="50" stroke="#A855F7" stroke-width="2"/><circle cx="28" cy="66" r="7" fill="#FADE4C"/><path d="M16 88 Q28 76 40 88 L40 100 L16 100 Z" fill="#FADE4C"/><path d="M46 6 l4 4 M50 6 l-4 4" stroke="#A855F7" stroke-width="2" fill="none"/></svg>`,
 };
 function updateCameraPreview() {
   const box = $("cameraPreview");

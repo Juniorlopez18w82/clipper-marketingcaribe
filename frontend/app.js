@@ -174,12 +174,23 @@ function showUser(user) {
     fillConfig(user);
     updatePreview();
     loadPanel();
-    // Al entrar, el panel SE ABRE SOLO: el panel es la app, la landing
-    // es solo la puerta.
-    openPanel();
-  } else {
-    // Sin sesión: se cierra el panel y vuelve la landing.
+    // Con sesión el HOME es la landing (2026-11-12, Juan: la veía igual
+    // porque el panel se abría solo y nunca veía el inicio). El panel se
+    // abre con "Ver mi panel" / "Ir a mi panel", no solo.
     closePanel();
+    // La nav muestra "Ir a mi panel" en vez de "Entrar" cuando hay sesión.
+    const navLogin = $("btnNavLogin");
+    if (navLogin) { navLogin.textContent = "Ir a mi panel"; navLogin.onclick = () => openPanel(); }
+    const navReg = $("btnNavRegister");
+    if (navReg) navReg.hidden = true;
+  } else {
+    // Sin sesión: se cierra el panel y vuelve la landing; la nav vuelve
+    // a mostrar Entrar / Crear cuenta.
+    closePanel();
+    const navLogin = $("btnNavLogin");
+    if (navLogin) { navLogin.textContent = "Entrar"; navLogin.onclick = landingGoToAccount; }
+    const navReg = $("btnNavRegister");
+    if (navReg) navReg.hidden = false;
   }
 }
 async function refreshMe() {

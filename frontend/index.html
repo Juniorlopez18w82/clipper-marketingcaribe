@@ -325,6 +325,12 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .step.done::before{background:linear-gradient(90deg,#ff2d2d,#E10600)}
 .panel .step.active::before{background:linear-gradient(90deg,#E10600,#3f3f46)}
 .panel .step-status{font-size:15px;color:#f4f4f5;font-weight:600;margin:10px 0 0;min-height:22px}
+.url-preview{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;border:1px solid #27272a;border-radius:12px;background:#111113}
+.url-preview img{width:120px;height:68px;object-fit:cover;border-radius:8px;background:#27272a;flex:none}
+.url-preview-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.url-preview-info b{font-size:14px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.url-preview-info .muted{font-size:13px}
+.job-elapsed{font-size:13px;color:#a1a1aa;margin:6px 0 0}
 /* ===== Animación de los pasos y del estado (solo CSS + clases) ===== */
 .panel .step .dot{position:relative;transition:background .3s,border-color .3s,color .3s,box-shadow .3s}
 .panel .step::before{transition:background .6s ease}
@@ -465,6 +471,13 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <h2>Pega un enlace para empezar</h2>
         <label>Link de YouTube</label>
         <input id="url" type="url" placeholder="youtube.com/watch?v=…">
+        <div id="urlPreview" class="url-preview" hidden>
+          <img id="urlPreviewThumb" alt="" referrerpolicy="no-referrer">
+          <div class="url-preview-info">
+            <b id="urlPreviewTitle"></b>
+            <span id="urlPreviewMeta" class="muted"></span>
+          </div>
+        </div>
         <div class="row" style="margin-top:12px">
           <button id="btnClips">Sacar clips</button>
           <button id="btnUpload" class="black">Subir archivo</button>
@@ -491,6 +504,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         </div>
         <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
         <p class="step-status" id="stepStatus">Esperando un video. Pega un link arriba para empezar…</p>
+        <p class="job-elapsed" id="jobElapsed" hidden></p>
         <div class="job-error" id="jobError"></div>
       </section>
 
@@ -1060,6 +1074,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 </main>
-<script src="app.js?v=51"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>

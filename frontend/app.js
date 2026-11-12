@@ -409,6 +409,9 @@ function openTabFromUrl() {
   let saved = null;
   try { saved = sessionStorage.getItem("clipper_tab"); } catch (e) {}
   const tab = (fromUrl === "home" && saved && ROUTES[saved]) ? saved : fromUrl;
+  // DEBUG temporal (v66): dejar la pestaña resuelta en el título para
+  // diagnosticar por qué recargar cae en Inicio.
+  try { document.title = "[tab:" + tab + " url:" + location.pathname + "] Clipzio Pro"; } catch (e) {}
   goTab(tab);
 }
 window.addEventListener("popstate", () => {

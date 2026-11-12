@@ -1,4 +1,4 @@
-"""ClipViral — FastAPI backend.
+"""Clipzio Pro — FastAPI backend.
 
 No YouTube API key: yt-dlp reads the pasted link directly.
 Endpoints:
@@ -93,7 +93,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="ClipViral", version="1.5.0", lifespan=lifespan)
+app = FastAPI(title="Clipzio Pro", version="1.5.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -923,7 +923,7 @@ def _start_lives_monitor() -> None:
 # ---------------------------------------------------------------- routes
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "ClipViral", "version": "1.5.0",
+    return {"ok": True, "service": "Clipzio Pro", "version": "1.5.0",
             "warp": os.environ.get("WARP_STATUS", "not_configured"),
             "proxy": bool(os.environ.get("YTDLP_PROXY")),
             "transcription": transcription_engine(),

@@ -46,9 +46,9 @@ TEMPLATES: dict[str, dict] = {
         "subtitle_position": "bottom", "highlight_color": "#FADE4C",
     },
     "Impacto": {
-        "frame_enabled": True, "frame_color": "#E10600", "frame_width": 18,
+        "frame_enabled": True, "frame_color": "#A855F7", "frame_width": 18,
         "brand_size": 84, "brand_y": 80,
-        "subtitle_position": "bottom", "highlight_color": "#E10600",
+        "subtitle_position": "bottom", "highlight_color": "#A855F7",
     },
 }
 DEFAULT_TEMPLATE = "Gancho grande"

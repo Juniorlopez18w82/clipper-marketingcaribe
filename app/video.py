@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -402,6 +403,28 @@ def _download_audio_parallel(url: str, start: float, end: float,
     results: dict[int, Path] = {}
     t0 = time.monotonic()
     done_bytes = 0
+    # Hilo que mira el tamaño de los trozos mientras bajan (2026-11-11,
+    # Juan: la carga debe verse en vivo). Los trozos bajan en paralelo
+    # y terminan casi a la vez, así que contar solo los terminados deja
+    # la barra quieta minutos: este hilo suma los bytes de los archivos
+    # parciales cada 2 s y reporta el progreso real (MB y velocidad).
+    stop_watch = threading.Event()
+
+    def _watch_bytes():
+        while not stop_watch.wait(2.0):
+            try:
+                cur = 0
+                for p in SOURCES_DIR.glob(f"{job_id}_c*"):
+                    if p.is_file():
+                        cur += p.stat().st_size
+                if progress_cb:
+                    progress_cb(len(results), n_chunks, cur,
+                                time.monotonic() - t0)
+            except Exception:
+                pass
+
+    watcher = threading.Thread(target=_watch_bytes, daemon=True)
+    watcher.start()
     with ThreadPoolExecutor(max_workers=AUDIO_PARALLEL_WORKERS) as ex:
         futs = {ex.submit(_download_audio_chunk, url, cs, ce, tags[i]): i
                 for i, (cs, ce) in enumerate(bounds)}
@@ -423,6 +446,7 @@ def _download_audio_parallel(url: str, start: float, end: float,
                                 time.monotonic() - t0)
                 except Exception:
                     pass
+    stop_watch.set()
     # Reintento en serie de los trozos que fallaron en paralelo.
     for i, (cs, ce) in enumerate(bounds):
         if i not in results:

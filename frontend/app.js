@@ -103,8 +103,15 @@ function authHeaders(extra = {}) {
 function openPanel() {
   $("panel").hidden = false;
   document.body.classList.add("panel-open");
-  document.querySelector("main").hidden = true;
-  document.querySelector("header").hidden = true;
+  // El <header> original se eliminó en v56 (la landing-nav es el único
+  // header y vive dentro de <main>), así que querySelector("header") es
+  // null: si no se protege, el error rompe openPanel y openTabFromUrl
+  // nunca corre — por eso recargar siempre caía en Inicio aunque la URL
+  // fuera /crear-clip o /mis-clips. (v66, causa raíz del bug de recarga.)
+  const m = document.querySelector("main");
+  if (m) m.hidden = true;
+  const h = document.querySelector("header");
+  if (h) h.hidden = true;
   window.scrollTo(0, 0);
   // Abrir la sección que dice la URL (enlace directo o recarga).
   openTabFromUrl();
@@ -113,8 +120,10 @@ function closePanel() {
   $("panel").hidden = true;
   document.body.classList.remove("panel-open");
   document.body.classList.remove("create-wide");
-  document.querySelector("main").hidden = false;
-  document.querySelector("header").hidden = false;
+  const m = document.querySelector("main");
+  if (m) m.hidden = false;
+  const h = document.querySelector("header");
+  if (h) h.hidden = false;
 }
 // Cuenta atrás del plan en la barra superior (2026-11-10, Juan: en
 // vez de "Hola, nombre", el tiempo que le queda a su plan). El admin

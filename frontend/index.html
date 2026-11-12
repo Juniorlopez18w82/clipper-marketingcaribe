@@ -189,6 +189,13 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .who .countdown.expired{color:#A855F7}
 .panel .who .countdown.no-plan{cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 /* Modal (asignar plan): fondo oscuro + tarjeta centrada. */
+/* Aviso dentro del sistema (toast): NUNCA usar alert() del navegador —
+   los mensajes salen aquí, dentro de la página, no en una ventana
+   emergente. (2026-11-12, Juan: "Pega un link…" debe salir dentro del
+   mismo sistema.) */
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-8px);z-index:300;background:#1c1c2e;border:1px solid #A855F7;border-radius:12px;color:#f4f4f5;padding:12px 16px;font-size:15px;font-weight:600;box-shadow:0 10px 32px rgba(0,0,0,.6);display:flex;align-items:center;gap:12px;max-width:min(560px,92vw);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+#toast.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+#toast button{background:none;border:0;color:#a1a1aa;font-size:18px;line-height:1;cursor:pointer;padding:0}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
 .modal-backdrop[hidden]{display:none}
 .modal-card{position:relative;background:var(--card);border:1px solid #27272a;border-radius:16px;width:min(460px,94vw);max-height:88vh;overflow:auto;padding:22px;box-shadow:0 16px 48px rgba(0,0,0,.6)}
@@ -1338,6 +1345,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;font-weight:700">Marketingcaribe.com</a></span>
   </footer>
 </main>
-<script src="app.js?v=60"></script>
+<div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
+<script src="app.js?v=61"></script>
 </body>
 </html>

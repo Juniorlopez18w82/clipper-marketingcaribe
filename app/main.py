@@ -438,6 +438,37 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         jobs.update(job_id, status="error", error=str(e), message="Falló.")
 
 
+def _actual_section_start(source: Path, req_start: float, req_end: float) -> float:
+    """Real start (absolute seconds) of a downloaded section file.
+
+    yt-dlp --download-sections cuts at keyframes: the file can start a
+    few seconds BEFORE the requested start (it seeks to the keyframe
+    before ``start``; the end is cut precisely), so the file is longer
+    than requested. The render trims with -ss/-t, but it can only land
+    on the requested start if it knows the real file start. The extra
+    is all at the beginning, so real_start = req_end - file_duration.
+    Falls back to req_start when the duration cannot be read or the
+    file is not longer than requested.
+
+    Found 2026-11-12 (auto-framing test): a [140,180] download came
+    back as a 50 s file starting at ~130 s, so the render showed
+    130-170 instead of 140-180 and the framing timeline was shifted
+    10 s. With this fix the render seeks to the lead-in and the clip
+    contains exactly the requested range.
+    """
+    try:
+        dur = probe(source)["duration"]
+    except Exception:  # noqa: BLE001 — probe failure = assume exact
+        return req_start
+    if not dur or dur <= 0:
+        return req_start
+    requested = max(0.0, req_end - req_start)
+    lead_in = dur - requested
+    if lead_in <= 0.05:
+        return req_start
+    return max(0.0, req_start - lead_in)
+
+
 def _resolve_source_for_render(req: RenderRequest, job_id: str):
     """Return (source_path, section_start, transcript_dict)."""
     # Transcripción 40→70% también en el render directo (mismo
@@ -481,10 +512,17 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
                             message=f"Descargando el video del clip… {mb:.1f} MB · {kbps} KB/s")
             source = download_section(res["url"], req.start, req.end, job_id,
                                       progress_cb=_rd_progress)
-            section_start = req.start
+            # La descarga por secciones puede empezar antes del inicio
+            # pedido (keyframe): medir el inicio real para que el render
+            # caiga exactamente en req.start (ver _actual_section_start).
+            section_start = _actual_section_start(source, req.start, req.end)
         else:
             source = SOURCES_DIR / res["source_file"]
-            section_start = float(res["section_start"])
+            # El archivo del padre también pudo bajar con lead-in: su
+            # inicio real se calcula con su propio rango de sección.
+            section_start = _actual_section_start(
+                source, float(res["section_start"]),
+                float(res["section_end"]))
         transcript = json.loads(
             (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(encoding="utf-8"))
         return source, section_start, transcript
@@ -500,10 +538,14 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         jobs.update(job_id, status="running", progress=10,
                     message="Descargando el video…")
         source = download_section(req.url, req.start, req.end, job_id)
+        # La descarga por secciones puede empezar antes del inicio
+        # pedido (keyframe): medir el inicio real para que el render
+        # caiga exactamente en req.start (ver _actual_section_start).
+        section_start = _actual_section_start(source, req.start, req.end)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=req.model,
                                      progress_cb=_tr_progress)
-        return source, req.start, transcript
+        return source, section_start, transcript
     raise HTTPException(400, "Pasa job_id, url o un archivo subido")
 
 

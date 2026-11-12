@@ -344,6 +344,10 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .progress-track{height:8px;background:#27272a;border-radius:999px;overflow:hidden;margin:14px 0 2px}
 .panel .progress-fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#ff2d2d,#E10600,#ff5a3c);position:relative;overflow:hidden;transition:width .5s ease}
 .panel .progress-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transform:translateX(-100%);animation:shimmerSlide 2.2s ease-in-out infinite}
+/* Número % junto a la barra (v52) */
+.panel .progress-row{display:flex;align-items:center;gap:10px;margin:14px 0 2px}
+.panel .progress-row .progress-track{flex:1;margin:0}
+.panel .progress-row #jobPct{font-size:13px;font-weight:600;color:#f4f4f5;min-width:38px;text-align:right}
 @keyframes shimmerSlide{to{transform:translateX(100%)}}
 /* Texto de estado: punto que palpita + puntos suspensivos animados + cambio con fade */
 .panel .step-status.busy::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:#E10600;margin-right:8px;vertical-align:1px;animation:blinkDot 1.2s ease-in-out infinite}
@@ -502,7 +506,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <div class="step" data-step="3"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></svg></div>Cortar</div>
           <div class="step" data-step="4"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.5l5 5L19.5 7"/></svg></div>Listo</div>
         </div>
-        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-row"><div class="progress-track"><div class="progress-fill" id="progressFill"></div></div><span id="jobPct">0%</span></div>
         <p class="step-status" id="stepStatus">Esperando un video. Pega un link arriba para empezar…</p>
         <p class="job-elapsed" id="jobElapsed" hidden></p>
         <div class="job-error" id="jobError"></div>

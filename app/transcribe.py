@@ -343,10 +343,17 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None,
     return shape is identical either way. ``model`` only applies to the
     local engine; Groq always uses whisper-large-v3.
 
-    progress_cb (2026-11-11): se llama con (trozos_listos,
-    total_trozos) al terminar cada trozo de Groq; el motor local no
-    parte en trozos, así que ahí se llama una vez al final.
+    progress_cb (2026-11-11 v52): se llama con (fracción 0→1,
+    mensaje) — cada trozo de Groq ("Transcribiendo… trozo X de N")
+    o cada segmento del motor local ("Transcribiendo… X s de Y s").
     """
+    def _report(frac: float, msg: str):
+        if progress_cb:
+            try:
+                progress_cb(frac, msg)
+            except Exception:
+                pass
+
     wav_path = TRANSCRIPTS_DIR / f"{job_id}.wav"
     extract_wav(source, wav_path)
     groq_segments, groq_lang = _transcribe_groq(wav_path,
@@ -364,6 +371,7 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None,
         segments, _info = whisper.transcribe(audio, language=None, word_timestamps=True)
         detected_lang = (_info.language or "es").lower()
         out_segments = []
+        total = _wav_duration(wav_path)
         for s in segments:
             out_segments.append({
                 "start": round(s.start, 2),
@@ -374,12 +382,13 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None,
                     for w in (s.words or [])
                 ],
             })
+            # Progreso REAL del motor local (v52): cada segmento que
+            # sale mueve la barra según su final entre la duración
+            # total — el local no parte en trozos, así que el tiempo
+            # transcrito es la medida honesta.
+            _report(min(1.0, max(0.0, s.end / max(1.0, total))),
+                    f"Transcribiendo… {s.end:.0f} s de {total:.0f} s")
         used_model = model or WHISPER_MODEL
-        if progress_cb:
-            try:
-                progress_cb(1, 1)
-            except Exception:
-                pass
     result = {"job_id": job_id, "model": used_model,
               "language": detected_lang, "segments": out_segments}
     out_path = TRANSCRIPTS_DIR / f"{job_id}.json"

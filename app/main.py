@@ -183,7 +183,10 @@ class RenderRequest(BaseModel):
     # --- Configuración: cámara (paso 3) ---
     # center (recorte fijo en el centro, como siempre) | dual (dos
     # personas, izquierda arriba y derecha abajo) | follow_speaker
-    # (sigue a quien habla) | follow_person (sigue a una persona).
+    # (sigue a quien habla) | follow_person (sigue a una persona) |
+    # auto (encuadre inteligente para entrevistas, 2026-11-12: detecta
+    # por plano si hay una o dos personas y cambia solo; SINGLE centra
+    # a la persona, DUAL pone una arriba y otra abajo).
     # Default follow_speaker (2026-11-11): en entrevistas/podcasts el
     # que habla suele estar a un lado (Masha a la derecha) y "center"
     # lo cortaba; follow_speaker lo centra y, si no hay cara, cae al
@@ -2294,6 +2297,39 @@ def api_job_camera_track(job_id: str, start: float, end: float,
         video = download_section(url, start, end, lr_tag, lowres=True)
     from .camera import analyze_camera, probe_size
     duration = end - start
+    if mode == "auto":
+        # Encuadre inteligente (2026-11-12): la vista previa sigue el
+        # recorte del analizador de encuadre (app/framing.py). Para
+        # SINGLE es el crop-x del recorte 9:16; para DUAL (dos paneles
+        # en el render) la previa —un solo panel 9:16— usa el punto
+        # medio entre ambos recortes. El recorrido se cachea igual que
+        # los demás modos.
+        from .framing import analyze_framing
+        framing = analyze_framing(video, 0, duration)
+        width, height = probe_size(video)
+        crop_w = height * 9 / 16
+        path = []
+        for s in framing.get("samples", []):
+            if s.get("crops"):
+                (w1, _h1, x1, _y1), (w2, _h2, x2, _y2) = s["crops"]
+                x = (x1 + w1 / 2 + x2 + w2 / 2) / 2 - crop_w / 2
+            elif s.get("crop"):
+                x = s["crop"][2]
+            else:
+                x = (width - crop_w) / 2
+            path.append([round(float(s["t"]), 2), round(float(x), 1)])
+        out = {
+            "path": path,
+            "width": width,
+            "crop_w": crop_w,
+            "fallback": framing.get("fallback", False),
+            "duration": duration,
+        }
+        try:
+            track_file.write_text(json.dumps(out), encoding="utf-8")
+        except Exception:
+            pass
+        return out
     cam = analyze_camera(video, 0, duration, mode, person)
     width, height = probe_size(video)
     crop_w = height * 9 / 16

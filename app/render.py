@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
+import threading
 from pathlib import Path
 
 from .camera import analyze_camera, probe_size
@@ -568,10 +569,61 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
     return chain
 
 
-def _run(cmd: list[str], what: str) -> None:
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+def _run(cmd: list[str], what: str, progress_cb=None,
+         total_seconds: float | None = None) -> None:
+    """Run an ffmpeg command. Sin progress_cb es como antes
+    (subprocess.run, captura todo). Con progress_cb (2026-11-11, Juan:
+    el render no debe quedarse quieto): ffmpeg corre con
+    -progress pipe:1 y se reporta la fracción (tiempo codificado /
+    duración total) para que la barra se mueva durante el render.
+    El stderr se drena en un hilo para no bloquear si se llena."""
+    if progress_cb is None or total_seconds is None:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg {what} failed: {proc.stderr[-2000:]}")
+        return
+    prog_cmd = list(cmd)
+    # -progress va antes del archivo de salida (último elemento).
+    prog_cmd = prog_cmd[:-1] + ["-progress", "pipe:1"] + prog_cmd[-1:]
+    proc = subprocess.Popen(prog_cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    err_lines: list[str] = []
+
+    def _drain_err():
+        try:
+            for line in proc.stderr:
+                err_lines.append(line)
+        except Exception:
+            pass
+
+    err_thread = threading.Thread(target=_drain_err, daemon=True)
+    err_thread.start()
+    try:
+        for line in proc.stdout:
+            line = line.strip()
+            if line.startswith("out_time_ms="):
+                try:
+                    out_ms = int(line.split("=", 1)[1])
+                except ValueError:
+                    continue
+                frac = min(1.0, (out_ms / 1e6) / max(1.0, total_seconds))
+                try:
+                    progress_cb(frac)
+                except Exception:
+                    pass
+            elif line.startswith("progress=end"):
+                try:
+                    progress_cb(1.0)
+                except Exception:
+                    pass
+        proc.wait(timeout=900)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        raise RuntimeError(f"ffmpeg {what} timed out")
+    finally:
+        err_thread.join(timeout=5)
     if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg {what} failed: {proc.stderr[-2000:]}")
+        raise RuntimeError(f"ffmpeg {what} failed: {''.join(err_lines)[-2000:]}")
 
 
 def _audio_fade_filter(duration: float) -> str:
@@ -771,7 +823,10 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 title_bg: bool = True,
                 title_size: int | None = None,
                 title_pos_x: float | None = None,
-                title_pos_y: float | None = None) -> Path:
+                title_pos_y: float | None = None,
+                # Progreso del render (2026-11-11): se llama con la
+                # fracción (0.0-1.0) del tiempo ya codificado.
+                progress_cb=None) -> Path:
     """Render one clip. ``start_in_source`` is seconds into ``source`` file.
 
     ``quality``: "1080p" (1080x1920) or "720p" (720x1280) — marco, nombre
@@ -905,7 +960,7 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 "-map", "[out]", "-map", "[aout]",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
                 "-c:a", "aac", "-b:a", "128k", "-shortest", str(main_path),
-            ], "render")
+            ], "render", progress_cb=progress_cb, total_seconds=duration)
         # --- Portada / título de enganche (2026-11-11) ---
         # Si hay título gancho, el clip empieza con la portada (fotograma
         # elegido + título grande, sin marco ni marca) y luego el clip.

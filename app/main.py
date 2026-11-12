@@ -324,7 +324,20 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             # y en la vista previa (clip-video).
             jobs.update(job_id, status="running", progress=10,
                         message="Descargando el audio…")
-            source = download_section(url, start, end, job_id, audio_only=True)
+            # Progreso REAL de la descarga (2026-11-11, Juan: la carga
+            # debe verse en vivo). La descarga es la fase 10→40: cada
+            # trozo que termina mueve la barra y el mensaje lleva
+            # partes, MB y velocidad reales.
+            def _dl_progress(done: int, total: int, nbytes: int,
+                             elapsed: float):
+                pct = 10 + int(30 * done / max(1, total))
+                mb = nbytes / 1048576
+                kbps = int(nbytes / max(1.0, elapsed) / 1024)
+                jobs.update(job_id, progress=pct,
+                            message=f"Descargando el audio… {done} de {total} partes · {mb:.1f} MB · {kbps} KB/s")
+            source = download_section(url, start, end, job_id,
+                                      audio_only=True,
+                                      progress_cb=_dl_progress)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=model)
         if not transcript["segments"]:

@@ -101,6 +101,7 @@ function authHeaders(extra = {}) {
 // el atributo hidden solo NO bastaba, porque header{display:flex} y
 // main{display:grid} lo anulaban). Al cerrarse vuelve la landing.
 function openPanel() {
+  try { document.title = "[3 openPanel] Clipzio Pro"; } catch (e) {}
   $("panel").hidden = false;
   document.body.classList.add("panel-open");
   // El <header> original se eliminó en v56 (la landing-nav es el único
@@ -190,6 +191,7 @@ function savedUser() {
   } catch (e) { return null; }
 }
 function showUser(user) {
+  try { document.title = "[2 showUser " + (user ? "con-usuario" : "null") + "] Clipzio Pro"; } catch (e) {}
   state.user = user;
   // Guardar el usuario para abrir el panel al instante en la próxima
   // recarga, sin esperar al servidor (sesión optimista, v65).
@@ -232,6 +234,8 @@ function showUser(user) {
   }
 }
 async function refreshMe() {
+  // DEBUG v68: marcar cada etapa en el título para ver dónde se para.
+  try { document.title = "[1 refreshMe] Clipzio Pro"; } catch (e) {}
   const t = localStorage.getItem("clipper_token");
   const u = savedUser();
   if (!t) {

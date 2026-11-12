@@ -859,6 +859,7 @@ function clipRow(c, admin) {
   const who = admin
     ? `<div class="muted small">${esc(c.user_name || "")} · ${esc(c.user_email || "")}</div>` : "";
   div.innerHTML = `<div class="clip-thumb">${thumb}
+      <input type="checkbox" class="clip-select" title="Seleccionar" aria-label="Seleccionar clip">
       <div class="clip-top">${fire}<span class="dur-badge">${dur}</span></div>
       ${c.download_url ? `<button class="clip-play" title="Reproducir" aria-label="Reproducir">${PLAY_SVG}</button>` : ""}
     </div>
@@ -877,9 +878,16 @@ function clipRow(c, admin) {
   // Al confirmar se borra el clip (fila + mp4) y la tarjeta desaparece.
   const delBtn = div.querySelector(".icon-btn.del");
   delBtn.onclick = () => openConfirmDelete(c, div);
+  // Selección masiva (2026-11-12, Juan): el checkbox marca el clip;
+  // en modo selección, tocar la tarjeta marca en vez de reproducir.
+  const selBox = div.querySelector(".clip-select");
+  selBox.checked = _bulkSelected.has(c.id);
+  if (_bulkSelected.has(c.id)) div.classList.add("selected");
+  if (_bulkSelectMode) div.classList.add("select-mode");
+  selBox.onclick = (e) => { e.stopPropagation(); toggleBulkSelect(c.id, div, selBox.checked); };
   const playBtn = div.querySelector(".clip-play");
-  if (playBtn) playBtn.onclick = (e) => { e.stopPropagation(); openClipModal(c); };
-  div.querySelector(".clip-thumb").onclick = () => openClipModal(c);
+  if (playBtn) playBtn.onclick = (e) => { e.stopPropagation(); if (_bulkSelectMode) { selBox.checked = !selBox.checked; toggleBulkSelect(c.id, div, selBox.checked); } else openClipModal(c); };
+  div.querySelector(".clip-thumb").onclick = () => { if (_bulkSelectMode) { selBox.checked = !selBox.checked; toggleBulkSelect(c.id, div, selBox.checked); } else openClipModal(c); };
   return div;
 }
 
@@ -933,8 +941,20 @@ $("confirmDeleteOk").onclick = async () => {
   if (!t) return closeConfirmDelete();
   closeConfirmDelete();
   try {
-    await apiFetch(`/api/me/clips/${t.clip.id}`, { method: "DELETE", headers: authHeaders() });
-    if (t.cardEl) t.cardEl.remove();
+    if (t.bulk) {
+      // Borrado masivo (2026-11-12): un solo llamado al servidor con
+      // todos los ids; se quitan de la lista local y se repinta la página.
+      const ids = [..._bulkSelected];
+      const res = await apiFetch("/api/me/clips/bulk-delete", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ clip_ids: ids }) });
+      const gone = new Set(res.deleted || ids);
+      _myClips = _myClips.filter((c) => !gone.has(c.id));
+      setBulkSelectMode(false);
+      renderMyClipsPage();
+      if ((res.not_found || []).length) alert(`Se eliminaron ${gone.size} clips. ${(res.not_found || []).length} ya no existían.`);
+    } else {
+      await apiFetch(`/api/me/clips/${t.clip.id}`, { method: "DELETE", headers: authHeaders() });
+      if (t.cardEl) t.cardEl.remove();
+    }
   } catch (e) {
     alert("No se pudo eliminar: " + e.message);
   }
@@ -1024,6 +1044,50 @@ async function loadMyClips() {
     _myClipsPage = 0;
     renderMyClipsPage();
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
+}
+
+// ---------- Eliminar clips en masa (2026-11-12, Juan) ----------
+let _bulkSelectMode = false;
+let _bulkSelected = new Set(); // ids de clips seleccionados
+function toggleBulkSelect(id, cardEl, checked) {
+  if (checked) _bulkSelected.add(id);
+  else _bulkSelected.delete(id);
+  if (cardEl) cardEl.classList.toggle("selected", checked);
+  updateBulkBar();
+}
+function updateBulkBar() {
+  const n = _bulkSelected.size;
+  $("bulkCount").textContent = `${n} seleccionado${n === 1 ? "" : "s"}`;
+  $("bulkDeleteBtn").disabled = n === 0;
+  $("bulkDeleteBtn").textContent = `🗑 Eliminar seleccionados${n ? ` (${n})` : ""}`;
+  const all = $("bulkSelectAll");
+  if (all) all.checked = _myClips.length > 0 && _bulkSelected.size === _myClips.length;
+}
+function setBulkSelectMode(on) {
+  _bulkSelectMode = on;
+  if (!on) _bulkSelected.clear();
+  $("bulkBar").hidden = !on;
+  $("bulkToggleBtn").textContent = on ? "✕ Salir de selección" : "☑ Seleccionar";
+  updateBulkBar();
+  renderMyClipsPage();
+}
+$("bulkToggleBtn").onclick = () => setBulkSelectMode(!_bulkSelectMode);
+$("bulkCancelBtn").onclick = () => setBulkSelectMode(false);
+$("bulkSelectAll").onchange = (e) => {
+  if (e.target.checked) _myClips.forEach((c) => _bulkSelected.add(c.id));
+  else _bulkSelected.clear();
+  updateBulkBar();
+  renderMyClipsPage();
+};
+$("bulkDeleteBtn").onclick = () => {
+  const n = _bulkSelected.size;
+  if (!n) return;
+  openConfirmBulkDelete(n);
+};
+function openConfirmBulkDelete(n) {
+  _confirmDeleteTarget = { bulk: true, count: n };
+  $("confirmDeleteText").textContent = `¿Seguro que quieres eliminar ${n} clip${n === 1 ? "" : "s"}? Esta acción no se puede deshacer.`;
+  $("confirmDeleteModal").hidden = false;
 }
 
 // ---------- Lives (clips automáticos de un live en curso) ----------

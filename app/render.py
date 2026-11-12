@@ -838,14 +838,39 @@ def _render_auto(source: Path, start_in_source: float, duration: float,
       chunk just uses it — no sudden moves.
     A scene cut switches the layout at once (the timeline changes at
     the cut), so the frame follows the new speaker immediately.
+
+    Chunks never span a layout change: the timeline is split at every
+    segment boundary first, then each segment is cut into <=2 s chunks.
+    Without this, a 2 s chunk straddling a cut renders the NEW layout
+    on the OLD shot for up to half a chunk (e.g. a dual crop on a
+    single-person frame, showing the same person twice).
     """
     chunk_dur = 2.0
-    chunks: list[Path] = []
-    n_chunks = max(1, math.ceil(duration / chunk_dur))
+    # Boundaries: every segment start (layout change) + every 2 s.
+    bounds = {0.0, float(duration)}
+    for seg in framing.get("segments", []):
+        t0 = float(seg.get("t0", 0.0))
+        if 0.0 < t0 < duration:
+            bounds.add(round(t0, 3))
     t = 0.0
-    i = 0
     while t < duration:
-        cd = min(chunk_dur, duration - t)
+        t = round(min(t + chunk_dur, duration), 3)
+        bounds.add(t)
+        if t >= duration:
+            break
+    bounds = sorted(b for b in bounds if 0.0 <= b <= duration)
+    # Build (start, end) pairs from the sorted boundaries.
+    spans: list[tuple[float, float]] = []
+    for a, b in zip(bounds, bounds[1:]):
+        if b - a > 0.05:
+            spans.append((a, b))
+    if not spans:
+        spans = [(0.0, float(duration))]
+    n_chunks = len(spans)
+    chunks: list[Path] = []
+    i = 0
+    for (t, span_end) in spans:
+        cd = span_end - t
         sample = _framing_at(framing, t + cd / 2)
         chunk = tmpdir / f"auto_{i:03d}.mp4"
         crops = sample.get("crops")
@@ -895,7 +920,6 @@ def _render_auto(source: Path, start_in_source: float, duration: float,
                 progress_cb((i + 1) / n_chunks * 0.5)
             except Exception:
                 pass
-        t += cd
         i += 1
     concat_file = tmpdir / "concat.txt"
     concat_file.write_text(

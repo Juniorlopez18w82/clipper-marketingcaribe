@@ -222,6 +222,29 @@ $("btnRegister").onclick = async () => {
 $("btnLogout").onclick = doLogout;
 $("btnLogoutTop").onclick = doLogout;
 $("btnShowPanel").onclick = () => openPanel();
+// ---------- Animaciones al hacer scroll (landing, 2026-11-12) ----------
+(function () {
+  const els = document.querySelectorAll(".reveal");
+  if (!("IntersectionObserver" in window)) {
+    els.forEach((el) => el.classList.add("visible"));
+    return;
+  }
+  // Entrada escalonada dentro de cada grupo de tarjetas.
+  const groups = [".steps-grid", ".features-grid", ".landing-plans"];
+  groups.forEach((sel) => {
+    const grid = document.querySelector(sel);
+    if (!grid) return;
+    grid.querySelectorAll(".reveal").forEach((card, i) => {
+      card.style.transitionDelay = `${i * 0.1}s`;
+    });
+  });
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (en.isIntersecting) { en.target.classList.add("visible"); io.unobserve(en.target); }
+    });
+  }, { threshold: 0.12 });
+  els.forEach((el) => io.observe(el));
+})();
 // ---------- Landing (2026-11-12, Juan: tipo wayin.ai/clip-maker) ----------
 // Si hay sesión, los CTA llevan al panel; si no, bajan al formulario
 // de acceso. Los botones de plan llevan al formulario y, al entrar,

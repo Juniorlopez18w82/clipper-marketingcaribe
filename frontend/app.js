@@ -2362,7 +2362,6 @@ $("btnRender").onclick = async () => {
       if ((j.progress || 0) >= 70) renderSteps(3, 3, (j.message && String(j.message).trim()) || FLOW_MSGS[3]);
       else if (j.message && String(j.message).trim()) renderSteps(3, 3, String(j.message).trim());
     });
-    });
     const file = job.result.file;
     setJobProgress(100);
     renderSteps(5, -1, FLOW_MSGS[4]);

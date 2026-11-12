@@ -38,6 +38,8 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -351,39 +353,63 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                                       progress_cb=_dl_progress)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         # Progreso REAL de la transcripción (2026-11-11, Juan: no debe
-        # quedarse quieta minutos). La transcripción es la fase 40→80:
-        # cada trozo de Groq que termina mueve la barra y el mensaje
-        # lleva el trozo y el tiempo que lleva el trabajo.
-        import time as _time
-        _tr_t0 = _time.monotonic()
+        # quedarse quieta minutos). La transcripción es la fase 40→70:
+        # cada trozo de Groq que termina (o cada segmento del motor
+        # local) mueve la barra y el mensaje lleva el trozo y el
+        # tiempo que lleva el trabajo.
+        _tr_t0 = time.monotonic()
 
-        def _tr_progress(done: int, total: int):
-            pct = 40 + int(40 * done / max(1, total))
-            el = int(_time.monotonic() - _tr_t0)
+        def _tr_progress(frac: float, msg: str):
+            pct = 40 + int(30 * max(0.0, min(1.0, frac)))
+            el = int(time.monotonic() - _tr_t0)
             mm, ss = divmod(el, 60)
             jobs.update(job_id, progress=pct,
-                        message=f"Transcribiendo el audio… trozo {done} de {total} · {mm}:{ss:02d}")
+                        message=f"{msg} · {mm}:{ss:02d}")
         transcript = transcribe_file(source, job_id, model=model,
                                      progress_cb=_tr_progress)
         if not transcript["segments"]:
             raise RuntimeError(
                 "No se pudo transcribir el audio de este video. "
                 "Prueba con otro rango u otro video.")
+        # La llamada a la IA es una sola petición: no hay trozos que
+        # contar, así que el progreso honesto es el tiempo real que
+        # lleva. Un hilo actualiza el mensaje cada 2 s con los segundos
+        # reales y deja la barra subir de 80 a 94 como mucho — el 95
+        # solo llega cuando los candidatos existen de verdad.
         jobs.update(job_id, progress=80,
                     message="La IA está eligiendo los mejores momentos…")
+        _llm_stop = threading.Event()
+        _llm_t0 = time.monotonic()
+
+        def _llm_tick():
+            while not _llm_stop.wait(2.0):
+                el = time.monotonic() - _llm_t0
+                jobs.update(job_id, progress=80 + min(14, int(el // 2)),
+                            message=f"La IA está eligiendo los mejores momentos… {el:.0f} s")
+
+        _llm_watcher = threading.Thread(target=_llm_tick, daemon=True)
+        _llm_watcher.start()
         # Real LLM first (Groq llama, free tier) when a key is set; ANY
         # LLM failure returns None and we fall back to the heuristic, so
         # a bad LLM day can never fail a clips job. No key = heuristic.
-        candidates = build_candidates_llm(transcript["segments"],
-                                          max_clips=max_clips,
-                                          min_len=min_len, max_len=max_len,
-                                          abs_start=start)
+        try:
+            candidates = build_candidates_llm(transcript["segments"],
+                                              max_clips=max_clips,
+                                              min_len=min_len, max_len=max_len,
+                                              abs_start=start)
+        finally:
+            _llm_stop.set()
+            _llm_watcher.join(timeout=3)
         selector = "llm"
         if candidates is None:
             selector = "heuristic"
             candidates = build_candidates(transcript["segments"],
                                           min_len=min_len, max_len=max_len)
         candidates = candidates[:max(1, max_clips)]
+        # 95% solo cuando los candidatos existen de verdad; el 100 lo
+        # pone el update de "done" de abajo.
+        jobs.update(job_id, progress=95,
+                    message=f"La IA encontró {len(candidates)} clips…")
         # Candidates are relative to the section; expose absolute times too.
         for c in candidates:
             c["abs_start"] = round(c["start"] + start, 2)
@@ -411,6 +437,17 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
 
 def _resolve_source_for_render(req: RenderRequest, job_id: str):
     """Return (source_path, section_start, transcript_dict)."""
+    # Transcripción 40→70% también en el render directo (mismo
+    # callback que en _run_clips_job): sin él se queda quieta en 40%.
+    _tr_t0 = time.monotonic()
+
+    def _tr_progress(frac: float, msg: str):
+        pct = 40 + int(30 * max(0.0, min(1.0, frac)))
+        el = int(time.monotonic() - _tr_t0)
+        mm, ss = divmod(el, 60)
+        jobs.update(job_id, progress=pct,
+                    message=f"{msg} · {mm}:{ss:02d}")
+
     if req.job_id:
         parent = jobs.get(req.job_id)
         if not parent or parent.get("status") != "done" or not parent.get("result"):
@@ -453,14 +490,16 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
                     message="Leyendo tu archivo…")
         source = _cut_upload(_upload_path(req.source_file), req.start, req.end, job_id)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
-        transcript = transcribe_file(source, job_id, model=req.model)
+        transcript = transcribe_file(source, job_id, model=req.model,
+                                     progress_cb=_tr_progress)
         return source, req.start, transcript
     if req.url:
         jobs.update(job_id, status="running", progress=10,
                     message="Descargando el video…")
         source = download_section(req.url, req.start, req.end, job_id)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
-        transcript = transcribe_file(source, job_id, model=req.model)
+        transcript = transcribe_file(source, job_id, model=req.model,
+                                     progress_cb=_tr_progress)
         return source, req.start, transcript
     raise HTTPException(400, "Pasa job_id, url o un archivo subido")
 

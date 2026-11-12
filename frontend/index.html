@@ -23,9 +23,72 @@ header b{color:var(--red);font-size:22px}
 html.booting header,html.booting main{display:none}
 html.booting #bootLoading{display:flex}
 /* Landing: solo hero + tarjeta Mi cuenta (el creador vive dentro del panel) */
-main{max-width:640px;margin:0 auto;padding:40px 20px 60px}
+main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .hero-line{color:#f2f2f7;font-size:18px;line-height:1.6;text-align:center;margin:0 0 28px}
 .hero-line b{color:var(--red)}
+/* ---------- Landing moderna (2026-11-12, Juan: tipo wayin.ai/clip-maker) ---------- */
+.landing-nav{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:24px;padding:14px 0;background:rgba(17,17,19,.92);backdrop-filter:blur(8px);border-bottom:1px solid #27272a}
+.landing-nav .brand{font-size:20px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px}
+.landing-nav .brand img{width:28px;height:28px}
+.landing-nav .nav-links{display:flex;gap:20px;margin-left:12px}
+.landing-nav .nav-links a{color:#a1a1aa;font-size:14px;text-decoration:none}
+.landing-nav .nav-links a:hover{color:#fff}
+.landing-nav .nav-actions{margin-left:auto;display:flex;gap:10px}
+.landing-nav .btn-red,.landing-nav .ghost{padding:9px 16px;font-size:14px}
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center;padding:72px 0 56px}
+.hero-badge{display:inline-block;font-size:13px;font-weight:700;color:#ff5a3c;background:rgba(225,6,0,.12);border:1px solid rgba(225,6,0,.35);padding:6px 12px;border-radius:999px;margin-bottom:18px}
+.hero h1{font-size:52px;line-height:1.05;margin:0 0 18px;letter-spacing:-1.5px}
+.hero h1 .red{color:var(--red)}
+.hero-sub{font-size:18px;line-height:1.6;color:#a1a1aa;margin:0 0 28px}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap}
+.hero-cta .big{padding:14px 24px;font-size:16px}
+.hero-trust{font-size:13px;color:#71717a;margin:16px 0 0}
+.hero-visual{display:flex;justify-content:center}
+.hero-phone{width:280px;background:#000;border:3px solid #2e2e33;border-radius:32px;padding:8px;box-shadow:0 24px 64px rgba(0,0,0,.6);position:relative}
+.hero-phone::before{content:"";position:absolute;top:16px;left:50%;transform:translateX(-50%);width:72px;height:20px;background:#000;border-radius:12px;z-index:2}
+.hero-phone video{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:24px;display:block;background:#111}
+.hero-phone .phone-cap{position:absolute;left:20px;right:20px;bottom:20px;z-index:2;background:rgba(0,0,0,.65);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;color:#fff}
+.platforms{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:center;justify-content:center;padding:20px 0;border-top:1px solid #27272a;border-bottom:1px solid #27272a;color:#71717a;font-size:14px}
+.platforms b{color:#d4d4d8;font-size:16px}
+.landing-sec{padding:64px 0 8px}
+.landing-sec h2{font-size:34px;line-height:1.15;margin:0 0 12px;letter-spacing:-.8px;text-align:center}
+.landing-sec .sec-sub{text-align:center;color:#a1a1aa;font-size:16px;margin:0 0 36px}
+.steps-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.step-card{background:#1a1a1e;border:1px solid #27272a;border-radius:16px;padding:24px}
+.step-card .step-num{width:40px;height:40px;border-radius:50%;background:var(--red);color:#fff;font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.step-card h3{font-size:18px;margin:0 0 8px}
+.step-card p{color:#a1a1aa;font-size:14px;line-height:1.6;margin:0}
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.feat-card{background:#1a1a1e;border:1px solid #27272a;border-radius:16px;padding:24px}
+.feat-card .feat-ico{font-size:28px;margin-bottom:12px}
+.feat-card h3{font-size:17px;margin:0 0 8px}
+.feat-card p{color:#a1a1aa;font-size:14px;line-height:1.6;margin:0}
+.landing-plans{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+.plan-card{background:#1a1a1e;border:1px solid #27272a;border-radius:18px;padding:28px;display:flex;flex-direction:column;position:relative}
+.plan-card.popular{border-color:var(--red);box-shadow:0 0 0 1px var(--red),0 16px 40px rgba(225,6,0,.18)}
+.plan-card .pop-tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--red);color:#fff;font-size:12px;font-weight:800;padding:5px 14px;border-radius:999px;white-space:nowrap}
+.plan-card h3{font-size:20px;margin:0 0 4px}
+.plan-card .plan-price{font-size:36px;font-weight:800;margin:10px 0 2px}
+.plan-card .plan-price small{font-size:15px;color:#a1a1aa;font-weight:500}
+.plan-card .plan-per{color:#71717a;font-size:13px;margin:0 0 18px}
+.plan-card ul{list-style:none;margin:0 0 24px;padding:0;display:flex;flex-direction:column;gap:9px;color:#d4d4d8;font-size:14px}
+.plan-card ul li::before{content:"✓ ";color:var(--red);font-weight:800}
+.plan-card .btn-red,.plan-card .btn-black{margin-top:auto;width:100%;justify-content:center}
+.faq-list{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.faq-list details{background:#1a1a1e;border:1px solid #27272a;border-radius:14px;padding:18px 20px}
+.faq-list summary{font-weight:700;font-size:16px;cursor:pointer}
+.faq-list p{color:#a1a1aa;font-size:14px;line-height:1.6;margin:10px 0 0}
+.final-cta{text-align:center;padding:72px 0 8px}
+.final-cta h2{font-size:34px;margin:0 0 12px}
+.final-cta p{color:#a1a1aa;margin:0 0 24px}
+.landing-foot{border-top:1px solid #27272a;margin-top:64px;padding:24px 0 0;display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;color:#71717a;font-size:13px}
+@media(max-width:800px){
+  .hero{grid-template-columns:1fr;padding:48px 0 40px;gap:32px}
+  .hero h1{font-size:36px}
+  .landing-nav .nav-links{display:none}
+  .steps-grid,.features-grid,.landing-plans{grid-template-columns:1fr}
+  .landing-sec h2{font-size:26px}
+}
 .card{background:var(--card);border:1px solid #27272a;border-radius:16px;padding:18px;margin-bottom:16px}
 h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
 input[type=text],input[type=url],input[type=email],input[type=password],input[type=number],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #27272a;background:#111113;color:var(--text);font-size:15px}
@@ -1071,9 +1134,138 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </div>
 </section>
 <main>
-  <p class="hero-line">Convierte videos y lives de YouTube en <b>clips verticales 9:16</b> listos para Reels, TikTok y Shorts — sin API de YouTube.</p>
-  <section class="card" id="accountCard">
-    <h2>Mi cuenta</h2>
+  <!-- Barra superior de la landing -->
+  <nav class="landing-nav">
+    <span class="brand"><img src="/favicon.svg" alt="ClipViral"> ClipViral</span>
+    <div class="nav-links">
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#funciones">Funciones</a>
+      <a href="#planes">Planes</a>
+      <a href="#faq">Preguntas</a>
+    </div>
+    <div class="nav-actions">
+      <button class="ghost" id="btnNavLogin">Entrar</button>
+      <button class="btn-red" id="btnNavRegister">Crear cuenta</button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div>
+      <span class="hero-badge">✦ IA · Sin API de YouTube</span>
+      <h1>Convierte videos largos en <span class="red">clips virales</span></h1>
+      <p class="hero-sub">Pega el link de YouTube o Twitch y la IA encuentra los mejores momentos, los corta en vertical 9:16 con subtítulos y portada — listos para TikTok, Reels y Shorts.</p>
+      <div class="hero-cta">
+        <button class="btn-red big" id="btnHeroStart">Crear mi primer clip →</button>
+        <button class="btn-black big" id="btnHeroPlans">Ver planes</button>
+      </div>
+      <p class="hero-trust">Sin tarjeta · Paga por transferencia · Cancela cuando quieras</p>
+    </div>
+    <div class="hero-visual">
+      <div class="hero-phone">
+        <video src="/api/download/clip_d198e5f1b930.mp4" autoplay muted loop playsinline></video>
+        <div class="phone-cap">🔥 95% · Anuel y Cosculluela en Alofoke</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Plataformas -->
+  <section class="platforms">
+    <span>Funciona con</span>
+    <b>YouTube</b><b>Twitch</b><b>TikTok</b><b>Instagram Reels</b><b>YouTube Shorts</b>
+  </section>
+
+  <!-- Cómo funciona -->
+  <section class="landing-sec" id="como-funciona">
+    <h2>De video largo a clip viral en 3 pasos</h2>
+    <p class="sec-sub">Sin editar a mano, sin buscar el momento, sin API de YouTube.</p>
+    <div class="steps-grid">
+      <div class="step-card"><div class="step-num">1</div><h3>Pega el link</h3><p>Un video o un live de YouTube o Twitch. También puedes subir tu propio archivo de video.</p></div>
+      <div class="step-card"><div class="step-num">2</div><h3>La IA elige los momentos</h3><p>Transcribe todo el audio y te propone los mejores clips con su % de potencial viral y su título de enganche.</p></div>
+      <div class="step-card"><div class="step-num">3</div><h3>Descarga y publica</h3><p>El clip sale en vertical 9:16, 1080p, con subtítulos, marco y portada. Descárgalo y súbelo a TikTok, Reels o Shorts.</p></div>
+    </div>
+  </section>
+
+  <!-- Funciones -->
+  <section class="landing-sec" id="funciones">
+    <h2>Todo lo que necesitas para clips que pegan</h2>
+    <p class="sec-sub">Hecho para creadores, podcasts, entrevistas y lives.</p>
+    <div class="features-grid">
+      <div class="feat-card"><div class="feat-ico">🎯</div><h3>Momentos virales con IA</h3><p>La IA busca lo gracioso, lo sorprendente, lo polémico y lo exclusivo — nunca el intro ni el relleno. Cada clip lleva su % viral.</p></div>
+      <div class="feat-card"><div class="feat-ico">💬</div><h3>Subtítulos virales y portada</h3><p>Subtítulos grandes con palabra clave resaltada y una portada con tu título de enganche: color, borde, fondo y posición a tu gusto.</p></div>
+      <div class="feat-card"><div class="feat-ico">🎥</div><h3>Cámara inteligente</h3><p>Sigue al que está hablando, doble cámara para entrevistas (uno arriba y otro abajo) o pantalla dividida para reacciones y gaming.</p></div>
+      <div class="feat-card"><div class="feat-ico">📺</div><h3>Clips automáticos de lives</h3><p>Conecta un live de YouTube o Twitch y los clips aparecen solos cada pocos minutos, sin que tengas que estar pendiente.</p></div>
+      <div class="feat-card"><div class="feat-ico">🖼️</div><h3>Videos e imágenes con IA</h3><p>Genera imágenes y videos con IA para tus portadas y tu contenido, sin salir de ClipViral.</p></div>
+      <div class="feat-card"><div class="feat-ico">⚡</div><h3>Rápido de verdad</h3><p>El audio se baja en paralelo y la transcripción va por trozos: un video de 43 minutos se analiza en unos 5 minutos.</p></div>
+    </div>
+  </section>
+
+  <!-- Planes -->
+  <section class="landing-sec" id="planes">
+    <h2>Planes simples, sin sorpresas</h2>
+    <p class="sec-sub">Paga por transferencia, sube tu comprobante y empieza. 30 días por plan.</p>
+    <div class="landing-plans">
+      <div class="plan-card">
+        <h3>Básico</h3>
+        <div class="plan-price">RD$1,000 <small>/ mes</small></div>
+        <p class="plan-per">Para empezar a publicar clips</p>
+        <ul>
+          <li>10 videos por semana</li>
+          <li>Hasta 5 clips por video</li>
+          <li>Calidad 720p</li>
+          <li>Tu propia marca de agua</li>
+        </ul>
+        <button class="btn-black" data-plan-cta>Empezar con Básico</button>
+      </div>
+      <div class="plan-card popular">
+        <span class="pop-tag">⭐ Más popular</span>
+        <h3>Full</h3>
+        <div class="plan-price">RD$3,500 <small>/ mes</small></div>
+        <p class="plan-per">Sin límites, para creadores serios</p>
+        <ul>
+          <li>Videos ilimitados</li>
+          <li>Hasta 15 clips por video</li>
+          <li>Calidad 1080p</li>
+          <li>Clips de lives automáticos</li>
+          <li>Videos e imágenes con IA</li>
+          <li>Tu propia marca de agua</li>
+        </ul>
+        <button class="btn-red" data-plan-cta>Empezar con Full</button>
+      </div>
+      <div class="plan-card">
+        <h3>Pro</h3>
+        <div class="plan-price">RD$2,000 <small>/ mes</small></div>
+        <p class="plan-per">Para publicar todas las semanas</p>
+        <ul>
+          <li>25 videos por semana</li>
+          <li>Hasta 10 clips por video</li>
+          <li>Calidad 1080p</li>
+          <li>Clips de lives automáticos</li>
+          <li>Videos con IA</li>
+          <li>Tu propia marca de agua</li>
+        </ul>
+        <button class="btn-black" data-plan-cta>Empezar con Pro</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="landing-sec" id="faq">
+    <h2>Preguntas frecuentes</h2>
+    <p class="sec-sub">Lo que más nos preguntan antes de empezar.</p>
+    <div class="faq-list">
+      <details><summary>¿Necesito la API de YouTube?</summary><p>No. Solo pegas el link del video o del live y ClipViral hace todo. No necesitas claves, ni permisos, ni conectar tu canal.</p></details>
+      <details><summary>¿Qué videos puedo convertir?</summary><p>Cualquier video público de YouTube o Twitch, y lives en curso. También puedes subir tu propio archivo de video.</p></details>
+      <details><summary>¿Cómo pago?</summary><p>Por transferencia bancaria. Eliges tu plan, pagas con el método que te convenga, subes el comprobante y el admin lo aprueba. Sin tarjeta.</p></details>
+      <details><summary>¿En qué calidad salen los clips?</summary><p>Vertical 9:16 en 1080p (Full y Pro) o 720p (Básico), con subtítulos, marco y portada con tu título de enganche.</p></details>
+      <details><summary>¿Puedo cancelar cuando quiera?</summary><p>Sí. Tu plan dura 30 días y no se renueva solo. Si no quieres seguir, simplemente no lo renuevas.</p></details>
+    </div>
+  </section>
+
+  <!-- Cuenta / acceso -->
+  <section class="card" id="accountCard" style="margin-top:64px">
+    <h2>Empieza ahora</h2>
+    <p class="muted" style="margin:0 0 16px">Crea tu cuenta o entra si ya tienes una. Después eliges tu plan.</p>
     <div id="authLoggedOut">
       <label>Nombre (solo para registrarse)</label>
       <input id="authName" type="text" placeholder="Tu nombre">
@@ -1096,7 +1288,19 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       </div>
     </div>
   </section>
+
+  <!-- CTA final -->
+  <section class="final-cta">
+    <h2>Tu próximo clip viral está en un video que ya tienes</h2>
+    <p>Pega el link y deja que la IA haga el trabajo pesado.</p>
+    <button class="btn-red big" id="btnFinalStart">Crear mi primer clip →</button>
+  </section>
+
+  <footer class="landing-foot">
+    <span><b style="color:#fff">ClipViral</b> · Convierte videos en clips virales</span>
+    <span>Hecho por <b style="color:#fff">MarketingCaribe</b> · Santo Domingo, República Dominicana</span>
+  </footer>
 </main>
-<script src="app.js?v=53"></script>
+<script src="app.js?v=54"></script>
 </body>
 </html>

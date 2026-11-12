@@ -1591,6 +1591,9 @@ function renderSteps(doneCount, activeIdx, statusText) {
 function setJobProgress(p) {
   const f = $("progressFill");
   if (f) f.style.width = Math.max(0, Math.min(100, p || 0)) + "%";
+  // El número junto a la barra (v52): el % real del trabajo, no solo la barra.
+  const pct = $("jobPct");
+  if (pct) pct.textContent = Math.round(Math.max(0, Math.min(100, p || 0))) + "%";
 }
 // ---------- Vista previa (en vivo): solo cuando hay un clip que ver ----------
 // Oculta por defecto (hidden en el HTML). Aparece al elegir un clip o al
@@ -1701,7 +1704,29 @@ $("uploadFile").onchange = async () => {
   const fd = new FormData();
   fd.append("file", file);
   try {
-    const d = await apiFetch("/api/upload", { method: "POST", headers: authHeaders(), body: fd });
+    // Subida con XMLHttpRequest (v52): fetch no reporta el progreso
+    // de subida; upload.onprogress muestra los MB reales y el %.
+    const d = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      const headers = authHeaders();
+      for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const done = (e.loaded / (1024 * 1024)).toFixed(1);
+          const total = (e.total / (1024 * 1024)).toFixed(1);
+          info.textContent = `Subiendo ${file.name} · ${done} de ${total} MB (${Math.round((e.loaded / e.total) * 100)}%)`;
+        }
+      };
+      xhr.onload = () => {
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch { /* no-JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+        reject(new Error((data && data.detail) || FRIENDLY_ERROR));
+      };
+      xhr.onerror = () => reject(new Error(FRIENDLY_ERROR));
+      xhr.send(fd);
+    });
     state.uploadedFile = d.file_id;
     info.textContent = `Archivo listo: ${d.filename} (${mb} MB). Dale a "Sacar clips".`;
     $("videoMeta").textContent = "";

@@ -1725,7 +1725,12 @@ $("btnClips").onclick = async () => {
     const d = await apiFetch("/api/clips", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     const job = await pollJob(d.job_id, (j) => {
       setJobProgress(j.progress || 0);
-      renderSteps(clipsStepFromProgress(j.progress || 0), clipsStepFromProgress(j.progress || 0), FLOW_MSGS[clipsStepFromProgress(j.progress || 0)]);
+      // El mensaje EN VIVO del servidor (2026-11-11, Juan: la carga
+      // debe verse real): durante la descarga lleva partes, MB y
+      // velocidad; si el servidor no manda mensaje, cae al texto fijo
+      // del paso.
+      const step = clipsStepFromProgress(j.progress || 0);
+      renderSteps(step, step, (j.message && String(j.message).trim()) || FLOW_MSGS[step]);
     });
     setJobProgress(100);
     state.clipsJob = job;
@@ -2353,7 +2358,10 @@ $("btnRender").onclick = async () => {
     const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     const job = await pollJob(d.job_id, (j) => {
       setJobProgress(j.progress || 0);
-      if ((j.progress || 0) >= 70) renderSteps(3, 3, FLOW_MSGS[3]);
+      // Mensaje en vivo del servidor cuando lo hay (descarga, etc.).
+      if ((j.progress || 0) >= 70) renderSteps(3, 3, (j.message && String(j.message).trim()) || FLOW_MSGS[3]);
+      else if (j.message && String(j.message).trim()) renderSteps(3, 3, String(j.message).trim());
+    });
     });
     const file = job.result.file;
     setJobProgress(100);

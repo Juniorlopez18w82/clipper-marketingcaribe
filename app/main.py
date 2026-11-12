@@ -350,7 +350,21 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                                       audio_only=True,
                                       progress_cb=_dl_progress)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
-        transcript = transcribe_file(source, job_id, model=model)
+        # Progreso REAL de la transcripción (2026-11-11, Juan: no debe
+        # quedarse quieta minutos). La transcripción es la fase 40→80:
+        # cada trozo de Groq que termina mueve la barra y el mensaje
+        # lleva el trozo y el tiempo que lleva el trabajo.
+        import time as _time
+        _tr_t0 = _time.monotonic()
+
+        def _tr_progress(done: int, total: int):
+            pct = 40 + int(40 * done / max(1, total))
+            el = int(_time.monotonic() - _tr_t0)
+            mm, ss = divmod(el, 60)
+            jobs.update(job_id, progress=pct,
+                        message=f"Transcribiendo el audio… trozo {done} de {total} · {mm}:{ss:02d}")
+        transcript = transcribe_file(source, job_id, model=model,
+                                     progress_cb=_tr_progress)
         if not transcript["segments"]:
             raise RuntimeError(
                 "No se pudo transcribir el audio de este video. "
@@ -408,7 +422,25 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         if res.get("audio_only") and res.get("url"):
             jobs.update(job_id, status="running", progress=10,
                         message="Descargando el video del clip…")
-            source = download_section(res["url"], req.start, req.end, job_id)
+            # Progreso REAL de la descarga del video (2026-11-11, Juan:
+            # el render tampoco debe quedarse quieto). La descarga es
+            # la fase 10→40: el hilo vigilante reporta MB y velocidad
+            # reales; el total se estima a ~200 KB/s para 1080p.
+            import time as _time
+            _rd_t0 = _time.monotonic()
+            _rd_dur = max(1.0, float(req.end - req.start))
+
+            def _rd_progress(done: int, total: int, nbytes: int,
+                             elapsed: float):
+                est_total = max(1.0, _rd_dur * 200000)
+                frac = min(0.95, nbytes / est_total)
+                pct = 10 + int(30 * frac)
+                mb = nbytes / 1048576
+                kbps = int(nbytes / max(1.0, elapsed) / 1024)
+                jobs.update(job_id, progress=pct,
+                            message=f"Descargando el video del clip… {mb:.1f} MB · {kbps} KB/s")
+            source = download_section(res["url"], req.start, req.end, job_id,
+                                      progress_cb=_rd_progress)
             section_start = req.start
         else:
             source = SOURCES_DIR / res["source_file"]
@@ -566,8 +598,21 @@ def _run_render_job(job_id: str, req: RenderRequest):
         except Exception:  # noqa: BLE001 — la resolución nunca falla el render
             logger.warning("template resolution failed, using request values",
                            exc_info=True)
+        # Progreso REAL del render (2026-11-11, Juan: el render tampoco
+        # debe quedarse quieto). El render es la fase 70→100: ffmpeg
+        # reporta el tiempo ya codificado y la barra se mueve con él.
+        import time as _time2
+        _rn_t0 = _time2.monotonic()
+
+        def _rn_progress(frac: float):
+            pct = 70 + int(30 * min(1.0, max(0.0, frac)))
+            el = int(_time2.monotonic() - _rn_t0)
+            mm, ss = divmod(el, 60)
+            jobs.update(job_id, progress=pct,
+                        message=f"Cortando tu clip… {int(frac * 100)}% · {mm}:{ss:02d}")
         render_clip(
             source, rel_start, duration, out_path, words,
+            progress_cb=_rn_progress,
             frame_enabled=look["frame_enabled"],
             frame_color=look["frame_color"], frame_width=look["frame_width"],
             brand_text=req.brand_text, title_text=req.title_text,

@@ -213,7 +213,7 @@ def _transcribe_groq_one(wav_path: Path, key: str) -> tuple[list[dict] | None, s
         return None, "es"
 
 
-def _transcribe_groq(wav_path: Path) -> tuple[list[dict] | None, str]:
+def _transcribe_groq(wav_path: Path, progress_cb=None) -> tuple[list[dict] | None, str]:
     """Try Groq Whisper. Returns (segments, detected language) on
     success, (None, "es") when Groq was not attempted or failed — the
     caller then falls back to local faster-whisper. An EMPTY result is
@@ -227,14 +227,28 @@ def _transcribe_groq(wav_path: Path) -> tuple[list[dict] | None, str]:
     Audios largos: Groq solo acepta 25 MB por llamada, así que un WAV
     mayor se parte en trozos de ~12 min, se transcribe cada uno y se
     unen los segmentos con sus desplazamientos — la transcripción
-    rápida funciona para videos de cualquier duración."""
+    rápida funciona para videos de cualquier duración.
+    progress_cb (2026-11-11 v52, Juan: la transcripción no debe
+    quedarse quieta): se llama con (fracción 0→1, mensaje) al
+    terminar cada trozo — "Transcribiendo… trozo X de N" — para que
+    la barra se mueva en vez de quedarse quieta en 40% minutos.
+    Nunca rompe la transcripción si el callback falla."""
+    def _report(frac: float, msg: str):
+        if progress_cb:
+            try:
+                progress_cb(frac, msg)
+            except Exception:
+                pass
+
     key = os.environ.get("GROQ_API_KEY")
     if not key:
         return None, "es"
     if _groq_eligible(wav_path):
+        _report(0.0, "Transcribiendo… trozo 1 de 1")
         segments, lang = _transcribe_groq_one(wav_path, key)
         if segments is None:
             return None, "es"
+        _report(1.0, "Transcribiendo… trozo 1 de 1")
     else:
         # Audio largo: partir en trozos y unir. Si un trozo falla,
         # todo el intento cae al motor local (como antes).
@@ -248,12 +262,14 @@ def _transcribe_groq(wav_path: Path) -> tuple[list[dict] | None, str]:
         segments = []
         lang = "es"
         try:
-            for chunk_path, offset in parts:
+            for idx, (chunk_path, offset) in enumerate(parts):
                 chunk_segs, chunk_lang = _transcribe_groq_one(chunk_path, key)
                 if chunk_segs is None:
                     return None, "es"
                 lang = chunk_lang
                 segments.extend(_offset_segments(chunk_segs, offset))
+                _report((idx + 1) / len(parts),
+                        f"Transcribiendo… trozo {idx + 1} de {len(parts)}")
         finally:
             for chunk_path, _ in parts:
                 try:
@@ -315,7 +331,8 @@ def load_wav_array(wav_path: Path) -> np.ndarray:
     return np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def transcribe_file(source: Path, job_id: str, model: str | None = None) -> dict:
+def transcribe_file(source: Path, job_id: str, model: str | None = None,
+                    progress_cb=None) -> dict:
     """Transcribe a downloaded section. Returns {segments, words, path}.
 
     Times are RELATIVE to the start of ``source`` (the downloaded section).
@@ -325,10 +342,15 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None) -> dict
     tier); any Groq failure falls back to local faster-whisper, so the
     return shape is identical either way. ``model`` only applies to the
     local engine; Groq always uses whisper-large-v3.
+
+    progress_cb (2026-11-11): se llama con (trozos_listos,
+    total_trozos) al terminar cada trozo de Groq; el motor local no
+    parte en trozos, así que ahí se llama una vez al final.
     """
     wav_path = TRANSCRIPTS_DIR / f"{job_id}.wav"
     extract_wav(source, wav_path)
-    groq_segments, groq_lang = _transcribe_groq(wav_path)
+    groq_segments, groq_lang = _transcribe_groq(wav_path,
+                                                 progress_cb=progress_cb)
     if groq_segments is not None:
         out_segments = groq_segments
         used_model = GROQ_MODEL
@@ -353,6 +375,11 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None) -> dict
                 ],
             })
         used_model = model or WHISPER_MODEL
+        if progress_cb:
+            try:
+                progress_cb(1, 1)
+            except Exception:
+                pass
     result = {"job_id": job_id, "model": used_model,
               "language": detected_lang, "segments": out_segments}
     out_path = TRANSCRIPTS_DIR / f"{job_id}.json"

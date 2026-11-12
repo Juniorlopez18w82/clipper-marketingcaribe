@@ -112,7 +112,8 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .final-cta{text-align:center;padding:72px 0 8px}
 .final-cta h2{font-size:34px;margin:0 0 12px}
 .final-cta p{color:#a1a1aa;margin:0 0 24px}
-.landing-foot{border-top:1px solid #27272a;margin-top:64px;padding:24px 0 0;display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;color:#71717a;font-size:13px}
+.quick-login{display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid #27272a}
+.quick-login .small{padding:7px 12px;font-size:13px}
 @media(max-width:800px){
   .hero{grid-template-columns:1fr;padding:56px 0 44px;gap:36px}
   .hero h1{font-size:40px}
@@ -1309,6 +1310,11 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <button id="btnRegister" class="btn-black">Crear cuenta</button>
       </div>
       <p id="authMsg" class="muted"></p>
+      <div class="quick-login">
+        <span class="muted small">Acceso rápido:</span>
+        <button class="small ghost" id="btnQuickAdmin" type="button">👑 Admin</button>
+        <button class="small ghost" id="btnQuickDemo" type="button">👤 Demo</button>
+      </div>
     </div>
     <div id="authLoggedIn" hidden>
       <p>Hola, <b id="authUserName" style="color:#A855F7"></b></p>
@@ -1332,6 +1338,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;font-weight:700">Marketingcaribe.com</a></span>
   </footer>
 </main>
-<script src="app.js?v=59"></script>
+<script src="app.js?v=60"></script>
 </body>
 </html>

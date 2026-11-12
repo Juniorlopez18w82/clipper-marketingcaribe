@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -366,7 +367,8 @@ def _download_audio_chunk(url: str, start: float, end: float,
 
 
 def _download_audio_parallel(url: str, start: float, end: float,
-                             job_id: str) -> Path:
+                             job_id: str,
+                             progress_cb=None) -> Path:
     """Baja el audio de [start, end] en trozos paralelos y los une.
 
     YouTube limita la velocidad POR CONEXIÓN y el límite varía mucho
@@ -377,6 +379,12 @@ def _download_audio_parallel(url: str, start: float, end: float,
     para audio) en un solo .webm. Si algún trozo falla en paralelo se
     reintenta en serie; si la unión falla, se lanza el error y el
     llamador cae al método en serie.
+
+    progress_cb (2026-11-11, Juan: la carga debe verse en vivo): se
+    llama al terminar cada trozo con (trozos_listos, total_trozos,
+    bytes_bajados, segundos_desde_el_inicio) para que el trabajo
+    muestre el progreso real (partes, MB, velocidad) en vez de quedarse
+    en "Descargando…" sin moverse.
     """
     total = end - start
     n_chunks = min(AUDIO_PARALLEL_MAX_CHUNKS,
@@ -392,6 +400,8 @@ def _download_audio_parallel(url: str, start: float, end: float,
         for old in SOURCES_DIR.glob(f"{tag}.*"):
             old.unlink()
     results: dict[int, Path] = {}
+    t0 = time.monotonic()
+    done_bytes = 0
     with ThreadPoolExecutor(max_workers=AUDIO_PARALLEL_WORKERS) as ex:
         futs = {ex.submit(_download_audio_chunk, url, cs, ce, tags[i]): i
                 for i, (cs, ce) in enumerate(bounds)}
@@ -403,6 +413,16 @@ def _download_audio_parallel(url: str, start: float, end: float,
                 path = None
             if path is not None:
                 results[i] = path
+                try:
+                    done_bytes += path.stat().st_size
+                except Exception:
+                    pass
+            if progress_cb:
+                try:
+                    progress_cb(len(results), n_chunks, done_bytes,
+                                time.monotonic() - t0)
+                except Exception:
+                    pass
     # Reintento en serie de los trozos que fallaron en paralelo.
     for i, (cs, ce) in enumerate(bounds):
         if i not in results:
@@ -434,7 +454,8 @@ def _download_audio_parallel(url: str, start: float, end: float,
 
 def download_section(url: str, start: float, end: float, job_id: str,
                      audio_only: bool = False,
-                     lowres: bool = False) -> Path:
+                     lowres: bool = False,
+                     progress_cb=None) -> Path:
     """Download only [start, end] (absolute seconds in the original video).
 
     Returns the downloaded file. Format: best video <=1080p + audio, merged
@@ -472,7 +493,8 @@ def download_section(url: str, start: float, end: float, job_id: str,
     # método en serie de abajo.
     if audio_only and (end - start) > AUDIO_PARALLEL_MIN_SECONDS:
         try:
-            out = _download_audio_parallel(url, start, end, job_id)
+            out = _download_audio_parallel(url, start, end, job_id,
+                                           progress_cb=progress_cb)
         except Exception as e:
             logger.warning("audio paralelo falló (%s); reintento en serie", e)
             out = None

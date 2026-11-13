@@ -2726,6 +2726,8 @@ function updateCameraPreview() {
   const v = $("cameraDemo");
   const fb = $("cameraDemoFallback");
   const m = ($("cameraMode") && $("cameraMode").value) || "center";
+  const hint = $("cameraHint");
+  if (hint) hint.textContent = CAMERA_HINTS[m] || CAMERA_HINTS.center;
   if (!v) return;
   if (v.dataset.mode !== m) {
     v.dataset.mode = m;
@@ -2737,9 +2739,24 @@ function updateCameraPreview() {
   if (fb) fb.style.display = "none";
   v.style.display = "block";
 }
+// Precarga los 8 demos en segundo plano (solo 9.6 MB en total) para que
+// al cambiar de modo el video ya esté en caché y no se ponga negro 1-2 s.
+let _demosPreloaded = false;
+function preloadCameraDemos() {
+  if (_demosPreloaded) return;
+  _demosPreloaded = true;
+  ["center", "follow_speaker", "dual", "split", "blur", "mirror", "mirror_blur", "mirror_black"].forEach((m) => {
+    const pv = document.createElement("video");
+    pv.preload = "auto";
+    pv.muted = true;
+    pv.src = "/demos/cam-" + m + ".mp4";
+    pv.load();
+  });
+}
 (function initCameraDemo() {
   const v = $("cameraDemo"), wrap = $("cameraDemoWrap"), fb = $("cameraDemoFallback");
   if (!v || !wrap) return;
+  preloadCameraDemos();
   v.addEventListener("error", () => {
     // Sin demo (archivo ausente): diagrama SVG como antes.
     v.style.display = "none";

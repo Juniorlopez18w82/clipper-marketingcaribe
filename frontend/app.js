@@ -168,6 +168,9 @@ function openPanel() {
   window.scrollTo(0, 0);
   // Abrir la sección que dice la URL (enlace directo o recarga).
   openTabFromUrl();
+  // Link/modo pendientes del hero o del showcase (2026-11-12, v76):
+  // si el usuario pegó un link antes de entrar, se rellena aquí.
+  _fillPendingUrl();
 }
 function closePanel() {
   $("panel").hidden = true;
@@ -363,7 +366,7 @@ $("btnQuickDemo").onclick = () => quickLogin("usuario@marketingcaribe.com", "Usu
     return;
   }
   // Entrada escalonada dentro de cada grupo de tarjetas.
-  const groups = [".steps-grid", ".features-grid", ".landing-plans"];
+  const groups = [".steps-grid", ".features-grid", ".landing-plans", ".bento-grid", ".stats-counters"];
   groups.forEach((sel) => {
     const grid = document.querySelector(sel);
     if (!grid) return;
@@ -2752,3 +2755,141 @@ $("btnRender").onclick = async () => {
     $("btnRender").disabled = false;
   }
 };
+
+// ---------- REDISEÑO HOME v76 (2026-11-12, Juan: home más moderno) ----------
+// Nav glass con sombra al bajar.
+window.addEventListener("scroll", () => {
+  document.querySelector(".landing-nav")?.classList.toggle("scrolled", window.scrollY > 10);
+}, { passive: true });
+
+// Link/modo pendientes del hero o del showcase: se aplican al abrir el
+// panel (openPanel lo llama). Si no hay sesión, el link queda guardado
+// en sessionStorage y se rellena justo después de entrar.
+function _fillPendingUrl() {
+  const link = sessionStorage.getItem("clipper_pending_url");
+  const mode = sessionStorage.getItem("clipper_pending_mode");
+  if (!link && !mode) return;
+  sessionStorage.removeItem("clipper_pending_url");
+  sessionStorage.removeItem("clipper_pending_mode");
+  const tab = document.querySelector('.panel .tab[data-tab="create"]');
+  if (tab) tab.click();
+  if (mode) {
+    const sel = $("cameraMode");
+    if (sel) { sel.value = mode; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+  }
+  if (link) {
+    const input = $("url");
+    if (!input) return;
+    input.value = link;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+// Hero: pegar el link y analizar. Con sesión abre el panel en Crear Clip
+// con el link ya pegado (el evento input dispara la vista previa del
+// video); sin sesión guarda el link y baja al formulario de acceso.
+const _heroForm = $("heroUrlForm");
+if (_heroForm) {
+  _heroForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const link = ($("heroUrl")?.value || "").trim();
+    if (!link || !/youtube\.com|youtu\.be|twitch\.tv/.test(link)) {
+      toast("Pega un link válido de YouTube o Twitch.");
+      $("heroUrl")?.focus();
+      return;
+    }
+    sessionStorage.setItem("clipper_pending_url", link);
+    if (state.user) { openPanel(); }
+    else { landingGoToAccount(); toast("Crea tu cuenta o entra — tu link queda guardado."); }
+  });
+}
+
+// Showcase de formatos: píldoras con los 10 modos de cámara; la vista
+// previa usa los SVG y textos que ya existen (CAMERA_PREVIEWS/HINTS).
+const FMT_MODES = [
+  ["center", "Centrada"], ["follow_speaker", "Seguir al que habla"],
+  ["follow_person", "Elegir una persona"], ["dual", "Doble cámara"],
+  ["split", "Pantalla dividida"], ["auto", "Automático"],
+  ["blur", "Video completo · fondo borroso"], ["mirror", "Espejo completo"],
+  ["mirror_blur", "Espejo · fondo borroso"], ["mirror_black", "Espejo · fondo negro"],
+];
+let _fmtSelected = "follow_speaker";
+(function initFormats() {
+  const pills = $("fmtPills"), prev = $("fmtPreview"), fname = $("fmtName"), hint = $("fmtHint");
+  if (!pills || !prev) return;
+  FMT_MODES.forEach(([mode, label]) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "fmt-pill"; b.textContent = label;
+    b.setAttribute("data-fmt", mode);
+    b.setAttribute("role", "tab");
+    b.onclick = () => selectFmt(mode);
+    pills.appendChild(b);
+  });
+  function selectFmt(mode) {
+    _fmtSelected = mode;
+    pills.querySelectorAll(".fmt-pill").forEach((p) => p.classList.toggle("on", p.getAttribute("data-fmt") === mode));
+    prev.innerHTML = (typeof CAMERA_PREVIEWS !== "undefined" && CAMERA_PREVIEWS[mode]) || "";
+    if (fname) fname.textContent = (FMT_MODES.find((m) => m[0] === mode) || [mode, mode])[1];
+    if (hint) hint.textContent = (typeof CAMERA_HINTS !== "undefined" && CAMERA_HINTS[mode]) || "";
+    prev.classList.remove("fmt-pop"); void prev.offsetWidth; prev.classList.add("fmt-pop");
+  }
+  selectFmt("follow_speaker");
+  const tryBtn = $("btnFmtTry");
+  if (tryBtn) {
+    tryBtn.onclick = () => {
+      sessionStorage.setItem("clipper_pending_mode", _fmtSelected);
+      if (state.user) { openPanel(); }
+      else { landingGoToAccount(); toast("Crea tu cuenta o entra — el modo queda guardado."); }
+    };
+  }
+})();
+
+// Contadores animados: cuentan de 0 al valor al entrar en vista.
+// Sin IntersectionObserver o con movimiento reducido, muestran el valor.
+(function initCounters() {
+  const els = document.querySelectorAll("[data-count]");
+  if (!els.length) return;
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || !("IntersectionObserver" in window)) {
+    els.forEach((el) => { el.textContent = el.getAttribute("data-count"); });
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      const el = en.target; io.unobserve(el);
+      const target = parseFloat(el.getAttribute("data-count")) || 0;
+      const dur = 1200, t0 = performance.now();
+      const tick = (t) => {
+        const p = Math.min(1, (t - t0) / dur);
+        el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }, { threshold: 0.4 });
+  els.forEach((el) => io.observe(el));
+})();
+
+// FAQ acordeón animado: abre/cierra con transición y cierra las demás.
+// La clase .faq-js solo se pone con JS, así sin JS el <details> nativo
+// sigue funcionando (la respuesta se ve al abrir).
+(function initFaq() {
+  const list = document.querySelector(".faq-list");
+  if (!list) return;
+  list.classList.add("faq-js");
+  list.querySelectorAll("details").forEach((d) => {
+    const s = d.querySelector("summary"), p = d.querySelector("p");
+    if (!s || !p) return;
+    s.addEventListener("click", (e) => {
+      e.preventDefault();
+      const wasOpen = d.open;
+      list.querySelectorAll("details[open]").forEach((o) => {
+        if (o !== d) { o.open = false; const op = o.querySelector("p"); if (op) { op.style.maxHeight = "0px"; op.style.marginTop = "0px"; } }
+      });
+      if (wasOpen) { d.open = false; p.style.maxHeight = "0px"; p.style.marginTop = "0px"; }
+      else { d.open = true; p.style.maxHeight = p.scrollHeight + "px"; p.style.marginTop = "10px"; }
+    });
+  });
+})();

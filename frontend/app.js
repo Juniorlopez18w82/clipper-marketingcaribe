@@ -218,6 +218,14 @@ function updateTopBar() {
   }
   $("panelUserPlan").textContent = u.is_admin ? "Admin" : (u.plan && u.plan !== "free" ? u.plan : "Sin plan");
   $("panelUserPlan").classList.toggle("admin", !!u.is_admin);
+  // El pie del menu (movil/tablet) muestra lo mismo que la barra superior.
+  const navCd = $("navCountdown");
+  if (navCd) navCd.textContent = el.textContent;
+  const navPlan = $("navPlanBadge");
+  if (navPlan) {
+    navPlan.textContent = $("panelUserPlan").textContent;
+    navPlan.classList.toggle("admin", !!u.is_admin);
+  }
   // Banner de impersonación (el admin entró a la cuenta de un usuario).
   const imp = localStorage.getItem("clipper_admin_token");
   $("impBanner").hidden = !imp;
@@ -338,6 +346,8 @@ $("btnRegister").onclick = async () => {
 };
 $("btnLogout").onclick = doLogout;
 $("btnLogoutTop").onclick = doLogout;
+const btnLogoutNav = $("btnLogoutNav");
+if (btnLogoutNav) btnLogoutNav.onclick = doLogout;
 $("btnShowPanel").onclick = () => openPanel();
 // ---------- Acceso rápido (2026-11-12, Juan: que el login tenga el
 // admin y el demo listos para entrar en 1 clic, porque la sesión se

@@ -95,6 +95,21 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Clipzio Pro", version="1.5.0", lifespan=lifespan)
+
+
+# El HTML del panel NO se cachea en el navegador (2026-11-12): Juan veía
+# la versión vieja aunque presionara Ctrl+F5. Con no-cache el navegador
+# siempre revalida y recibe el HTML actual. Los assets (app.js?v=NN)
+# ya llevan versión en la URL, así que no se tocan.
+@app.middleware("http")
+async def _no_cache_html(request, call_next):
+    response = await call_next(request)
+    ctype = response.headers.get("content-type", "")
+    if ctype.startswith("text/html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],

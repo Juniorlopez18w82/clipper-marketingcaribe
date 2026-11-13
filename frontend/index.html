@@ -415,6 +415,17 @@ body.nav-collapsed .panel-inner{max-width:1080px}
 .panel button.ghost{background:transparent;color:var(--p-text);border:1px solid var(--p-border2);box-shadow:none}
 .panel button.ghost:hover{background:rgba(255,255,255,.06)}
 .panel button.small{padding:8px 12px;font-size:13px}
+/* --- Menú ⋮ de usuario (Panel Admin): sin este bloque el desplegable
+no tenía posición ni fondo y sus iconos (ICON_*) sin tamaño se veían
+gigantes, con los botones como bloques morados enormes. --- */
+.panel .user-menu-wrap{position:relative;display:inline-block}
+.panel .user-menu-btn svg{width:18px;height:18px}
+.panel .user-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;min-width:220px;background:var(--p-surface);border:1px solid var(--p-border);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.5);padding:6px}
+.panel .user-menu button{display:flex;align-items:center;gap:10px;width:100%;background:transparent;color:var(--p-text);border:0;border-radius:8px;padding:9px 12px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:none;text-align:left}
+.panel .user-menu button:hover{background:rgba(255,255,255,.06)}
+.panel .user-menu button svg{width:16px;height:16px;flex:0 0 auto}
+.panel .user-menu button.danger{color:#f87171}
+.panel .user-menu button.danger:hover{background:rgba(248,113,113,.12)}
 .panel .muted{color:var(--p-muted);font-size:14px;line-height:1.6}
 .panel .muted.small{font-size:12px}
 .panel table{width:100%;border-collapse:collapse;font-size:14px}
@@ -1512,6 +1523,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=96"></script>
+<script src="app.js?v=97"></script>
 </body>
 </html>

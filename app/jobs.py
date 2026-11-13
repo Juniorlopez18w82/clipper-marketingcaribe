@@ -42,6 +42,26 @@ def get(job_id: str) -> dict | None:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def list_active() -> list:
+    """Trabajos en curso (queued / processing / running), los más recientes
+    primero. Los archivos JSON viejos (done / error) se ignoran. Nunca
+    levanta una excepción: un archivo corrupto se salta."""
+    out = []
+    try:
+        files = sorted(JOBS_DIR.glob("*.json"),
+                       key=lambda f: f.stat().st_mtime, reverse=True)
+    except OSError:
+        return out
+    for f in files[:50]:
+        try:
+            job = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if job.get("status") in ("queued", "processing", "running"):
+            out.append(job)
+    return out
+
+
 def update(job_id: str, **fields) -> dict | None:
     job = get(job_id)
     if job is None:

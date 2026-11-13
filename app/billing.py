@@ -35,7 +35,11 @@ class Plan(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(80), nullable=False)
-    price_dop = Column(Integer, nullable=False)  # precio en RD$
+    # Precio en DÓLARES (US$). Los planes reales son Free $0, Pro $25 y
+    # Gold $35 (2026-11-12, Juan). La columna vieja price_dop (RD$) queda
+    # en la base de datos sin usarse; el equivalente en moneda local se
+    # calcula en el frontend con la tasa actual del dólar (ver app.js).
+    price_usd = Column(Float, nullable=False, default=0)
     duration_days = Column(Integer, nullable=False, default=30)
     features = Column(JSON, nullable=False, default=list)  # lista de textos
     is_popular = Column(Boolean, nullable=False, default=False)
@@ -87,40 +91,41 @@ class UserSubscription(Base):
                         default=lambda: datetime.now(timezone.utc))
 
 
-# --- Seed: los 3 planes exactos, en este orden. Sin cuentas reales. ---
+# --- Seed: los 3 planes reales, en US$, en este orden. ---
+# Free $0 (1 día de prueba), Pro $25/mes, Gold $35/mes (2026-11-12, Juan).
+# Los Lives solo están en Gold. El equivalente en moneda local se muestra
+# en el frontend con la tasa actual del dólar (APIs gratuitas, ver app.js).
 SEED_PLANS = [
-    {"name": "Full", "price_dop": 3500, "duration_days": 30, "is_popular": True,
+    {"name": "Free", "price_usd": 0, "duration_days": 1, "is_popular": False,
      "sort_order": 1, "features": [
-        "Videos ilimitados",
-        "Hasta 15 clips por video",
-        "Full HD 1080p y calidad máxima",
-        "Clips de Lives en vivo",
-        "Videos IA (guion, voz y música)",
-        "Imágenes dibujadas por IA",
-        "Sin publicar en TikTok",
-        "Tu propia marca de agua",
+        "1 día de acceso gratis",
+        "Acceso ilimitado por 24 horas",
+        "Prueba de las herramientas de IA",
+        "Clips de videos largos a cortos",
+        "Funciones principales de la plataforma",
     ]},
-    {"name": "Pro", "price_dop": 2000, "duration_days": 30, "is_popular": False,
+    {"name": "Pro", "price_usd": 25, "duration_days": 30, "is_popular": False,
      "sort_order": 2, "features": [
-        "25 videos por semana",
-        "Hasta 10 clips por video",
-        "Full HD 1080p y calidad máxima",
-        "Clips de Lives en vivo",
-        "Videos IA (guion, voz y música)",
-        "Sin imágenes dibujadas por IA",
-        "Sin publicar en TikTok",
-        "Tu propia marca de agua",
+        "Videos largos a clips cortos",
+        "IA que detecta momentos virales",
+        "Subtítulos automáticos",
+        "Edición de clips",
+        "Adaptación para TikTok, Reels y Shorts",
+        "Herramientas de optimización de contenido",
+        "Funciones profesionales",
     ]},
-    {"name": "Básico", "price_dop": 1000, "duration_days": 30, "is_popular": False,
+    {"name": "Gold", "price_usd": 35, "duration_days": 30, "is_popular": True,
      "sort_order": 3, "features": [
-        "10 videos por semana",
-        "Hasta 5 clips por video",
-        "Clips en 720p",
-        "Sin clips de Lives",
-        "Sin Videos IA",
-        "Sin imágenes dibujadas por IA",
-        "Sin publicar en TikTok",
-        "Tu propia marca de agua",
+        "Todo lo del plan Pro",
+        "Generación avanzada de clips con IA",
+        "Procesamiento de videos largos",
+        "Subtítulos automáticos avanzados",
+        "Edición profesional de clips",
+        "Optimización para redes sociales",
+        "Procesamiento de Lives en vivo",
+        "Conversión de Lives a clips cortos",
+        "Momentos destacados durante el LIVE",
+        "Acceso completo premium",
     ]},
 ]
 
@@ -138,12 +143,49 @@ SEED_METHOD_EXAMPLE = {
 
 
 def seed_billing(db) -> None:
-    """Seed planes y método de ejemplo solo si las tablas están vacías."""
-    if db.query(Plan).count() == 0:
+    """Seed planes y método de ejemplo solo si las tablas están vacías.
+
+    Migración de planes 2026-11-12 (Juan: planes reales Free/Pro/Gold en
+    US$): si ya existen planes viejos (Full/Pro/Básico en RD$), se
+    actualizan EN SU LUGAR para no romper las suscripciones existentes
+    (Full→Gold, Básico→Free, Pro se queda Pro con el precio nuevo). Los
+    planes que no están en SEED_PLANS se desactivan (no se borran, para
+    no romper el historial de solicitudes y suscripciones).
+    """
+    existing = db.query(Plan).all()
+    if not existing:
         for p in SEED_PLANS:
             db.add(Plan(**p))
         db.commit()
-        logger.info("Seed plans created: Full, Pro, Básico")
+        logger.info("Seed plans created: Free, Pro, Gold (US$)")
+    else:
+        # Renombres de la migración (solo si el destino aún no existe).
+        names = {p.name for p in existing}
+        for old_name, new_name in (("Full", "Gold"), ("Básico", "Free"),
+                                   ("Basico", "Free")):
+            if old_name in names and new_name not in names:
+                row = next(p for p in existing if p.name == old_name)
+                row.name = new_name
+                names.discard(old_name)
+                names.add(new_name)
+                logger.info("Plan renombrado: %s → %s", old_name, new_name)
+        wanted = {p["name"]: p for p in SEED_PLANS}
+        for row in existing:
+            if row.name in wanted:
+                p = wanted[row.name]
+                row.price_usd = p["price_usd"]
+                row.duration_days = p["duration_days"]
+                row.features = p["features"]
+                row.is_popular = p["is_popular"]
+                row.sort_order = p["sort_order"]
+                row.is_active = True
+            else:
+                row.is_active = False
+        for name, p in wanted.items():
+            if name not in {r.name for r in existing}:
+                db.add(Plan(**p))
+        db.commit()
+        logger.info("Plans synced to Free/Pro/Gold (US$)")
     if db.query(PaymentMethod).count() == 0:
         db.add(PaymentMethod(**SEED_METHOD_EXAMPLE))
         db.commit()
@@ -152,7 +194,7 @@ def seed_billing(db) -> None:
 
 def plan_out(p: Plan) -> dict:
     return {
-        "id": p.id, "name": p.name, "price_dop": p.price_dop,
+        "id": p.id, "name": p.name, "price_usd": float(p.price_usd or 0),
         "duration_days": p.duration_days, "features": p.features or [],
         "is_popular": bool(p.is_popular), "is_active": bool(p.is_active),
         "sort_order": p.sort_order,

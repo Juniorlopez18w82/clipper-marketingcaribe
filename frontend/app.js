@@ -2615,6 +2615,7 @@ const CAMERA_HINTS = {
   dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo, cada una centrada.",
   split: "Para videos con una cara en una esquina (reacción, entrevista, juego): la cara arriba y el contenido abajo, en dos pantallas.",
   auto: "Automático para entrevistas: detecta por escena si hay una o dos personas. Una persona sale centrada a pantalla completa; dos personas salen una arriba y otra abajo, cada una en su recorte. Los cambios de cámara cambian el encuadre al instante.",
+  blur: "Video completo con fondo borroso: el video entero sin recortar en el centro, con el mismo video desenfocado de fondo arriba y abajo. El título gancho queda arriba todo el clip y los subtítulos abajo.",
 };
 // Mini diagrama del modo de cámara (2026-11-11, Juan: los textos
 // decían "el juego abajo" y no todo video es un juego; además pidió
@@ -2626,6 +2627,7 @@ const CAMERA_PREVIEWS = {
   dual: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="16" r="7" fill="#e4e4e7"/><path d="M16 38 Q28 26 40 38 L40 50 L16 50 Z" fill="#e4e4e7"/><line x1="0" y1="50" x2="56" y2="50" stroke="#A855F7" stroke-width="2"/><circle cx="28" cy="66" r="7" fill="#FADE4C"/><path d="M16 88 Q28 76 40 88 L40 100 L16 100 Z" fill="#FADE4C"/></svg>`,
   split: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><rect x="6" y="6" width="44" height="34" rx="4" fill="#27272a" stroke="#A855F7" stroke-width="1.5"/><circle cx="28" cy="18" r="6" fill="#e4e4e7"/><path d="M18 36 Q28 28 38 36 L38 40 L18 40 Z" fill="#e4e4e7"/><rect x="6" y="46" width="44" height="48" rx="4" fill="#1f1f23"/><path d="M24 62 L38 70 L24 78 Z" fill="#A855F7"/></svg>`,
   auto: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="16" r="7" fill="#e4e4e7"/><path d="M16 38 Q28 26 40 38 L40 50 L16 50 Z" fill="#e4e4e7"/><line x1="0" y1="50" x2="56" y2="50" stroke="#A855F7" stroke-width="2"/><circle cx="28" cy="66" r="7" fill="#FADE4C"/><path d="M16 88 Q28 76 40 88 L40 100 L16 100 Z" fill="#FADE4C"/><path d="M46 6 l4 4 M50 6 l-4 4" stroke="#A855F7" stroke-width="2" fill="none"/></svg>`,
+  blur: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><rect x="0" y="0" width="56" height="34" fill="#1f1f2b"/><rect x="10" y="6" width="36" height="6" rx="3" fill="#e4e4e7"/><rect x="16" y="15" width="24" height="5" rx="2.5" fill="#71717a"/><rect x="0" y="34" width="56" height="32" fill="#27272a" stroke="#A855F7" stroke-width="1.5"/><circle cx="28" cy="46" r="6" fill="#e4e4e7"/><path d="M18 62 Q28 54 38 62 L38 66 L18 66 Z" fill="#e4e4e7"/><rect x="0" y="66" width="56" height="34" fill="#1f1f2b"/><rect x="10" y="76" width="36" height="6" rx="3" fill="#FADE4C"/><rect x="16" y="86" width="24" height="5" rx="2.5" fill="#e4e4e7"/></svg>`,
 };
 function updateCameraPreview() {
   const box = $("cameraPreview");

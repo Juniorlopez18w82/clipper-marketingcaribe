@@ -88,6 +88,32 @@ def _ensure_live_columns() -> None:
         logger.warning("Live columns migration failed: %s", e)
 
 
+def _ensure_plan_columns() -> None:
+    """Add the price_usd column to an existing plans table.
+
+    Los planes pasaron de RD$ (price_dop, Integer) a US$ (price_usd,
+    Float) el 2026-11-12. create_all() nunca añade columnas a una tabla
+    existente, así que la columna nueva se añade con ALTER TABLE al
+    arrancar (mismo patrón que _ensure_user_pref_columns). La columna
+    vieja price_dop queda en la tabla sin usarse.
+    """
+    from sqlalchemy import inspect
+
+    cols = {"price_usd": "FLOAT DEFAULT 0"}
+    try:
+        existing = {c["name"] for c in inspect(engine).get_columns("plans")}
+        missing = [k for k in cols if k not in existing]
+        if not missing:
+            return
+        with engine.begin() as conn:
+            for name in missing:
+                conn.exec_driver_sql(
+                    f'ALTER TABLE plans ADD COLUMN "{name}" {cols[name]}')
+        logger.info("Migrated plans table: added %s", ", ".join(missing))
+    except Exception as e:  # noqa: BLE001 — migration is best-effort
+        logger.warning("Plan columns migration failed: %s", e)
+
+
 def init_db() -> None:
     """Create tables if they do not exist. Safe to call on every boot.
 
@@ -181,6 +207,7 @@ def init_db() -> None:
     _ensure_user_pref_columns()
     _ensure_clip_columns()
     _ensure_live_columns()
+    _ensure_plan_columns()
     try:
         db = SessionLocal()
         try:

@@ -280,6 +280,34 @@ def _clip_words(transcript: dict, clip_start_rel: float,
     return [w for w in words if w["w"].strip()]
 
 
+def _filter_segments_to_range(segments: list[dict], rel_start: float,
+                              rel_end: float) -> list[dict]:
+    """Segments/words clipped to a file-relative [rel_start, rel_end] range.
+
+    The downloaded audio file includes the keyframe lead-in, so the
+    transcript covers MORE than the requested [start, end] (it starts at
+    section_start_real, before start). Candidate selection must only see
+    the requested range, or it returns clips that start before `start`
+    (the user asked for [140,180], not [130,180]). Returns a filtered
+    COPY (the stored transcript keeps the full file, for the subtitle
+    editor). Each kept segment holds only the words inside the range,
+    with its text/start/end rebuilt from those words.
+    """
+    out = []
+    for s in segments or []:
+        words = [w for w in s.get("words", [])
+                 if rel_start <= float(w.get("s", 0) or 0) < rel_end]
+        if not words:
+            continue
+        out.append({
+            "start": float(words[0]["s"]),
+            "end": float(words[-1]["e"]),
+            "text": " ".join(str(w.get("w", "")).strip() for w in words).strip(),
+            "words": words,
+        })
+    return out
+
+
 def _cut_upload(upload: Path, start: float, end: float, job_id: str) -> Path:
     """Cut [start, end] out of an uploaded video into data/sources/.
 
@@ -414,8 +442,15 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         # Real LLM first (Groq llama, free tier) when a key is set; ANY
         # LLM failure returns None and we fall back to the heuristic, so
         # a bad LLM day can never fail a clips job. No key = heuristic.
+        # La selección solo ve el rango PEDIDO [start, end]: la
+        # transcripción cubre también el lead-in (desde
+        # section_start_real), y sin recortarla los candidatos saldrían
+        # de antes del inicio pedido.
+        sel_segments = _filter_segments_to_range(
+            transcript["segments"], start - section_start_real,
+            end - section_start_real)
         try:
-            candidates = build_candidates_llm(transcript["segments"],
+            candidates = build_candidates_llm(sel_segments,
                                               max_clips=max_clips,
                                               min_len=min_len, max_len=max_len,
                                               abs_start=section_start_real)
@@ -425,7 +460,7 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         selector = "llm"
         if candidates is None:
             selector = "heuristic"
-            candidates = build_candidates(transcript["segments"],
+            candidates = build_candidates(sel_segments,
                                           min_len=min_len, max_len=max_len)
         candidates = candidates[:max(1, max_clips)]
         # 95% solo cuando los candidatos existen de verdad; el 100 lo

@@ -190,10 +190,10 @@ function planCountdownText(expiresIso) {
   const ms = new Date(expiresIso).getTime() - Date.now();
   if (Number.isNaN(ms) || ms <= 0) return "Plan vencido";
   const days = Math.floor(ms / 86400000);
-  if (days >= 1) return `⏳ Quedan ${days} día${days === 1 ? "" : "s"}`;
+  if (days >= 1) return `Quedan ${days} día${days === 1 ? "" : "s"}`;
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
-  return `⏳ Quedan ${h} h ${m} min`;
+  return `Quedan ${h} h ${m} min`;
 }
 function updateTopBar() {
   const u = state.user;
@@ -576,7 +576,7 @@ async function loadPanel() {
       if (locked && !btn.querySelector(".soon-lock")) {
         const s = document.createElement("span");
         s.className = "soon-lock";
-        s.textContent = "🔒";
+        s.innerHTML = LOCK_SVG;
         btn.appendChild(s);
       }
       if (!locked) btn.querySelector(".soon-lock")?.remove();
@@ -632,7 +632,7 @@ function renderMyRequests(reqs) {
 let _plans = [], _methods = [], _buyPlan = null;
 function featureItem(f) {
   const no = f.trim().toLowerCase().startsWith("sin ");
-  return `<li class="${no ? "no" : ""}">${no ? "✗" : "✓"} ${f}</li>`;
+  return `<li class="${no ? "no" : ""}">${no ? X_SVG : CHECK_SVG} ${f}</li>`;
 }
 function planPriceLabel(p) {
   // Free: "$0 / 1 día". Pro/Gold: "$25 / mes". Precio en US$ + el
@@ -656,7 +656,7 @@ async function renderPlans(activePlanId) {
       const isFree = (p.name || "").toLowerCase() === "free";
       const btnLabel = isMine ? "Tu plan actual"
         : isFree ? "Probar gratis 1 día" : "Contratar";
-      div.innerHTML = `${p.is_popular ? '<span class="tag">⭐ Más popular</span>' : ""} ${isMine ? '<span class="tag mine">✓ Tu plan actual</span>' : ""}
+      div.innerHTML = `${p.is_popular ? '<span class="tag">' + STAR_SVG + ' Más popular</span>' : ""} ${isMine ? '<span class="tag mine">' + CHECK_SVG + ' Tu plan actual</span>' : ""}
         <h4>${p.name}</h4>
         <div class="price">${planPriceLabel(p)}</div>
         <ul>${(p.features || []).map(featureItem).join("")}</ul>
@@ -841,7 +841,7 @@ async function loadAdminEarnings() {
   }
 }
 // Modal "Asignar plan": una tarjeta centrada con el usuario arriba y
-// los planes como filas seleccionables (nombre, precio, duración, ⭐).
+// los planes como filas seleccionables (nombre, precio, duración, popular).
 // Cierra con Cancelar, la ×, clic en el fondo o Escape.
 let assignTarget = null;
 function openAssignModal(userId, name, email, plans) {
@@ -850,7 +850,7 @@ function openAssignModal(userId, name, email, plans) {
   $("assignPlanList").innerHTML = plans.map((p, i) =>
     `<label class="assign-plan-row${i === 0 ? " selected" : ""}">
       <input type="radio" name="assignPlan" value="${p.id}"${i === 0 ? " checked" : ""}>
-      <span><span class="ap-name">${esc(p.name)}</span>${p.is_popular ? '<span class="ap-pop">⭐ Popular</span>' : ""}<br>
+      <span><span class="ap-name">${esc(p.name)}</span>${p.is_popular ? '<span class="ap-pop">' + STAR_SVG + ' Popular</span>' : ""}<br>
       <span class="ap-meta">$${Number(p.price_usd || 0).toLocaleString("en-US")} · ${p.duration_days} días</span></span>
     </label>`).join("") || "<p class='muted'>No hay planes. Crea uno en la pestaña Planes.</p>";
   $("assignPlanList").querySelectorAll(".assign-plan-row").forEach((row) => {
@@ -981,7 +981,7 @@ async function loadAdminPlans() {
   try {
     const plans = await apiFetch("/api/plans");
     $("adminPlans").innerHTML = plans.map((p) =>
-      `<div class="rowline"><div><b>${p.name}</b> · $${Number(p.price_usd || 0).toLocaleString("en-US")} · ${p.duration_days} días ${p.is_popular ? "· ⭐ Popular" : ""}</div>
+      `<div class="rowline"><div><b>${p.name}</b> · $${Number(p.price_usd || 0).toLocaleString("en-US")} · ${p.duration_days} días ${p.is_popular ? "· ' + STAR_SVG + ' Popular" : ""}</div>
       <button class="small black" data-del="${p.id}">Eliminar</button></div>`).join("") || "<p class='muted'>No hay planes.</p>";
     $("adminPlans").querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { await apiFetch(`/api/admin/plans/${b.dataset.del}`, { method: "DELETE", headers: authHeaders() }); loadAdminPlans(); renderPlans(); });
   } catch { $("adminPlans").innerHTML = "<p class='muted'>No se pudieron cargar los planes.</p>"; }
@@ -1047,6 +1047,18 @@ $("btnSaveSettings").onclick = async () => {
 // oscuro). Sin score guardado no se inventa ningún %: no sale fuego.
 const DL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/></svg>';
 const EDIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
+const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const FLAME_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>';
+const STAR_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.26 6.6 1.04-4.75 4.4L18 20.5 12 17l-6 3.5 1.25-6.8L2.5 9.3l6.6-1.04z"/></svg>';
+const CHECKBOX_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8.5 12.5l2.5 2.5 5-6"/></svg>';
+const TV_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg>';
+const TIMER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg>';
+const SPK_ON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+const SPK_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></svg>';
+const IMG_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 17l5-4 4 3 4-3 5 4"/></svg>';
+const X_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>';
+const PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+const STOP_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>';
 const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 const MENU_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 // Iconos del menú ⋮ de usuarios (2026-11-11, petición de Juan: los
@@ -1068,7 +1080,7 @@ function clipRow(c, admin) {
   div.className = "clip-card";
   const dur = fmtDur((c.end || 0) - (c.start || 0));
   const fire = (typeof c.score === "number")
-    ? `<span class="fire-badge">🔥 ${Math.round(c.score)}%</span>` : "";
+    ? `<span class="fire-badge">${FLAME_SVG} ${Math.round(c.score)}%</span>` : "";
   // La miniatura es la PORTADA configurada (2026-11-11): si el clip tiene
   // título de enganche, el video empieza con la tarjeta de portada (2 s
   // con el fotograma + el título), así que la miniatura es el fotograma
@@ -1128,8 +1140,8 @@ function openClipModal(c) {
   clipModalClip = c;
   $("clipModalTitle").textContent = c.title || "Clip";
   const dur = fmtDur((c.end || 0) - (c.start || 0));
-  const fire = (typeof c.score === "number") ? `🔥 ${Math.round(c.score)}% · ` : "";
-  $("clipModalMeta").textContent = `${fire}${dur}`;
+  const fire = (typeof c.score === "number") ? `${FLAME_SVG} ${Math.round(c.score)}% · ` : "";
+  $("clipModalMeta").innerHTML = `${fire}${dur}`;
   const v = $("clipModalVideo");
   v.src = c.download_url;
   $("clipModalDl").href = c.download_url;
@@ -1288,7 +1300,7 @@ function updateBulkBar() {
   const n = _bulkSelected.size;
   $("bulkCount").textContent = `${n} seleccionado${n === 1 ? "" : "s"}`;
   $("bulkDeleteBtn").disabled = n === 0;
-  $("bulkDeleteBtn").textContent = `🗑 Eliminar seleccionados${n ? ` (${n})` : ""}`;
+  $("bulkDeleteBtn").textContent = `${TRASH_SVG} Eliminar seleccionados${n ? ` (${n})` : ""}`;
   const all = $("bulkSelectAll");
   if (all) all.checked = _myClips.length > 0 && _bulkSelected.size === _myClips.length;
 }
@@ -1296,7 +1308,7 @@ function setBulkSelectMode(on) {
   _bulkSelectMode = on;
   if (!on) _bulkSelected.clear();
   $("bulkBar").hidden = !on;
-  $("bulkToggleBtn").textContent = on ? "✕ Salir de selección" : "☑ Seleccionar";
+  $("bulkToggleBtn").textContent = on ? "✕ Salir de selección" : CHECKBOX_SVG + " Seleccionar";
   updateBulkBar();
   renderMyClipsPage();
 }
@@ -1321,8 +1333,8 @@ function openConfirmBulkDelete(n) {
 
 // ---------- Lives (clips automáticos de un live en curso) ----------
 const LIVE_STATUS_LABEL = {
-  active: "● En vivo", paused: "⏸ Pausado", stopped: "■ Detenido",
-  ended: "✓ Terminado",
+  active: "En vivo", paused: "Pausado", stopped: "Detenido",
+  ended: "Terminado",
 };
 let livesTimer = null;
 
@@ -1343,7 +1355,7 @@ async function loadLives() {
       const err = s.last_error ? `<p class="muted" style="color:#f87171;margin:10px 0 0">${esc(s.last_error)}</p>` : "";
       const thumb = s.thumbnail
         ? `<img src="${esc(s.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-        : `<div class="live-thumb-empty">📺</div>`;
+        : `<div class="live-thumb-empty">${TV_SVG}</div>`;
       const onair = s.status === "active" ? `<span class="live-onair">● EN VIVO</span>` : "";
       card.innerHTML = `<div class="live-head">
           <div class="live-thumb">${thumb}${onair}</div>
@@ -1359,10 +1371,10 @@ async function loadLives() {
         </div>
         ${err}
         <div class="live-actions">
-          ${s.status === "active" ? `<button class="icon-btn" data-live-pause="${s.id}" title="Pausar">⏸</button>` : ""}
-          ${s.status === "paused" || s.status === "stopped" ? `<button class="icon-btn" data-live-resume="${s.id}" title="Reanudar">▶</button>` : ""}
-          ${s.status === "active" || s.status === "paused" ? `<button class="icon-btn" data-live-stop="${s.id}" title="Detener">■</button>` : ""}
-          <button class="icon-btn del" data-live-del="${s.id}" title="Eliminar">🗑</button>
+          ${s.status === "active" ? `<button class="icon-btn" data-live-pause="${s.id}" title="Pausar">${PAUSE_SVG}</button>` : ""}
+          ${s.status === "paused" || s.status === "stopped" ? `<button class="icon-btn" data-live-resume="${s.id}" title="Reanudar">${PLAY_SVG}</button>` : ""}
+          ${s.status === "active" || s.status === "paused" ? `<button class="icon-btn" data-live-stop="${s.id}" title="Detener">${STOP_SVG}</button>` : ""}
+          <button class="icon-btn del" data-live-del="${s.id}" title="Eliminar">${TRASH_SVG}</button>
         </div>
         <div class="live-clips" id="live-clips-${s.id}" style="margin-top:14px"><p class="muted">Cargando clips…</p></div>`;
       box.appendChild(card);
@@ -1437,7 +1449,7 @@ $("btnStartLive").onclick = async () => {
         clips_per_round: parseInt($("liveClipsPerRound").value || "3", 10),
       }),
     });
-    msg.textContent = `✓ Live agregado. El primer clip llega en ~${d.interval_minutes} min.`;
+    msg.textContent = `Live agregado. El primer clip llega en ~${d.interval_minutes} min.`;
     $("liveUrl").value = "";
     loadLives();
   } catch (e) {
@@ -1531,7 +1543,7 @@ $("btnGenImage").onclick = async () => {
           $("imgDownload").href = j.file_url;
           $("imgDownload").download = `imagen-${j.id}.png`;
           $("imgResult").hidden = false;
-          $("imgMsg").textContent = "Imagen lista ✓";
+          $("imgMsg").textContent = "Imagen lista";
           loadMyImages();
         } else if (j.status === "failed") {
           stopImgPolling();
@@ -1600,7 +1612,7 @@ $("vidAspect").addEventListener("change", updateVidCost);
 $("vidAudio").addEventListener("change", updateVidCost);
 function vidStatusLabel(s) {
   return { processing: "Generando… esto tarda unos minutos",
-    completed: "Listo ✓", failed: "Falló" }[s] || s;
+    completed: "Listo", failed: "Falló" }[s] || s;
 }
 async function loadMyVideos() {
   const box = $("myVideos");
@@ -1658,7 +1670,7 @@ $("btnGenVideo").onclick = async () => {
           $("vidDownload").href = j.file_url;
           $("vidDownload").download = `video-${j.id}.mp4`;
           $("vidResult").hidden = false;
-          $("vidMsg").textContent = "Video listo ✓";
+          $("vidMsg").textContent = "Video listo";
           loadMyVideos();
         } else if (j.status === "failed") {
           stopVidPolling();
@@ -1767,7 +1779,7 @@ async function pollJob(jobId, onProgress) {
   const _elapsedEl = $("jobElapsed");
   const _fmtElapsed = () => {
     const s = Math.floor((Date.now() - _jobT0) / 1000);
-    return `⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
   if (_elapsedEl) { _elapsedEl.hidden = false; _elapsedEl.textContent = _fmtElapsed(); }
   try {
@@ -2113,11 +2125,11 @@ $("btnClips").onclick = async () => {
       // (el texto transcrito ya no se muestra). Solo el video, el botón
       // de vista previa, el rango en minutos y el % de viralización.
       const fire = (typeof c.score === "number")
-        ? `<span class="clip-score">🔥 ${Math.round(c.score)}%</span>` : "";
+        ? `<span class="clip-score">${FLAME_SVG} ${Math.round(c.score)}%</span>` : "";
       div.innerHTML = `<video muted playsinline preload="metadata" src="/api/jobs/${job.id}/clip-video?start=${c.abs_start}&end=${c.abs_end}#t=0.1"></video>`
         + `<div class="clip-body"><div class="clip-title">${esc(c.title || `Clip ${i + 1}`)}</div>`
-        + `<div class="clip-meta">⏱ ${fmtDur(c.abs_start)} – ${fmtDur(c.abs_end)} ${fire}</div>`
-        + `<button type="button" class="cand-preview">▶ Ver vista previa</button></div>`;
+        + `<div class="clip-meta">${TIMER_SVG} ${fmtDur(c.abs_start)} – ${fmtDur(c.abs_end)} ${fire}</div>`
+        + `<button type="button" class="cand-preview">${PLAY_SVG} Ver vista previa</button></div>`;
       const pick = () => { state.editingClipId = null; selectClip(c, div); };
       div.onclick = pick;
       div.querySelector(".cand-preview").onclick = (e) => { e.stopPropagation(); pick(); };
@@ -2317,7 +2329,7 @@ function setCoverMode(on) {
   if (!phone) return;
   phone.classList.toggle("cover-mode", !!on);
   const btn = $("pvCoverBtn");
-  if (btn) btn.textContent = on ? "▶ Ver clip" : "🖼 Ver portada";
+  if (btn) btn.innerHTML = on ? PLAY_SVG + " Ver clip" : IMG_SVG + ' Ver portada';
   if (on) {
     const pv = $("pvVideo");
     if (pv && state.selected) {
@@ -2508,7 +2520,7 @@ $("pvVideo").addEventListener("timeupdate", () => {
 $("pvSoundBtn").onclick = () => {
   const pv = $("pvVideo");
   pv.muted = !pv.muted;
-  $("pvSoundBtn").textContent = pv.muted ? "🔇 Sonido silenciado" : "🔊 Sonido activado";
+  $("pvSoundBtn").innerHTML = pv.muted ? SPK_OFF_SVG + " Sonido silenciado" : SPK_ON_SVG + " Sonido activado";
 };
 
 function selectClip(c, el) {
@@ -2601,7 +2613,7 @@ $("btnSaveMeta").onclick = async () => {
     body.update_clip_id = state.editingClipId;
     const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     await pollJob(d.job_id, () => {});
-    msg.textContent = "Guardado ✓ El título ya sale en la portada del video.";
+    msg.textContent = "Guardado. El título ya sale en la portada del video.";
     loadMyClips();
     if (state.user && state.user.is_admin) loadAdminClips();
   } catch (e) {

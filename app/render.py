@@ -666,7 +666,10 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
                 title_bg: bool = True,
                 title_size: int | None = None,
                 title_pos_x: float | None = None,
-                title_pos_y: float | None = None) -> Path:
+                title_pos_y: float | None = None,
+                # Espejo (2026-11-12): el fotograma de portada también
+                # se voltea para que coincida con el clip en espejo.
+                mirror: bool = False) -> Path:
     """Portada del clip (2026-11-11, petición de Juan): un fotograma fijo
     del video (el elegido con el control Portada) a pantalla completa
     9:16, con el título de enganche GRANDE y centrado encima, SIN marco
@@ -679,11 +682,12 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
         raise ValueError("title is empty")
     cover = tmpdir / "cover.png"
     # Fotograma de portada, recorte 9:16 centrado (como el clip).
+    flip = "hflip," if mirror else ""
     _run([
         "ffmpeg", "-y", "-v", "error",
         "-ss", str(max(0.0, cover_abs)), "-i", str(source),
         "-frames:v", "1",
-        "-vf", f"crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h}",
+        "-vf", f"{flip}crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h}",
         str(cover),
     ], "title card frame")
     # Título envuelto en líneas cortas para que se lea grande.
@@ -1010,18 +1014,23 @@ def render_clip(source: Path, start_in_source: float, duration: float,
     personas — SINGLE centra a la persona, DUAL pone una arriba y otra
     abajo con recortes independientes, y los cambios de cámara cambian
     el encuadre al instante; si no hay cara, mantiene el último
-    encuadre válido), or "blur" (video completo con fondo borroso:
+    encuadre válido), "blur" (video completo con fondo borroso:
     el video 16:9 entero en el centro, sin recortar, con el mismo video
     ampliado y desenfocado de fondo arriba y abajo; el título gancho
     queda arriba de forma persistente y los subtítulos abajo — la
-    portada de 2 s no se antepone porque el título ya se ve siempre).
+    portada de 2 s no se antepone porque el título ya se ve siempre),
+    "mirror" (espejo completo: todo el video volteado horizontalmente,
+    como en un espejo, con el recorte 9:16 centrado de siempre) or
+    "mirror_blur" (espejo + fondo borroso: el video volteado, entero
+    en el centro con fondo borroso arriba y abajo, título arriba y
+    subtítulos abajo — tampoco antepone la portada de 2 s).
     Follow and auto modes fall back to the center crop when no face is
     found, so tracking can never fail a render.
     """
     if duration <= 0:
         raise ValueError("duration must be > 0")
     mode = (camera_mode or "center").strip().lower()
-    if mode not in ("center", "dual", "split", "follow_speaker", "follow_person", "auto", "blur"):
+    if mode not in ("center", "dual", "split", "follow_speaker", "follow_person", "auto", "blur", "mirror", "mirror_blur"):
         mode = "center"
     person = (camera_person or "center").strip().lower()
     if person not in ("left", "center", "right"):
@@ -1051,10 +1060,11 @@ def render_clip(source: Path, start_in_source: float, duration: float,
 
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
-        # En modo blur el título gancho se dibuja persistente arriba
-        # dentro del propio filtro (grande, envuelto); el title_text
-        # pequeño de _overlay_chain se apaga para no duplicarlo.
-        _ov_title = "" if mode == "blur" else title_text
+        # En modo blur / mirror_blur el título gancho se dibuja
+        # persistente arriba dentro del propio filtro (grande,
+        # envuelto); el title_text pequeño de _overlay_chain se apaga
+        # para no duplicarlo.
+        _ov_title = "" if mode in ("blur", "mirror_blur") else title_text
         overlay_kwargs = dict(
             scale=scale, frame_hex=frame_hex, frame_enabled=frame_enabled,
             frame_width=frame_width, brand_text=brand_text,
@@ -1148,7 +1158,7 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                     f"[gm]crop={gw}:{gh}:{gx}:{gy},scale={out_w}:{half_h}[bot];"
                     f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
                 )
-            elif mode == "blur":
+            elif mode in ("blur", "mirror_blur"):
                 # Video completo con fondo borroso (2026-11-12, Juan):
                 # el video 16:9 entero en el centro, sin recortar; el
                 # mismo video ampliado y desenfocado de fondo arriba y
@@ -1157,10 +1167,13 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 # persistente (envuelto, grande) y los subtítulos van
                 # abajo en la banda borrosa (ASS bottom, MarginV 320).
                 # La portada de 2 s no se antepone: el título ya se ve
-                # siempre (ver abajo, `if hook and mode != "blur"`).
+                # siempre (ver abajo, `if hook and mode not in ...`).
+                # mirror_blur: además voltea el video (fondo y centro)
+                # horizontalmente, como en un espejo.
                 vid_h = int(round(out_w * 9 / 16))  # 608 @1080p, 405 @720p
+                flip = "hflip," if mode == "mirror_blur" else ""
                 comp = (
-                    f"[0:v]split=2[bg][fg];"
+                    f"[0:v]{flip}split=2[bg][fg];"
                     f"[bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
                     f"crop={out_w}:{out_h},gblur=sigma=30,eq=brightness=-0.30[bg2];"
                     f"[fg]scale={out_w}:{vid_h}:force_original_aspect_ratio=decrease[fg2];"
@@ -1182,6 +1195,14 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                     )
                 else:
                     base = comp + ",setpts=PTS-STARTPTS[vid]"
+            elif mode == "mirror":
+                # Espejo completo (2026-11-12, Juan): todo el video
+                # volteado horizontalmente, como en un espejo, con el
+                # recorte 9:16 centrado de siempre.
+                base = (
+                    f"[0:v]hflip,crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},"
+                    "setpts=PTS-STARTPTS[vid]"
+                )
             else:  # center — exactly the approved behavior
                 base = (
                     f"[0:v]crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},"
@@ -1200,10 +1221,11 @@ def render_clip(source: Path, start_in_source: float, duration: float,
         # --- Portada / título de enganche (2026-11-11) ---
         # Si hay título gancho, el clip empieza con la portada (fotograma
         # elegido + título grande, sin marco ni marca) y luego el clip.
-        # En modo blur NO se antepone: el título ya queda arriba de forma
-        # persistente durante todo el clip (ver la rama blur).
+        # En modo blur / mirror_blur NO se antepone: el título ya queda
+        # arriba de forma persistente durante todo el clip (ver la rama
+        # blur). En modo mirror la portada también se voltea.
         hook = (hook_title or "").strip()
-        if hook and mode != "blur":
+        if hook and mode not in ("blur", "mirror_blur"):
             cover_rel = 0.0 if cover_at is None else max(
                 0.0, min(float(cover_at), duration))
             card = _title_card(source, start_in_source + cover_rel, hook,
@@ -1215,7 +1237,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                                title_bg=title_bg,
                                title_size=title_size,
                                title_pos_x=title_pos_x,
-                               title_pos_y=title_pos_y)
+                               title_pos_y=title_pos_y,
+                               mirror=(mode == "mirror"))
             _concat_title_card(card, main_path, output)
         else:
             shutil.copyfile(main_path, output)

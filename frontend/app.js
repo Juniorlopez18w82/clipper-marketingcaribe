@@ -413,7 +413,7 @@ $("btnBackAdmin").onclick = () => {
 // tras el login. El backend sirve index.html en cada una de estas
 // rutas, así que recargar no da 404.
 const ROUTES = {
-  home: "/inicio", clips: "/mis-clips", create: "/crear-clip",
+  home: "/panel", clips: "/mis-clips", create: "/crear-clip",
   lives: "/lives", images: "/imagenes-ia", videos: "/videos-ia",
   plans: "/planes", account: "/mi-cuenta", admin: "/admin",
 };
@@ -449,7 +449,7 @@ function goTab(tab, { push = false } = {}) {
   if (tab === "images") { loadImageModels(); loadMyImages(); }
   if (tab === "videos") { loadVideoModels(); loadMyVideos(); }
   if (tab === "admin") loadAdmin();
-  const url = ROUTES[tab] || "/inicio";
+  const url = ROUTES[tab] || "/panel";
   if (push) history.pushState({ tab }, "", url);
   else history.replaceState({ tab }, "", url);
   // Guardar la pestaña para restaurarla al recargar (v65, Juan:

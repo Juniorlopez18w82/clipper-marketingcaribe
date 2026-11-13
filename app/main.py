@@ -2497,7 +2497,9 @@ _frontend = BASE_DIR / "frontend"
 # recarga o un enlace directo a /mis-clips debe servir el panel; sin
 # estas rutas StaticFiles devolvería 404. Solo las secciones conocidas:
 # cualquier otra ruta sigue cayendo al StaticFiles de abajo.
-_PANEL_ROUTES = ("/inicio", "/mis-clips", "/crear-clip", "/lives",
+# La pestaña principal es /panel (antes /inicio, renombrada 2026-11-12);
+# /inicio se conserva como alias y el frontend la redirige a /panel.
+_PANEL_ROUTES = ("/panel", "/inicio", "/mis-clips", "/crear-clip", "/lives",
                  "/imagenes-ia", "/videos-ia", "/planes", "/mi-cuenta",
                  "/admin")
 

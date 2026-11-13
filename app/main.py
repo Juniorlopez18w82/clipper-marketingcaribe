@@ -81,7 +81,8 @@ from .videos import (AIVideoJob, build_fal_payload, create_job,
 from .render import DEFAULT_TEMPLATE, TEMPLATES, render_clip, resolve_template
 from .settings import get_setting, set_setting
 from .transcribe import transcribe_file, transcription_engine
-from .video import download_section, live_status, probe, video_info
+from .video import (actual_section_start, download_section, live_status,
+                    probe, video_info)
 
 logger = logging.getLogger(__name__)
 
@@ -379,6 +380,24 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         # lleva. Un hilo actualiza el mensaje cada 2 s con los segundos
         # reales y deja la barra subir de 80 a 94 como mucho — el 95
         # solo llega cuando los candidatos existen de verdad.
+        # INICIO REAL DEL AUDIO (2026-11-12, corrección del desfase): la
+        # descarga por secciones empieza en el keyframe anterior, así que
+        # el archivo NO empieza en `start` — la transcripción es relativa
+        # al ARCHIVO (t=0 = su inicio real), no al inicio pedido. Medido
+        # por correlación cruzada de audio: un [140,180] baja como un
+        # archivo de 49.98 s que empieza en 130.02 s. Si los candidatos
+        # se calculan con `start` (140), todos los tiempos absolutos
+        # salen ~10 s tarde y el render muestra otro momento distinto al
+        # que eligió la IA. La referencia temporal única es el tiempo
+        # ABSOLUTO del video: section_start_real es el inicio real del
+        # archivo y es la base de la transcripción, los candidatos y el
+        # render. Para un archivo subido (_cut_upload corta exacto) o un
+        # audio paralelo ya recortado, actual_section_start devuelve
+        # `start` sin cambios.
+        section_start_real = _actual_section_start(source, start, end)
+        if section_start_real != start:
+            logger.info("clips job %s: el audio empieza en %.2fs (pedido %.2fs)",
+                        job_id, section_start_real, start)
         jobs.update(job_id, progress=80,
                     message="La IA está eligiendo los mejores momentos…")
         _llm_stop = threading.Event()
@@ -399,7 +418,7 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             candidates = build_candidates_llm(transcript["segments"],
                                               max_clips=max_clips,
                                               min_len=min_len, max_len=max_len,
-                                              abs_start=start)
+                                              abs_start=section_start_real)
         finally:
             _llm_stop.set()
             _llm_watcher.join(timeout=3)
@@ -413,16 +432,17 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         # pone el update de "done" de abajo.
         jobs.update(job_id, progress=95,
                     message=f"La IA encontró {len(candidates)} clips…")
-        # Candidates are relative to the section; expose absolute times too.
+        # Candidates are relative to the section FILE (t=0 = its real
+        # start); expose absolute times against that same reference.
         for c in candidates:
-            c["abs_start"] = round(c["start"] + start, 2)
-            c["abs_end"] = round(c["end"] + start, 2)
+            c["abs_start"] = round(c["start"] + section_start_real, 2)
+            c["abs_end"] = round(c["end"] + section_start_real, 2)
         info = probe(source)
         jobs.update(job_id, status="done", progress=100,
                     message="Listo.",
                     result={
                         "source_file": source.name,
-                        "section_start": start, "section_end": end,
+                        "section_start": section_start_real, "section_end": end,
                         "source": info,
                         "transcript_file": Path(transcript["path"]).name,
                         "transcript": transcript,
@@ -438,39 +458,30 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         jobs.update(job_id, status="error", error=str(e), message="Falló.")
 
 
-def _actual_section_start(source: Path, req_start: float, req_end: float) -> float:
-    """Real start (absolute seconds) of a downloaded section file.
-
-    yt-dlp --download-sections cuts at keyframes: the file can start a
-    few seconds BEFORE the requested start (it seeks to the keyframe
-    before ``start``; the end is cut precisely), so the file is longer
-    than requested. The render trims with -ss/-t, but it can only land
-    on the requested start if it knows the real file start. The extra
-    is all at the beginning, so real_start = req_end - file_duration.
-    Falls back to req_start when the duration cannot be read or the
-    file is not longer than requested.
-
-    Found 2026-11-12 (auto-framing test): a [140,180] download came
-    back as a 50 s file starting at ~130 s, so the render showed
-    130-170 instead of 140-180 and the framing timeline was shifted
-    10 s. With this fix the render seeks to the lead-in and the clip
-    contains exactly the requested range.
-    """
-    try:
-        dur = probe(source)["duration"]
-    except Exception:  # noqa: BLE001 — probe failure = assume exact
-        return req_start
-    if not dur or dur <= 0:
-        return req_start
-    requested = max(0.0, req_end - req_start)
-    lead_in = dur - requested
-    if lead_in <= 0.05:
-        return req_start
-    return max(0.0, req_start - lead_in)
+# _actual_section_start vivía aquí; ahora es app.video.actual_section_start
+# (una sola definición, compartida por el trabajo de clips, el render y la
+# vista previa). Se mantiene este alias para no tocar cada llamada.
+_actual_section_start = actual_section_start
 
 
 def _resolve_source_for_render(req: RenderRequest, job_id: str):
-    """Return (source_path, section_start, transcript_dict)."""
+    """Return (source_path, section_start, transcript_dict, transcript_base).
+
+    section_start = inicio real del ARCHIVO DE VIDEO del render (su t=0
+    en tiempo absoluto); el render busca el clip a partir de ahí.
+    transcript_base = inicio real del archivo del que salió la
+    TRANSCRIPCIÓN (su t=0 en tiempo absoluto). En el render directo y
+    en el archivo subido es el mismo archivo que el video, así que
+    transcript_base == section_start. En el camino por job_id NO: la
+    transcripción viene del AUDIO del padre (que empieza en otro
+    momento que el video del clip), así que las palabras deben
+    convertirse con la base del audio, no con la del video — si no, los
+    subtítulos salen desplazados por la diferencia entre ambos
+    lead-ins (medido 2026-11-12: audio 130.02 s, video 140.02 s para el
+    mismo rango). La base del audio se mide del archivo del padre en
+    disco, así que vale también para trabajos creados antes de la
+    corrección de section_start.
+    """
     # Transcripción 40→70% también en el render directo (mismo
     # callback que en _run_clips_job): sin él se queda quieta en 40%.
     _tr_t0 = time.monotonic()
@@ -516,6 +527,12 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
             # pedido (keyframe): medir el inicio real para que el render
             # caiga exactamente en req.start (ver _actual_section_start).
             section_start = _actual_section_start(source, req.start, req.end)
+            # La transcripción es del AUDIO del padre: su base es el
+            # inicio real de ese archivo (medido en disco).
+            parent_audio = SOURCES_DIR / res["source_file"]
+            transcript_base = _actual_section_start(
+                parent_audio, float(res["section_start"]),
+                float(res["section_end"]))
         else:
             source = SOURCES_DIR / res["source_file"]
             # El archivo del padre también pudo bajar con lead-in: su
@@ -523,9 +540,11 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
             section_start = _actual_section_start(
                 source, float(res["section_start"]),
                 float(res["section_end"]))
+            # Mismo archivo para video y transcripción.
+            transcript_base = section_start
         transcript = json.loads(
             (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(encoding="utf-8"))
-        return source, section_start, transcript
+        return source, section_start, transcript, transcript_base
     if req.source_file:
         jobs.update(job_id, status="running", progress=10,
                     message="Leyendo tu archivo…")
@@ -533,7 +552,7 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=req.model,
                                      progress_cb=_tr_progress)
-        return source, req.start, transcript
+        return source, req.start, transcript, req.start
     if req.url:
         jobs.update(job_id, status="running", progress=10,
                     message="Descargando el video…")
@@ -545,7 +564,7 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=req.model,
                                      progress_cb=_tr_progress)
-        return source, section_start, transcript
+        return source, section_start, transcript, section_start
     raise HTTPException(400, "Pasa job_id, url o un archivo subido")
 
 
@@ -633,8 +652,8 @@ def _resolve_render_look(db, user_id: int | None, req: RenderRequest) -> dict:
 
 def _run_render_job(job_id: str, req: RenderRequest):
     try:
-        source, section_start, transcript = _resolve_source_for_render(req, job_id)
-        # Clip window relative to the downloaded section.
+        source, section_start, transcript, transcript_base = _resolve_source_for_render(req, job_id)
+        # Clip window relative to the downloaded VIDEO section.
         rel_start = req.start - section_start
         rel_end = req.end - section_start
         if rel_start < -1 or rel_end <= rel_start:
@@ -647,7 +666,17 @@ def _run_render_job(job_id: str, req: RenderRequest):
             raise ValueError("Clip demasiado largo (máx. 180 s en v1).")
         words = req.edited_words
         if words is None and req.show_subtitles:
-            words = _clip_words(transcript, rel_start, rel_end)
+            # Las palabras se recortan contra la TRANSCRIPCIÓN, cuya
+            # referencia es transcript_base (el inicio real del archivo
+            # del que salió), NO contra el video del render. En el
+            # camino por job_id son archivos distintos con lead-ins
+            # distintos; usar rel_start (base del video) desplazaba los
+            # subtítulos por esa diferencia. En el render directo y el
+            # archivo subido transcript_base == section_start, así que
+            # el rango coincide con rel_start/rel_end de antes.
+            words = _clip_words(transcript,
+                                req.start - transcript_base,
+                                req.end - transcript_base)
         jobs.update(job_id, progress=70,
                     message="Cortando tu clip…")
         # Re-render de un clip existente: se sobrescribe SU mp4 (misma
@@ -2339,6 +2368,13 @@ def api_job_camera_track(job_id: str, start: float, end: float,
         video = download_section(url, start, end, lr_tag, lowres=True)
     from .camera import analyze_camera, probe_size
     duration = end - start
+    # El video de baja resolución también baja con lead-in (empieza en
+    # el keyframe anterior a `start`): el análisis debe empezar en el
+    # desplazamiento del clip dentro del archivo, no en 0, o el
+    # recorrido sale desplazado por el lead-in (el mismo desfase que
+    # afectaba a los candidatos y a los subtítulos).
+    video_start = _actual_section_start(video, start, end)
+    track_offset = max(0.0, start - video_start)
     if mode == "auto":
         # Encuadre inteligente (2026-11-12): la vista previa sigue el
         # recorte del analizador de encuadre (app/framing.py). Para
@@ -2347,7 +2383,7 @@ def api_job_camera_track(job_id: str, start: float, end: float,
         # medio entre ambos recortes. El recorrido se cachea igual que
         # los demás modos.
         from .framing import analyze_framing
-        framing = analyze_framing(video, 0, duration)
+        framing = analyze_framing(video, track_offset, duration)
         width, height = probe_size(video)
         crop_w = height * 9 / 16
         path = []
@@ -2372,7 +2408,7 @@ def api_job_camera_track(job_id: str, start: float, end: float,
         except Exception:
             pass
         return out
-    cam = analyze_camera(video, 0, duration, mode, person)
+    cam = analyze_camera(video, track_offset, duration, mode, person)
     width, height = probe_size(video)
     crop_w = height * 9 / 16
     out = {

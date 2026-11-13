@@ -426,7 +426,15 @@ function tabFromUrl() {
 }
 const btnNavToggle = $("btnNavToggle");
 if (btnNavToggle) btnNavToggle.addEventListener("click", () => {
-  document.body.classList.toggle("nav-collapsed");
+  // En Crear Clip el menú se oculta solo (body.create-wide) para dar más
+  // espacio; el botón debe poder volver a mostrarlo, no solo alternar
+  // nav-collapsed (que create-wide seguiría tapando).
+  if (document.body.classList.contains("create-wide")) {
+    document.body.classList.remove("create-wide");
+    document.body.classList.remove("nav-collapsed");
+  } else {
+    document.body.classList.toggle("nav-collapsed");
+  }
 });
 
 function goTab(tab, { push = false } = {}) {

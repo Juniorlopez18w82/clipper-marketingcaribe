@@ -1730,7 +1730,7 @@ async function renderAccPlan() {
       return;
     }
     const exp = sub.ends_at ? new Date(sub.ends_at) : null;
-    const days = exp ? Math.max(0, Math.ceil((exp - Date.now()) / 86400000)) : null;
+    const days = exp ? Math.max(0, Math.floor((exp - Date.now()) / 86400000)) : null;
     const when = exp ? exp.toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) : "—";
     box.innerHTML = `<div class="rowline"><div><b>Plan ${esc(sub.plan_name || "")}</b><br><small class="muted">Se vence el ${when}${days !== null ? ` · quedan ${days} día${days === 1 ? "" : "s"}` : ""}</small></div><span class="badge aprobado">${esc(sub.plan_name || "Activo")}</span></div>`;
   } catch {

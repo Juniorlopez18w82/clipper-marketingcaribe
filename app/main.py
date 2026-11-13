@@ -1430,7 +1430,7 @@ def api_admin_earnings(db: Session = Depends(get_db),
     recent = []
     for req in approved.order_by(PaymentRequest.decided_at.desc()).all():
         plan = db.query(Plan).filter(Plan.id == req.plan_id).first()
-        amount = int(plan.price_dop) if plan else 0
+        amount = float(plan.price_usd or 0) if plan else 0
         total_sales += amount
         total_count += 1
         if req.decided_at and req.decided_at >= month_start:
@@ -1441,7 +1441,7 @@ def api_admin_earnings(db: Session = Depends(get_db),
                 "user_name": u.name if u else "",
                 "user_email": u.email if u else "",
                 "plan_name": plan.name if plan else "",
-                "amount_dop": amount,
+                "amount_usd": amount,
                 "decided_at": (req.decided_at.isoformat()
                                if req.decided_at else None),
             })
@@ -1459,7 +1459,7 @@ def api_admin_earnings(db: Session = Depends(get_db),
             "user_name": u.name if u else "",
             "user_email": u.email if u else "",
             "plan_name": plan.name if plan else "",
-            "amount_dop": int(plan.price_dop) if plan else 0,
+            "amount_usd": float(plan.price_usd or 0) if plan else 0,
             "ends_at": sub.ends_at.isoformat(),
         })
     # Active users: non-admin, not suspended, with a live subscription.
@@ -1621,7 +1621,7 @@ def api_admin_save_settings(req: SettingsRequest,
 # ---------------------------------------------------------------- planes y pagos
 class PlanRequest(BaseModel):
     name: str
-    price_dop: int
+    price_usd: float = 0
     duration_days: int = 30
     features: list[str] = []
     is_popular: bool = False
@@ -1785,6 +1785,34 @@ def api_my_subscriptions(db: Session = Depends(get_db),
                 if active else None)}
 
 
+@app.post("/api/subscriptions/free-trial")
+def api_free_trial(db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    """Activa la prueba gratis (plan Free, 1 día, US$0).
+
+    Un clic, sin pago ni comprobante (2026-11-12, Juan: el plan Free es
+    1 día de acceso gratuito). Solo una vez por usuario: si ya tuvo una
+    suscripción Free (activa o vencida) no puede repetir la prueba, y si
+    ya tiene un plan activo tampoco la necesita.
+    """
+    if get_active_subscription(db, user.id) is not None:
+        raise HTTPException(400, "Ya tienes un plan activo")
+    plan = db.query(Plan).filter(Plan.name == "Free",
+                                 Plan.is_active.is_(True)).first()
+    if plan is None:
+        raise HTTPException(400, "El plan Free no está disponible")
+    used = (db.query(UserSubscription)
+            .join(Plan, Plan.id == UserSubscription.plan_id)
+            .filter(UserSubscription.user_id == user.id,
+                    Plan.name == "Free").first())
+    if used is not None:
+        raise HTTPException(400, "Ya usaste tu día gratis")
+    sub = assign_plan(db, user.id, plan.id)
+    return {"ok": True,
+            "subscription": subscription_out(sub, plan),
+            "message": "Prueba gratis activada: 1 día de acceso ilimitado"}
+
+
 @app.get("/api/admin/subscriptions")
 def api_admin_subscriptions(db: Session = Depends(get_db),
                             _admin: User = Depends(require_admin)):
@@ -1908,8 +1936,13 @@ class LiveCreateRequest(BaseModel):
 
 
 def _require_live_plan(db: Session, user: User | None) -> None:
-    """Lives are a Full/Pro feature (Básico: 'Sin clips de Lives').
-    Admin bypasses plan gating entirely."""
+    """Lives son SOLO del plan Gold (2026-11-12, Juan).
+
+    Free y Pro no tienen Lives: al intentar entrar se les dice que
+    deben actualizar a Gold. El admin pasa siempre. La opción de Lives
+    sigue visible en el menú para todos; el frontend muestra el aviso
+    de actualización (locked-full) y el backend es la autoridad (403).
+    """
     if user is None:
         return
     if getattr(user, "is_admin", False):
@@ -1920,12 +1953,9 @@ def _require_live_plan(db: Session, user: User | None) -> None:
         raise HTTPException(403, "Debes contratar un plan para usar el clipper")
     plan = db.get(Plan, sub.plan_id) if sub.plan_id else None
     name = (plan.name if plan else "") or ""
-    # "Básico" (con o sin acento) no tiene clips de Lives.
-    norm = (name.strip().lower().replace("á", "a").replace("é", "e")
-            .replace("í", "i").replace("ó", "o").replace("ú", "u"))
-    if norm == "basico":
+    if name.strip().lower() != "gold":
         raise HTTPException(
-            403, "Los clips de Lives están en los planes Pro y Full")
+            403, "Los Lives están en el plan Gold. Actualiza tu plan para entrar.")
 
 
 def _live_owner(db: Session, user: User | None, session_id: int) -> LiveSession:
@@ -2096,7 +2126,7 @@ def api_image_models():
 def api_generate_image(req: ImageGenerateRequest,
                        db: Session = Depends(get_db),
                        user: User = Depends(get_current_user)):
-    """Genera una imagen con fal.ai (Full o admin). La clave se lee
+    """Genera una imagen con fal.ai (Gold o admin). La clave se lee
     del entorno en el servidor; si no está configurada, error claro.
     La generación es asíncrona (cola de fal.ai): el frontend consulta
     GET /api/images/{id} hasta que esté lista."""
@@ -2107,7 +2137,7 @@ def api_generate_image(req: ImageGenerateRequest,
         raise HTTPException(400, "El prompt es demasiado largo (máx. 1000 caracteres)")
     if not user_can_generate_images(db, user):
         raise HTTPException(
-            403, "Las imágenes con IA están en el plan Full")
+            403, "Las imágenes con IA están en el plan Gold")
     style = (req.style or "").strip()
     if style:
         prompt = f"{prompt}, {style}"
@@ -2194,7 +2224,7 @@ def api_video_models():
 def api_generate_video(req: VideoGenerateRequest,
                        db: Session = Depends(get_db),
                        user: User = Depends(get_current_user)):
-    """Crea un video con fal.ai (Full/Pro o admin). Cada generación
+    """Crea un video con fal.ai (Gold/Pro o admin). Cada generación
     es UN clip corto (el más largo es Wan 3.0, ~30 s), no un video
     largo: un video de 1 minuto son varios clips cortos unidos."""
     prompt = (req.prompt or "").strip()
@@ -2204,7 +2234,7 @@ def api_generate_video(req: VideoGenerateRequest,
         raise HTTPException(400, "El prompt es demasiado largo (máx. 1000 caracteres)")
     if not user_can_generate_videos(db, user):
         raise HTTPException(
-            403, "Los videos con IA están en los planes Pro y Full")
+            403, "Los videos con IA están en los planes Pro y Gold")
     models = fetch_video_models()
     model = get_model(models, req.model)
     if model is None:

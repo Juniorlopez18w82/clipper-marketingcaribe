@@ -424,6 +424,11 @@ function tabFromUrl() {
   if (p === "/") return "home";
   return ROUTE_TABS[p] || "home";
 }
+const btnNavToggle = $("btnNavToggle");
+if (btnNavToggle) btnNavToggle.addEventListener("click", () => {
+  document.body.classList.toggle("nav-collapsed");
+});
+
 function goTab(tab, { push = false } = {}) {
   // Video IA e Imagen IA: solo el admin entra directo (2026-11-11,
   // Juan: "Próximamente" para los usuarios). Al resto se le muestra
@@ -500,8 +505,9 @@ document.querySelectorAll("#adminTabs .mini-tab").forEach((btn) => {
     document.querySelectorAll("#adminTabs .mini-tab").forEach((b) => b.classList.toggle("on", b === btn));
     document.querySelectorAll(".admin-pane").forEach((p) => p.hidden = true);
     $("adminPane-" + btn.dataset.admin).hidden = false;
+    if (btn.dataset.admin !== "live") stopLivePoll();
     const loaders = { users: loadAdminUsers, clips: loadAdminClips, requests: loadAdminRequests,
-      plans: loadAdminPlans, methods: loadAdminMethods,
+      plans: loadAdminPlans, methods: loadAdminMethods, live: startLivePoll,
       earnings: loadAdminEarnings, settings: loadAdminSettings };
     if (loaders[btn.dataset.admin]) loaders[btn.dataset.admin]();
   };
@@ -1102,16 +1108,16 @@ function clipRow(c, admin) {
       <input type="checkbox" class="clip-select" title="Seleccionar" aria-label="Seleccionar clip">
       ${fire}
       <span class="dur-badge">${dur}</span>
-      ${c.download_url ? `<button class="clip-play" data-tip="Reproducir el clip" aria-label="Reproducir">${PLAY_SVG}</button>` : ""}
+      ${c.download_url ? `<button class="clip-play" data-tip="Reproducir" aria-label="Reproducir">${PLAY_SVG}</button>` : ""}
     </div>
     <div class="clip-body">
       <div class="clip-title">${esc(c.title || "Clip")}</div>
       ${meta ? `<div class="clip-meta muted small">${esc(meta)}</div>` : ""}
       ${who}
       <div class="clip-actions">
-        ${c.download_url ? `<a class="icon-btn dl" href="${c.download_url}" download data-tip="Descargar el clip" aria-label="Descargar">${DL_SVG}</a>` : ""}
-        <button class="icon-btn edit" data-tip="Editar el clip" aria-label="Editar">${EDIT_SVG}</button>
-        <button class="icon-btn del" data-tip="Eliminar el clip" aria-label="Eliminar">${TRASH_SVG}</button>
+        ${c.download_url ? `<a class="icon-btn dl" href="${c.download_url}" download data-tip="Descargar" aria-label="Descargar">${DL_SVG}</a>` : ""}
+        <button class="icon-btn edit" data-tip="Editar" aria-label="Editar">${EDIT_SVG}</button>
+        <button class="icon-btn del" data-tip="Eliminar" aria-label="Eliminar">${TRASH_SVG}</button>
       </div>
     </div>`;
   div.querySelector(".icon-btn.edit").onclick = () => editClip(c);
@@ -1686,6 +1692,35 @@ $("btnGenVideo").onclick = async () => {
     btn.textContent = "Generar video";
   }
 };
+let _liveTimer = null;
+async function loadAdminLive() {
+  const box = $("adminLive");
+  if (!box) return;
+  try {
+    const rows = await apiFetch("/api/admin/jobs", { headers: authHeaders() });
+    if (!Array.isArray(rows) || rows.length === 0) {
+      box.innerHTML = "<p class=\"muted\">Nadie está sacando clips ahora mismo.</p>";
+      return;
+    }
+    box.innerHTML = rows.map((j) => {
+      const kind = j.kind === "render" ? "Renderizando clip" : "Analizando video";
+      const pct = Math.round(Number(j.progress || 0));
+      const who = esc(j.user_name || "Anónimo") + (j.user_email ? " · " + esc(j.user_email) : "");
+      const vid = esc(j.video_title || j.url || "");
+      const msg = esc(j.message || "");
+      return `<div class="rowline"><div><b>${kind}</b> — ${vid}<br><span class="muted small">${who}</span><br><span class="muted small">${msg} · ${pct}%</span></div><span class="badge">${esc(j.status || "")}</span></div>`;
+    }).join("");
+  } catch (e) {
+    box.innerHTML = "<p class=\"muted\">No se pudo cargar la actividad en vivo.</p>";
+  }
+}
+function startLivePoll() {
+  stopLivePoll();
+  loadAdminLive();
+  _liveTimer = setInterval(loadAdminLive, 5000);
+}
+function stopLivePoll() { if (_liveTimer) { clearInterval(_liveTimer); _liveTimer = null; } }
+
 async function loadAdminClips() {
   try {
     const clips = await apiFetch("/api/admin/clips", { headers: authHeaders() });

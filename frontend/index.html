@@ -181,7 +181,8 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .stats-counters .stat-card{background:rgba(18,18,43,.6);backdrop-filter:blur(8px);border:1px solid #27272a;border-radius:16px;padding:20px 12px;text-align:center;transition:transform .25s ease,border-color .25s ease}
 .stats-counters .stat-card:hover{transform:translateY(-4px);border-color:rgba(168,85,247,.5)}
 .stats-counters .stat-card b{display:block;font-size:30px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-.stats-counters .stat-card span{font-size:13px;color:#a1a1aa}
+.stats-counters .stat-card b span{font-size:inherit;font-weight:inherit;color:inherit}
+.stats-counters .stat-card>span{display:block;font-size:13px;color:#a1a1aa}
 /* --- Pasos con línea conectora --- */
 .steps-grid{position:relative}
 .steps-grid::before{content:"";position:absolute;top:44px;left:14%;right:14%;height:2px;background:linear-gradient(90deg,#A855F7,#3B82F6,#D946EF);opacity:.45;pointer-events:none}

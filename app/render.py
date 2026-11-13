@@ -1005,18 +1005,23 @@ def render_clip(source: Path, start_in_source: float, duration: float,
     dividida para videos de gaming), "follow_speaker" (9:16 crop
     follows whoever is speaking, face detection + mouth-movement score),
     "follow_person" (follows the face in the requested zone:
-    ``camera_person`` left / center / right), or "auto" (encuadre
+    ``camera_person`` left / center / right), "auto" (encuadre
     inteligente para entrevistas: detecta por plano si hay una o dos
     personas — SINGLE centra a la persona, DUAL pone una arriba y otra
     abajo con recortes independientes, y los cambios de cámara cambian
     el encuadre al instante; si no hay cara, mantiene el último
-    encuadre válido). Follow and auto modes fall back to the center
-    crop when no face is found, so tracking can never fail a render.
+    encuadre válido), or "blur" (video completo con fondo borroso:
+    el video 16:9 entero en el centro, sin recortar, con el mismo video
+    ampliado y desenfocado de fondo arriba y abajo; el título gancho
+    queda arriba de forma persistente y los subtítulos abajo — la
+    portada de 2 s no se antepone porque el título ya se ve siempre).
+    Follow and auto modes fall back to the center crop when no face is
+    found, so tracking can never fail a render.
     """
     if duration <= 0:
         raise ValueError("duration must be > 0")
     mode = (camera_mode or "center").strip().lower()
-    if mode not in ("center", "dual", "split", "follow_speaker", "follow_person", "auto"):
+    if mode not in ("center", "dual", "split", "follow_speaker", "follow_person", "auto", "blur"):
         mode = "center"
     person = (camera_person or "center").strip().lower()
     if person not in ("left", "center", "right"):
@@ -1046,10 +1051,14 @@ def render_clip(source: Path, start_in_source: float, duration: float,
 
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
+        # En modo blur el título gancho se dibuja persistente arriba
+        # dentro del propio filtro (grande, envuelto); el title_text
+        # pequeño de _overlay_chain se apaga para no duplicarlo.
+        _ov_title = "" if mode == "blur" else title_text
         overlay_kwargs = dict(
             scale=scale, frame_hex=frame_hex, frame_enabled=frame_enabled,
             frame_width=frame_width, brand_text=brand_text,
-            title_text=title_text, show_subtitles=show_subtitles,
+            title_text=_ov_title, show_subtitles=show_subtitles,
             words=words, subtitle_style=subtitle_style,
             subtitle_size=subtitle_size, subtitle_position=subtitle_position,
             highlight_color=highlight_color,
@@ -1139,6 +1148,40 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                     f"[gm]crop={gw}:{gh}:{gx}:{gy},scale={out_w}:{half_h}[bot];"
                     f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
                 )
+            elif mode == "blur":
+                # Video completo con fondo borroso (2026-11-12, Juan):
+                # el video 16:9 entero en el centro, sin recortar; el
+                # mismo video ampliado y desenfocado de fondo arriba y
+                # abajo (oscurecido para que el título y los subtítulos
+                # se lean). El título gancho queda arriba de forma
+                # persistente (envuelto, grande) y los subtítulos van
+                # abajo en la banda borrosa (ASS bottom, MarginV 320).
+                # La portada de 2 s no se antepone: el título ya se ve
+                # siempre (ver abajo, `if hook and mode != "blur"`).
+                vid_h = int(round(out_w * 9 / 16))  # 608 @1080p, 405 @720p
+                comp = (
+                    f"[0:v]split=2[bg][fg];"
+                    f"[bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                    f"crop={out_w}:{out_h},gblur=sigma=30,eq=brightness=-0.30[bg2];"
+                    f"[fg]scale={out_w}:{vid_h}:force_original_aspect_ratio=decrease[fg2];"
+                    f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2[comp]"
+                )
+                hook = (hook_title or title_text or "").strip()
+                if hook:
+                    wrapped = "\n".join(textwrap.wrap(hook, width=22))
+                    blur_title_file = tmpdir / "blur_title.txt"
+                    blur_title_file.write_text(wrapped, encoding="utf-8")
+                    base = (
+                        comp + ";"
+                        "[comp]drawtext=fontfile=" + FONT_BOLD +
+                        f":textfile={blur_title_file}:fontsize={int(round(64 * scale))}:fontcolor=white:"
+                        f"borderw=3:bordercolor=black:"
+                        f"x=(w-text_w)/2:y={int(round(200 * scale))}:"
+                        f"box=1:boxcolor=black@0.55:boxborderw=18:line_spacing=8,"
+                        "setpts=PTS-STARTPTS[vid]"
+                    )
+                else:
+                    base = comp + ",setpts=PTS-STARTPTS[vid]"
             else:  # center — exactly the approved behavior
                 base = (
                     f"[0:v]crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},"
@@ -1157,8 +1200,10 @@ def render_clip(source: Path, start_in_source: float, duration: float,
         # --- Portada / título de enganche (2026-11-11) ---
         # Si hay título gancho, el clip empieza con la portada (fotograma
         # elegido + título grande, sin marco ni marca) y luego el clip.
+        # En modo blur NO se antepone: el título ya queda arriba de forma
+        # persistente durante todo el clip (ver la rama blur).
         hook = (hook_title or "").strip()
-        if hook:
+        if hook and mode != "blur":
             cover_rel = 0.0 if cover_at is None else max(
                 0.0, min(float(cover_at), duration))
             card = _title_card(source, start_in_source + cover_rel, hook,

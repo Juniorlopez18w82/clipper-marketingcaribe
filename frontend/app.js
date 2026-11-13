@@ -1102,16 +1102,16 @@ function clipRow(c, admin) {
       <input type="checkbox" class="clip-select" title="Seleccionar" aria-label="Seleccionar clip">
       ${fire}
       <span class="dur-badge">${dur}</span>
-      ${c.download_url ? `<button class="clip-play" title="Reproducir" aria-label="Reproducir">${PLAY_SVG}</button>` : ""}
+      ${c.download_url ? `<button class="clip-play" data-tip="Reproducir el clip" aria-label="Reproducir">${PLAY_SVG}</button>` : ""}
     </div>
     <div class="clip-body">
       <div class="clip-title">${esc(c.title || "Clip")}</div>
       ${meta ? `<div class="clip-meta muted small">${esc(meta)}</div>` : ""}
       ${who}
       <div class="clip-actions">
-        ${c.download_url ? `<a class="icon-btn dl" href="${c.download_url}" download title="Descargar">${DL_SVG}</a>` : ""}
-        <button class="icon-btn edit" title="Editar">${EDIT_SVG}</button>
-        <button class="icon-btn del" title="Eliminar">${TRASH_SVG}</button>
+        ${c.download_url ? `<a class="icon-btn dl" href="${c.download_url}" download data-tip="Descargar el clip" aria-label="Descargar">${DL_SVG}</a>` : ""}
+        <button class="icon-btn edit" data-tip="Editar el clip" aria-label="Editar">${EDIT_SVG}</button>
+        <button class="icon-btn del" data-tip="Eliminar el clip" aria-label="Eliminar">${TRASH_SVG}</button>
       </div>
     </div>`;
   div.querySelector(".icon-btn.edit").onclick = () => editClip(c);

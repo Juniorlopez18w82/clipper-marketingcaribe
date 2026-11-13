@@ -74,14 +74,15 @@ async function loadLocalCurrency() {
 }
 function usdToLocal(usd) {
   // Devuelve el equivalente formateado ("≈ RD$1,528") o "" si no hay tasa.
+  // Símbolo explícito por moneda: Intl depende de los datos ICU del
+  // navegador y DOP salía como "DOP" o "$" según el equipo.
   if (!state.fx || !usd) return "";
-  try {
-    const amount = Math.round(Number(usd) * state.fx.rate);
-    return "≈ " + new Intl.NumberFormat("es", {
-      style: "currency", currency: state.fx.currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch { return ""; }
+  const SYMBOLS = { DOP: "RD$", USD: "$", MXN: "$", COP: "$", ARS: "$",
+    CLP: "$", UYU: "$", PEN: "S/", BRL: "R$", EUR: "€", GBP: "£",
+    CAD: "$", GTQ: "Q", HNL: "L", NIO: "C$", CRC: "₡", PAB: "B/." };
+  const sym = SYMBOLS[state.fx.currency] || (state.fx.currency + " ");
+  const amount = Math.round(Number(usd) * state.fx.rate);
+  return "≈ " + sym + amount.toLocaleString("es");
 }
 function renderLocalPrices() {
   // Rellena los <div class="local-price" data-usd="25"> de la landing.

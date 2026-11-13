@@ -480,6 +480,10 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .icon-btn{position:relative}
 .panel .icon-btn::after,.panel .clip-play::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(4px);background:#1c1c2e;border:1px solid var(--p-border);color:var(--p-text);font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:5;box-shadow:0 8px 20px rgba(0,0,0,.45)}
 .panel .icon-btn:hover::after,.panel .icon-btn:focus-visible::after,.panel .clip-play:hover::after,.panel .clip-play:focus-visible::after{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+/* El último botón de la fila (Eliminar) está pegado al borde derecho de la
+   tarjeta: su tooltip centrado se recortaba. Se alinea a la derecha. */
+.panel .clip-actions .icon-btn:last-child::after{left:auto;right:0;transform:translateY(4px)}
+.panel .clip-actions .icon-btn:last-child:hover::after,.panel .clip-actions .icon-btn:last-child:focus-visible::after{transform:translateY(0)}
 .panel .icon-btn{width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;text-decoration:none;transition:transform .15s ease,background .2s ease}
 .panel .icon-btn svg{width:20px;height:20px}
 .panel .icon-btn.dl{background:var(--p-grad);color:var(--p-white);box-shadow:0 4px 12px rgba(var(--p-brand-rgb),.35)}
@@ -1471,6 +1475,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=84"></script>
+<script src="app.js?v=85"></script>
 </body>
 </html>

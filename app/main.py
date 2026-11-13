@@ -2002,7 +2002,7 @@ def api_lives_create(req: LiveCreateRequest,
 @app.get("/api/lives")
 def api_lives_list(user: User | None = Depends(get_optional_user),
                    db: Session = Depends(get_db)):
-    _require_plan(db, user)
+    _require_live_plan(db, user)
     q = db.query(LiveSession)
     if user is not None and not getattr(user, "is_admin", False):
         q = q.filter(LiveSession.user_id == user.id)
@@ -2018,7 +2018,7 @@ def api_lives_list(user: User | None = Depends(get_optional_user),
 def api_lives_get(session_id: int,
                   user: User | None = Depends(get_optional_user),
                   db: Session = Depends(get_db)):
-    _require_plan(db, user)
+    _require_live_plan(db, user)
     session = _live_owner(db, user, session_id)
     clips = (db.query(Clip).filter(Clip.live_session_id == session.id)
              .order_by(Clip.id.desc()).all())
@@ -2031,7 +2031,7 @@ def api_lives_get(session_id: int,
 def api_lives_clips(session_id: int,
                     user: User | None = Depends(get_optional_user),
                     db: Session = Depends(get_db)):
-    _require_plan(db, user)
+    _require_live_plan(db, user)
     session = _live_owner(db, user, session_id)
     clips = (db.query(Clip).filter(Clip.live_session_id == session.id)
              .order_by(Clip.id.desc()).all())
@@ -2040,7 +2040,7 @@ def api_lives_clips(session_id: int,
 
 def _live_set_status(session_id: int, status: str,
                      user: User | None, db: Session) -> dict:
-    _require_plan(db, user)
+    _require_live_plan(db, user)
     session = _live_owner(db, user, session_id)
     if status == STATUS_ACTIVE and session.status in (STATUS_PAUSED,
                                                       STATUS_STOPPED):
@@ -2083,7 +2083,7 @@ def api_lives_stop(session_id: int,
 def api_lives_delete(session_id: int,
                      user: User | None = Depends(get_optional_user),
                      db: Session = Depends(get_db)):
-    _require_plan(db, user)
+    _require_live_plan(db, user)
     session = _live_owner(db, user, session_id)
     db.delete(session)
     db.commit()

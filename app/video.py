@@ -363,6 +363,19 @@ def _download_audio_chunk(url: str, start: float, end: float,
             continue
         _, a_dur = _stream_durations(files[0])
         if a_dur >= (end - start) * 0.7:
+            # Recortar el trozo a su rango exacto: la descarga por
+            # secciones empieza en el keyframe anterior, así que el
+            # archivo trae un lead-in; sin recortar, al concatenar los
+            # trozos el audio se duplicaría en cada frontera y todos
+            # los tiempos posteriores (transcripción, candidatos) se
+            # desplazarían. Si el recorte falla, se devuelve el trozo
+            # tal cual (comportamiento anterior).
+            true_start = actual_section_start(files[0], start, end)
+            if true_start < start - 0.05:
+                trimmed = _trim_audio_to_range(files[0], true_start,
+                                               start, end, tag)
+                if trimmed is not None:
+                    return trimmed
             return files[0]
     return None
 
@@ -478,6 +491,10 @@ def _download_audio_parallel(url: str, start: float, end: float,
             raise RuntimeError(f"ffmpeg concat falló: {proc.stderr[-300:]}")
     for tag in tags:
         for old in SOURCES_DIR.glob(f"{tag}.*"):
+            old.unlink()
+        # Los trozos recortados (_trim_audio_to_range) se llaman
+        # {tag}_trim.webm y no los caza el glob anterior.
+        for old in SOURCES_DIR.glob(f"{tag}_trim.*"):
             old.unlink()
     return out_path
 
@@ -648,3 +665,75 @@ def probe(path: Path) -> dict:
         "codec": video.get("codec_name"),
         "duration": float(data.get("format", {}).get("duration") or 0),
     }
+
+
+def actual_section_start(path: Path, req_start: float, req_end: float) -> float:
+    """Real start (absolute seconds) of a downloaded section file.
+
+    yt-dlp --download-sections cuts at keyframes: the file can start a
+    few seconds BEFORE the requested start (it seeks to the keyframe
+    before ``start``; the end is cut precisely), so the file is longer
+    than requested. Any code that treats the file as starting exactly
+    at ``req_start`` is shifted by the lead-in — this is THE timing
+    reference every other time in the pipeline must use (transcript,
+    candidates, words, framing, render).
+
+    The extra is all at the beginning, so real_start = req_end -
+    file_duration. Falls back to req_start when the duration cannot be
+    read or the file is not longer than requested.
+
+    Measured 2026-11-12 by audio cross-correlation against a [0,180]
+    reference download (whose start is exactly 0): a [140,180] audio
+    file is 49.98 s and its t=0 aligns with absolute 130.02 s — exactly
+    req_end - duration (180 - 49.98 = 130.02). The same holds for the
+    video file (its audio track aligns at 140.02 s vs 140.46 s from the
+    formula — 0.44 s, the video/audio track offset inside the container).
+    """
+    try:
+        dur = probe(path)["duration"]
+    except Exception:  # noqa: BLE001 — probe failure = assume exact
+        return req_start
+    if not dur or dur <= 0:
+        return req_start
+    requested = max(0.0, req_end - req_start)
+    lead_in = dur - requested
+    if lead_in <= 0.05:
+        return req_start
+    return max(0.0, req_start - lead_in)
+
+
+def _trim_audio_to_range(path: Path, true_start: float, req_start: float,
+                         req_end: float, tag: str) -> Path | None:
+    """Cut an audio chunk to exactly [req_start, req_end].
+
+    A parallel-download chunk comes from yt-dlp --download-sections, so
+    it starts at ``true_start`` (the keyframe before req_start). If the
+    chunks were concatenated as-is, the lead-in of every chunk after the
+    first would DUPLICATE the audio at the chunk boundary and shift all
+    later transcript/candidate times by the lead-in per boundary. This
+    trims the chunk precisely (ffmpeg -ss after -i, Opus re-encode is
+    fast for audio) so the concat is exact. Returns the trimmed file,
+    or None if the trim failed (caller falls back to the untrimmed file).
+    """
+    offset = req_start - true_start
+    dur = req_end - req_start
+    if offset <= 0.05 and dur <= 0:
+        return path
+    out = SOURCES_DIR / f"{tag}_trim.webm"
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(path),
+         "-ss", f"{offset:.2f}", "-t", f"{dur:.2f}",
+         "-c:a", "libopus", "-b:a", "96k", str(out)],
+        capture_output=True, text=True, timeout=300)
+    if proc.returncode != 0:
+        logger.warning("trim de trozo de audio falló (%s)", proc.stderr[-200:])
+        return None
+    try:
+        _, a_dur = _stream_durations(out)
+    except Exception:  # noqa: BLE001 — verification failure = keep original
+        return None
+    if a_dur < dur * 0.9:
+        logger.warning("trozo de audio recortado incompleto (%.1fs de %.0fs)",
+                       a_dur, dur)
+        return None
+    return out

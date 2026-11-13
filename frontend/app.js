@@ -2805,7 +2805,7 @@ function buildRenderBody(start, end, edited) {
     clip_title: $("hookTitle").value.trim() || (state.selected && state.selected.title) || "",
     cover_at: state.coverAt,
     camera_mode: $("cameraMode").value,
-    camera_person: $("cameraPerson").value,
+    camera_person: ($("cameraPerson") && $("cameraPerson").value) || "center",
     facecam_corner: $("facecamCorner").value,
     clip_score: (state.selected && typeof state.selected.score === "number")
       ? state.selected.score : null,

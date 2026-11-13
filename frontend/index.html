@@ -516,6 +516,10 @@ body.nav-collapsed .panel-inner{max-width:1080px}
 .panel .clip-card.cand .cand-preview{margin-top:10px;width:100%;padding:10px;border:0;border-radius:10px;background:var(--p-grad);color:var(--p-white);font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 14px rgba(var(--p-brand-rgb),.25)}
 .panel .clip-card.cand .clip-meta svg{width:14px;height:14px;vertical-align:-2px}
 .panel .clip-card.cand .cand-preview svg{width:16px;height:16px;vertical-align:-3px}
+/* Botones de la vista previa (Sonido / Ver portada): el JS reemplaza su
+contenido con SPK_ON/OFF_SVG, PLAY_SVG o IMG_SVG, que no traen tamaño;
+sin esta regla el icono se renderiza gigante y el botón crece con él. */
+#pvSoundBtn svg,#pvCoverBtn svg{width:15px;height:15px;vertical-align:-2px}
 .panel .clip-card.cand .cand-preview:hover{filter:brightness(1.12)}
 /* --- Mis Clips / Biblioteca: 4 col (3 ≤1200px, 2 ≤800px, 1 ≤560px) --- */
 .panel #myClips,.panel #adminClips,.panel .live-clips{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
@@ -1508,6 +1512,6 @@ body.nav-collapsed .panel-inner{max-width:1080px}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=95"></script>
+<script src="app.js?v=96"></script>
 </body>
 </html>

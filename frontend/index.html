@@ -322,6 +322,13 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 #impBanner button{background:var(--p-grad);color:var(--p-white);border:0;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;font-size:13px}
 /* --- Topbar (glass) --- */
 .panel-top{display:flex;align-items:center;gap:14px;background:var(--p-surface);border-bottom:1px solid var(--p-border);padding:0 24px;height:60px;position:sticky;top:0;z-index:10}
+.panel-top .nav-toggle{width:38px;height:38px;flex:0 0 38px;border-radius:9px;border:1px solid var(--p-border);background:transparent;color:var(--p-text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.panel-top .nav-toggle:hover{background:rgba(255,255,255,.06)}
+.panel-top .nav-toggle svg{width:20px;height:20px;transition:transform .25s ease}
+body.nav-collapsed .panel-top .nav-toggle svg{transform:scaleX(-1)}
+body.nav-collapsed .panel-nav{margin-left:-248px;opacity:0;pointer-events:none}
+body.nav-collapsed .panel-inner{max-width:1080px}
+@media(max-width:800px){.panel-top .nav-toggle{display:none}}
 .panel-top .brand{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:var(--p-text);cursor:pointer}
 .panel-top .brand img{width:26px;height:26px;border-radius:7px}
 .panel-top .spacer{flex:1}
@@ -357,7 +364,9 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel-nav .tab:hover{background:rgba(255,255,255,.06);box-shadow:none}
 .panel-nav .tab.on{background:rgba(var(--p-brand-rgb),.12);color:var(--p-white)}
 .panel-nav .tab.on svg{color:var(--p-white)}
-.panel-nav .tab.creator{margin-top:auto;margin-bottom:12px;border:1px solid var(--p-border2);color:var(--p-muted)}
+.panel-nav .tab.support{margin-top:auto;margin-bottom:12px;border:1px solid rgba(37,211,102,.35);color:#25D366;text-decoration:none}
+.panel-nav .tab.support:hover{background:rgba(37,211,102,.1);color:#25D366;box-shadow:none}
+.panel-nav .tab.support svg{fill:#25D366}
 .panel-nav .tab.creator:hover{color:var(--p-text);background:rgba(255,255,255,.06)}
 .panel-inner{transition:max-width .35s ease}
 @media(min-width:801px){
@@ -391,6 +400,8 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .badge.rechazado{background:var(--p-surface2);color:var(--p-muted)}
 .panel label{display:block;font-size:13px;font-weight:600;color:var(--p-muted);margin:16px 0 6px}
 .panel input[type=text],.panel input[type=url],.panel input[type=email],.panel input[type=number],.panel input[type=password],.panel select,.panel textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--p-border);background:rgba(255,255,255,.04);color:var(--p-text);font-size:15px;font-family:inherit}
+.panel select option{background:#12122B;color:#F4F4F5}
+.panel select optgroup{background:#12122B;color:#F4F4F5}
 .panel input:focus,.panel select:focus,.panel textarea:focus{outline:none;border-color:var(--p-brand);box-shadow:0 0 0 3px rgba(var(--p-brand-rgb),.18)}
 .panel input:disabled{background:var(--p-surface);color:var(--p-muted2)}
 .panel button{background:var(--p-grad);color:var(--p-white);border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer;font-size:15px;transition:transform .2s ease,box-shadow .2s ease,opacity .2s ease;box-shadow:0 4px 14px rgba(var(--p-brand-rgb),.25)}
@@ -480,10 +491,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .icon-btn{position:relative}
 .panel .icon-btn::after,.panel .clip-play::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(4px);background:#1c1c2e;border:1px solid var(--p-border);color:var(--p-text);font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:5;box-shadow:0 8px 20px rgba(0,0,0,.45)}
 .panel .icon-btn:hover::after,.panel .icon-btn:focus-visible::after,.panel .clip-play:hover::after,.panel .clip-play:focus-visible::after{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
-/* El último botón de la fila (Eliminar) está pegado al borde derecho de la
-   tarjeta: su tooltip centrado se recortaba. Se alinea a la derecha. */
-.panel .clip-actions .icon-btn:last-child::after{left:auto;right:0;transform:translateY(4px)}
-.panel .clip-actions .icon-btn:last-child:hover::after,.panel .clip-actions .icon-btn:last-child:focus-visible::after{transform:translateY(0)}
 .panel .icon-btn{width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;text-decoration:none;transition:transform .15s ease,background .2s ease}
 .panel .icon-btn svg{width:20px;height:20px}
 .panel .icon-btn.dl{background:var(--p-grad);color:var(--p-white);box-shadow:0 4px 12px rgba(var(--p-brand-rgb),.35)}
@@ -645,7 +652,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   .panel-nav .nav-label{display:none}
   .panel-nav .tab{white-space:nowrap;width:auto}
   .panel-nav .tab svg{width:18px;height:18px}
-  .panel-nav .tab.creator{margin-top:0;margin-bottom:0}
+  .panel-nav .tab.support{margin-top:0;margin-bottom:0}
   .panel .step{font-size:11px}
   .panel .step .dot{width:32px;height:32px}
   .panel .step .dot svg{width:16px;height:16px}
@@ -696,6 +703,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 <section class="panel" id="panel" hidden>
   <div id="impBanner" hidden>Estás en la cuenta de <b id="impName"></b><button id="btnBackAdmin">Volver a mi cuenta</button></div>
   <div class="panel-top">
+    <button class="nav-toggle" id="btnNavToggle" type="button" aria-label="Mostrar u ocultar el menú" title="Mostrar u ocultar el menú"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <span class="brand" id="brandHome" title="Volver al inicio"><img src="/logo-icon.png" alt="Clipzio Pro"> <span class="brand-name">Clipzio Pro</span></span>
     <span class="spacer"></span>
     <span class="who"><b id="panelCountdown" class="countdown"></b><span class="planbadge" id="panelUserPlan">Sin plan</span></span>
@@ -715,7 +723,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <button class="tab" data-tab="plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l4 3.5L12 5l5 6.5L21 8l-1.6 10H4.6z"/><path d="M5 21h14"/></svg>Planes</button>
       <button class="tab" data-tab="account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="8" r="3.5"/><path d="M5.5 19.5c1.2-3 3.6-4.5 6.5-4.5s5.3 1.5 6.5 4.5"/></svg>Mi Cuenta</button>
       <button class="tab" data-tab="admin" id="tabAdmin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>Panel Admin</button>
-      <button class="tab creator" data-tab="creator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>Ir al creador</button>
+      <a class="tab support" href="https://wa.me/18498541544" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Soporte Técnico 24/7</a>
     </nav>
     <div class="panel-content">
       <div class="panel-inner">
@@ -1110,6 +1118,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <div class="mini-tabs" id="adminTabs">
         <button class="mini-tab on" data-admin="users">Usuarios</button>
         <button class="mini-tab" data-admin="clips">Clips</button>
+        <button class="mini-tab" data-admin="live">En vivo</button>
         <button class="mini-tab" data-admin="requests">Solicitudes de pago</button>
         <button class="mini-tab" data-admin="plans">Planes</button>
         <button class="mini-tab" data-admin="methods">Métodos de pago</button>
@@ -1128,6 +1137,13 @@ body.panel-open>header,body.panel-open>main{display:none !important}
           <h4>Todos los clips</h4>
           <p class="muted">Los clips se descargan apenas se renderizan, sin aprobación.</p>
           <div id="adminClips"><p class="muted">Cargando…</p></div>
+        </div>
+      </div>
+      <div class="admin-pane" id="adminPane-live" hidden>
+        <div class="card">
+          <h4>Clips en tiempo real</h4>
+          <p class="muted">Los clips que los usuarios están sacando ahora mismo. Se actualiza solo cada 5 segundos.</p>
+          <div id="adminLive"><p class="muted">Cargando…</p></div>
         </div>
       </div>
       <div class="admin-pane" id="adminPane-requests" hidden>
@@ -1475,6 +1491,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=85"></script>
+<script src="app.js?v=86"></script>
 </body>
 </html>

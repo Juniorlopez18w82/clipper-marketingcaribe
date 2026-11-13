@@ -1088,12 +1088,13 @@ function clipRow(c, admin) {
     ? `<div class="muted small">${esc(c.user_name || "")} · ${esc(c.user_email || "")}</div>` : "";
   div.innerHTML = `<div class="clip-thumb">${thumb}
       <input type="checkbox" class="clip-select" title="Seleccionar" aria-label="Seleccionar clip">
-      <div class="clip-top">${fire}<span class="dur-badge">${dur}</span></div>
+      ${fire}
+      <span class="dur-badge">${dur}</span>
       ${c.download_url ? `<button class="clip-play" title="Reproducir" aria-label="Reproducir">${PLAY_SVG}</button>` : ""}
     </div>
     <div class="clip-body">
       <div class="clip-title">${esc(c.title || "Clip")}</div>
-      ${meta ? `<div class="muted small">${esc(meta)}</div>` : ""}
+      ${meta ? `<div class="clip-meta muted small">${esc(meta)}</div>` : ""}
       ${who}
       <div class="clip-actions">
         ${c.download_url ? `<a class="icon-btn dl" href="${c.download_url}" download title="Descargar">${DL_SVG}</a>` : ""}
@@ -2107,7 +2108,7 @@ $("btnClips").onclick = async () => {
     $("candidatesTitle").textContent = `La IA encontró ${job.result.candidates.length} clips, elige uno para continuar`;
     job.result.candidates.forEach((c, i) => {
       const div = document.createElement("div");
-      div.className = "clip";
+      div.className = "clip-card cand";
       // Tarjeta del clip que eligió la IA (2026-11-11): SIN descripción
       // (el texto transcrito ya no se muestra). Solo el video, el botón
       // de vista previa, el rango en minutos y el % de viralización.
@@ -2511,7 +2512,7 @@ $("pvSoundBtn").onclick = () => {
 };
 
 function selectClip(c, el) {
-  document.querySelectorAll(".clip").forEach((x) => x.classList.remove("sel"));
+  document.querySelectorAll(".clip-card.cand").forEach((x) => x.classList.remove("sel"));
   if (el) el.classList.add("sel");
   state.selected = c;
   state.words = clipWords(c.abs_start, c.abs_end);

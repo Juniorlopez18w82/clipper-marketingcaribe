@@ -425,16 +425,34 @@ function tabFromUrl() {
   return ROUTE_TABS[p] || "home";
 }
 const btnNavToggle = $("btnNavToggle");
+function closeMobileNav() { document.body.classList.remove("nav-mobile-open"); }
 if (btnNavToggle) btnNavToggle.addEventListener("click", () => {
-  // En Crear Clip el menú se oculta solo (body.create-wide) para dar más
-  // espacio; el botón debe poder volver a mostrarlo, no solo alternar
-  // nav-collapsed (que create-wide seguiría tapando).
+  // Móvil/tablet (<=1024px): el botón es la hamburguesa que abre/cierra
+  // el cajón lateral.
+  if (window.matchMedia("(max-width:1024px)").matches) {
+    document.body.classList.toggle("nav-mobile-open");
+    return;
+  }
+  // Escritorio: colapsa el sidebar. En Crear Clip el menú se oculta solo
+  // (body.create-wide); el botón debe poder volver a mostrarlo, no solo
+  // alternar nav-collapsed (que create-wide seguiría tapando).
   if (document.body.classList.contains("create-wide")) {
     document.body.classList.remove("create-wide");
     document.body.classList.remove("nav-collapsed");
   } else {
     document.body.classList.toggle("nav-collapsed");
   }
+});
+const navOverlay = $("navOverlay");
+if (navOverlay) navOverlay.addEventListener("click", closeMobileNav);
+// Al elegir una pestaña en móvil/tablet, el cajón se cierra solo.
+document.querySelectorAll(".panel-nav .tab").forEach((b) => {
+  b.addEventListener("click", () => {
+    if (window.matchMedia("(max-width:1024px)").matches) closeMobileNav();
+  });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeMobileNav();
 });
 
 function goTab(tab, { push = false } = {}) {

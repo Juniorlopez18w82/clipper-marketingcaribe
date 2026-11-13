@@ -40,6 +40,58 @@ const state = { clipsJob: null, transcript: null, selected: null, words: null,
   coverStyle: { color: "#FFFFFF", borderColor: "#000000", borderW: 3,
     bgColor: "#000000", bg: true, size: 96, posX: 0.5, posY: 0.5 } };
 
+// ---------- Moneda local (2026-11-12, Juan) ----------
+// Los planes se cobran en US$ (Free $0, Pro $25, Gold $35), pero cada
+// país ve el equivalente en su moneda con la tasa actual del dólar.
+// Detección del país: ip-api.com (gratis, sin clave; devuelve el código
+// de moneda del visitante). Tasa del dólar: open.er-api.com (gratis, sin
+// clave; ~160 monedas, incluida DOP). Si alguna API falla, se muestra
+// solo US$ (nunca se inventa una tasa). Se carga una vez por visita.
+state.fx = null; // { currency: "DOP", rate: 61.1 } o null = solo US$
+async function loadLocalCurrency() {
+  try {
+    let currency = null;
+    try {
+      const geo = await (await fetch("https://ip-api.com/json/?fields=status,countryCode,currency", { signal: AbortSignal.timeout(6000) })).json();
+      if (geo && geo.status === "success" && geo.currency) currency = String(geo.currency).toUpperCase();
+    } catch { /* ip-api falló: probar ipapi.co */ }
+    if (!currency) {
+      try {
+        const geo2 = await (await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(6000) })).json();
+        if (geo2 && geo2.currency) currency = String(geo2.currency).toUpperCase();
+      } catch { /* sin geolocalización: solo US$ */ }
+    }
+    if (!currency || currency === "USD") return;
+    const fx = await (await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(6000) })).json();
+    const rate = fx && fx.rates ? Number(fx.rates[currency]) : NaN;
+    if (!rate || !isFinite(rate) || rate <= 0) return;
+    state.fx = { currency, rate };
+    renderLocalPrices();
+    // Si los planes del panel ya se cargaron, se vuelven a pintar con
+    // el equivalente en moneda local.
+    if (_plans.length && $("planCards")) renderPlans(_activePlanId);
+  } catch { /* sin tasa: se muestra solo US$ */ }
+}
+function usdToLocal(usd) {
+  // Devuelve el equivalente formateado ("≈ RD$1,528") o "" si no hay tasa.
+  if (!state.fx || !usd) return "";
+  try {
+    const amount = Math.round(Number(usd) * state.fx.rate);
+    return "≈ " + new Intl.NumberFormat("es", {
+      style: "currency", currency: state.fx.currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch { return ""; }
+}
+function renderLocalPrices() {
+  // Rellena los <div class="local-price" data-usd="25"> de la landing.
+  document.querySelectorAll(".local-price[data-usd]").forEach((el) => {
+    el.textContent = usdToLocal(Number(el.dataset.usd) || 0);
+  });
+}
+let _activePlanId = null;
+loadLocalCurrency();
+
 // Plantillas (mismo preset que app/render.py: TEMPLATES). El editor
 // aplica la plantilla a los controles; si el usuario toca un control de
 // la plantilla (marco, color, grosor, posición), el render es
@@ -498,10 +550,17 @@ async function loadPanel() {
   // se muestra.
   state.canImages = !!(state.user && state.user.is_admin);
   state.canVideos = !!(state.user && state.user.is_admin);
+  // Lives: SOLO plan Gold (2026-11-12, Juan). La opción sigue en el
+  // menú para todos; sin Gold se muestra el aviso de actualización
+  // (locked-full) en vez de la sección. El backend es la autoridad (403).
+  state.canLives = !!(state.user && state.user.is_admin);
   try {
     const d = await apiFetch("/api/subscriptions/mine", { headers: authHeaders() });
     hasPlan = hasPlan || !!d.active_subscription;
     activePlanId = d.active_subscription ? d.active_subscription.plan_id : null;
+    _activePlanId = activePlanId;
+    const planName = (d.active_subscription && d.active_subscription.plan_name) || "";
+    if (planName.trim().toLowerCase() === "gold") state.canLives = true;
     renderMyRequests(d.requests || []);
   } catch { /* sin plan */ }
   // Candado "Próximamente" en el menú para los no-admin (2026-11-11).
@@ -519,7 +578,7 @@ async function loadPanel() {
       if (!locked) btn.querySelector(".soon-lock")?.remove();
     }
   });
-  ["home", "clips", "create", "account", "images", "videos"].forEach((t) => {
+  ["home", "clips", "create", "account", "images", "videos", "lives"].forEach((t) => {
     const pane = $("pane-" + t);
     if (pane) pane.classList.toggle("is-locked", !hasPlan);
   });
@@ -527,6 +586,9 @@ async function loadPanel() {
   if (imgPane) imgPane.classList.toggle("is-locked-full", hasPlan && !state.canImages);
   const vidPane = $("pane-videos");
   if (vidPane) vidPane.classList.toggle("is-locked-full", hasPlan && !state.canVideos);
+  // Lives: con plan pero sin Gold → aviso de actualización a Gold.
+  const livePane = $("pane-lives");
+  if (livePane) livePane.classList.toggle("is-locked-full", hasPlan && !state.canLives);
   try {
     const s = await apiFetch("/api/me/stats", { headers: authHeaders() });
     $("stMonth").textContent = s.clips_this_month ?? 0;
@@ -568,7 +630,17 @@ function featureItem(f) {
   const no = f.trim().toLowerCase().startsWith("sin ");
   return `<li class="${no ? "no" : ""}">${no ? "✗" : "✓"} ${f}</li>`;
 }
+function planPriceLabel(p) {
+  // Free: "$0 / 1 día". Pro/Gold: "$25 / mes". Precio en US$ + el
+  // equivalente en la moneda del país (si se detectó).
+  const usd = Number(p.price_usd || 0);
+  const per = p.duration_days === 1 ? "1 día" : `${p.duration_days} días`;
+  const local = usdToLocal(usd);
+  return `$${usd.toLocaleString("en-US")} <small>/ ${per}</small>` +
+    (local ? `<div class="local-price">${local}</div>` : "");
+}
 async function renderPlans(activePlanId) {
+  _activePlanId = activePlanId;
   const box = $("planCards");
   try {
     _plans = await apiFetch("/api/plans");
@@ -577,20 +649,38 @@ async function renderPlans(activePlanId) {
       const div = document.createElement("div");
       div.className = "plan" + (p.is_popular ? " popular" : "");
       const isMine = activePlanId === p.id;
+      const isFree = (p.name || "").toLowerCase() === "free";
+      const btnLabel = isMine ? "Tu plan actual"
+        : isFree ? "Probar gratis 1 día" : "Contratar";
       div.innerHTML = `${p.is_popular ? '<span class="tag">⭐ Más popular</span>' : ""} ${isMine ? '<span class="tag mine">✓ Tu plan actual</span>' : ""}
         <h4>${p.name}</h4>
-        <div class="price">RD$ ${p.price_dop.toLocaleString("es-DO")} <small>/ ${p.duration_days} días</small></div>
+        <div class="price">${planPriceLabel(p)}</div>
         <ul>${(p.features || []).map(featureItem).join("")}</ul>
-        <button data-plan="${p.id}">${isMine ? "Tu plan actual" : "Contratar"}</button>`;
-      div.querySelector("button").onclick = () => startBuy(p);
+        <button data-plan="${p.id}">${btnLabel}</button>`;
+      div.querySelector("button").onclick = () =>
+        isFree && !isMine ? startFreeTrial(p) : startBuy(p);
       box.appendChild(div);
     });
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar los planes.</p>"; }
 }
+async function startFreeTrial(plan) {
+  // Prueba gratis (1 día, US$0): un clic, sin pago ni comprobante.
+  try {
+    const r = await apiFetch("/api/subscriptions/free-trial", {
+      method: "POST", headers: authHeaders(),
+    });
+    toast(r.message || "Prueba gratis activada: 1 día de acceso ilimitado");
+    loadPanel();
+  } catch (e) {
+    toast(e.message || "No se pudo activar la prueba gratis");
+  }
+}
 async function startBuy(plan) {
   _buyPlan = plan;
   $("buyBox").hidden = false;
-  $("buyTitle").textContent = `Contratar ${plan.name} — RD$ ${plan.price_dop.toLocaleString("es-DO")}`;
+  const usd = Number(plan.price_usd || 0);
+  const local = usdToLocal(usd);
+  $("buyTitle").textContent = `Contratar ${plan.name} — $${usd.toLocaleString("en-US")}${local ? ` (${local})` : ""}`;
   $("buyMsg").textContent = "";
   try {
     _methods = await apiFetch("/api/payment-methods", { headers: authHeaders() });
@@ -717,15 +807,15 @@ async function loadAdminEarnings() {
   const box = $("adminEarnings");
   try {
     const d = await apiFetch("/api/admin/earnings", { headers: authHeaders() });
-    const fmt = (n) => "RD$" + Number(n || 0).toLocaleString("es-DO");
+    const fmt = (n) => "$" + Number(n || 0).toLocaleString("en-US");
     const byPlan = Object.entries(d.users_by_plan || {}).map(([p, n]) => `${esc(p)}: ${n}`).join(" · ") || "—";
     const upcoming = (d.upcoming_renewals || []).length
       ? `<table><tr><th>Usuario</th><th>Plan</th><th>Monto</th><th>Vence</th></tr>` +
-        d.upcoming_renewals.map((r) => `<tr><td>${esc(r.user_name)}<br><small class="muted">${esc(r.user_email)}</small></td><td>${esc(r.plan_name)}</td><td>${fmt(r.amount_dop)}</td><td>${esc((r.ends_at || "").slice(0, 10))}</td></tr>`).join("") + "</table>"
+        d.upcoming_renewals.map((r) => `<tr><td>${esc(r.user_name)}<br><small class="muted">${esc(r.user_email)}</small></td><td>${esc(r.plan_name)}</td><td>${fmt(r.amount_usd)}</td><td>${esc((r.ends_at || "").slice(0, 10))}</td></tr>`).join("") + "</table>"
       : "<p class='muted'>Ninguna membresía vence en los próximos 7 días.</p>";
     const recent = (d.recent_sales || []).length
       ? `<table><tr><th>Usuario</th><th>Plan</th><th>Monto</th><th>Fecha</th></tr>` +
-        d.recent_sales.map((r) => `<tr><td>${esc(r.user_name)}<br><small class="muted">${esc(r.user_email)}</small></td><td>${esc(r.plan_name)}</td><td>${fmt(r.amount_dop)}</td><td>${esc((r.decided_at || "").slice(0, 10))}</td></tr>`).join("") + "</table>"
+        d.recent_sales.map((r) => `<tr><td>${esc(r.user_name)}<br><small class="muted">${esc(r.user_email)}</small></td><td>${esc(r.plan_name)}</td><td>${fmt(r.amount_usd)}</td><td>${esc((r.decided_at || "").slice(0, 10))}</td></tr>`).join("") + "</table>"
       : "<p class='muted'>Aún no hay ventas aprobadas.</p>";
     const susp = (d.suspended_users || []).length
       ? `<table><tr><th>Usuario</th><th>Correo</th><th>Plan</th></tr>` +
@@ -757,7 +847,7 @@ function openAssignModal(userId, name, email, plans) {
     `<label class="assign-plan-row${i === 0 ? " selected" : ""}">
       <input type="radio" name="assignPlan" value="${p.id}"${i === 0 ? " checked" : ""}>
       <span><span class="ap-name">${esc(p.name)}</span>${p.is_popular ? '<span class="ap-pop">⭐ Popular</span>' : ""}<br>
-      <span class="ap-meta">RD$ ${p.price_dop.toLocaleString("es-DO")} · ${p.duration_days} días</span></span>
+      <span class="ap-meta">$${Number(p.price_usd || 0).toLocaleString("en-US")} · ${p.duration_days} días</span></span>
     </label>`).join("") || "<p class='muted'>No hay planes. Crea uno en la pestaña Planes.</p>";
   $("assignPlanList").querySelectorAll(".assign-plan-row").forEach((row) => {
     row.addEventListener("click", () => {
@@ -887,7 +977,7 @@ async function loadAdminPlans() {
   try {
     const plans = await apiFetch("/api/plans");
     $("adminPlans").innerHTML = plans.map((p) =>
-      `<div class="rowline"><div><b>${p.name}</b> · RD$ ${p.price_dop.toLocaleString("es-DO")} · ${p.duration_days} días ${p.is_popular ? "· ⭐ Popular" : ""}</div>
+      `<div class="rowline"><div><b>${p.name}</b> · $${Number(p.price_usd || 0).toLocaleString("en-US")} · ${p.duration_days} días ${p.is_popular ? "· ⭐ Popular" : ""}</div>
       <button class="small black" data-del="${p.id}">Eliminar</button></div>`).join("") || "<p class='muted'>No hay planes.</p>";
     $("adminPlans").querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { await apiFetch(`/api/admin/plans/${b.dataset.del}`, { method: "DELETE", headers: authHeaders() }); loadAdminPlans(); renderPlans(); });
   } catch { $("adminPlans").innerHTML = "<p class='muted'>No se pudieron cargar los planes.</p>"; }
@@ -909,7 +999,7 @@ async function loadAdminMethods() {
   } catch { $("adminMethods").innerHTML = "<p class='muted'>No se pudieron cargar los métodos.</p>"; }
 }
 $("btnNewPlan").onclick = async () => {
-  const body = { name: $("npName").value.trim(), price_dop: parseInt($("npPrice").value || "0", 10), duration_days: parseInt($("npDays").value || "30", 10),
+  const body = { name: $("npName").value.trim(), price_usd: parseFloat($("npPrice").value || "0"), duration_days: parseInt($("npDays").value || "30", 10),
     features: $("npFeatures").value.split("\n").map((s) => s.trim()).filter(Boolean), is_popular: $("npPopular").checked, is_active: true, sort_order: 99 };
   if (!body.name) return toast("Ponle un nombre al plan");
   try {
@@ -1352,7 +1442,7 @@ $("btnStartLive").onclick = async () => {
   }
 };
 
-// ---------- Imágenes IA (fal.ai, plan Full) ----------
+// ---------- Imágenes IA (fal.ai, plan Gold) ----------
 const IMG_STYLE_SUFFIX = {
   "Realista": ", estilo realista, fotografía de alta calidad",
   "Dibujo": ", estilo dibujo, ilustración dibujada a mano",
@@ -1453,7 +1543,7 @@ $("btnGenImage").onclick = async () => {
   }
 };
 
-// ---------- Videos IA (fal.ai, planes Pro/Full) ----------
+// ---------- Videos IA (fal.ai, planes Pro/Gold) ----------
 // Cada generación es UN clip corto (4-15 s según el modelo), no un
 // video largo. El costo estimado se muestra ANTES de generar
 // ($/s del modelo × duración); el estado final, después.

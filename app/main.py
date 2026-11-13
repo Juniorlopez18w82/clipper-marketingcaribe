@@ -1515,6 +1515,29 @@ def api_admin_assign_plan(user_id: int, req: AssignPlanRequest,
                 db.query(User).filter(User.id == user_id).first())}
 
 
+@app.get("/api/admin/jobs")
+def api_admin_jobs(db: Session = Depends(get_db),
+                   _admin: User = Depends(require_admin)):
+    """Clips que los usuarios están sacando AHORA MISMO (análisis y renders
+    en curso), con quién lo está sacando. Solo admin."""
+    out = []
+    for job in jobs.list_active():
+        payload = job.get("payload") or {}
+        uid = job.get("user_id")
+        owner = db.query(User).filter(User.id == uid).first() if uid else None
+        out.append({
+            "id": job.get("id"), "kind": job.get("kind"),
+            "status": job.get("status"), "progress": job.get("progress") or 0,
+            "message": job.get("message") or "",
+            "created_at": job.get("created_at"),
+            "user_name": owner.name if owner else "Anónimo",
+            "user_email": owner.email if owner else "",
+            "video_title": payload.get("video_title") or "",
+            "url": payload.get("url") or "",
+        })
+    return out
+
+
 @app.get("/api/admin/clips")
 def api_admin_clips(db: Session = Depends(get_db),
                     _admin: User = Depends(require_admin)):

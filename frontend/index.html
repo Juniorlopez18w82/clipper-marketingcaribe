@@ -151,6 +151,132 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .btn-brand{position:relative;overflow:hidden}
 .btn-brand::after{content:"";position:absolute;top:0;left:-60%;width:55%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);transform:skewX(-18deg);animation:shine 2.8s ease infinite}
 .landing-sec h2 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+/* ---------- REDISEÑO HOME v76 (2026-11-12, Juan: "no quiero un home tan
+   básico" — rediseño completo: nav glass con sombra, hero con rejilla y
+   formulario real, showcase de formatos, bento, contadores, comparativa,
+   FAQ acordeón animado, CTA final con gradiente y footer ampliado).
+   Todo lo que se afirma es verdad del producto: sin testimonios ni
+   cifras inventadas. ---------- */
+/* Botón secundario oscuro (antes no tenía regla global: .btn-black solo
+   existía dentro de #accountCard, así que "Ver planes" y los botones
+   Free/Pro salían con degradado). */
+.btn-black{background:#27272a;color:#fff;border:0;border-radius:999px;padding:12px 20px;font-weight:700;cursor:pointer;font-size:15px}
+/* --- Nav glass con sombra al bajar --- */
+.landing-nav.scrolled{box-shadow:0 10px 28px rgba(0,0,0,.55);background:rgba(10,10,31,.94);border-bottom-color:rgba(168,85,247,.35)}
+/* --- Hero: rejilla de fondo --- */
+.hero .hero-grid{position:absolute;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(168,85,247,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,.09) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(ellipse 90% 80% at 50% 20%,#000 30%,transparent 75%);mask-image:radial-gradient(ellipse 90% 80% at 50% 20%,#000 30%,transparent 75%)}
+/* Titular por palabras */
+.hero h1{animation:none}
+.hero h1 .w{display:inline-block;opacity:0;animation:wordUp .55s cubic-bezier(.2,.7,.3,1) forwards;animation-delay:var(--d,0s)}
+@keyframes wordUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+/* Formulario del hero */
+.hero-form{display:flex;gap:10px;margin:0 0 14px;animation:fadeUp .7s .35s ease both}
+.hero-form input{flex:1;min-width:0;background:rgba(18,18,43,.85);border:1px solid rgba(168,85,247,.5);color:#fff}
+.hero-form input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(168,85,247,.25)}
+.hero-form button{flex:none;padding:14px 22px;font-size:16px;white-space:nowrap}
+.hero-chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0;animation:fadeUp .7s .45s ease both}
+.hero-chips span{font-size:12px;font-weight:700;color:#d4d4d8;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.3);border-radius:999px;padding:6px 12px}
+/* --- Stats con contadores --- */
+.stats-counters{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin:36px 0 8px}
+.stats-counters .stat-card{background:rgba(18,18,43,.6);backdrop-filter:blur(8px);border:1px solid #27272a;border-radius:16px;padding:20px 12px;text-align:center;transition:transform .25s ease,border-color .25s ease}
+.stats-counters .stat-card:hover{transform:translateY(-4px);border-color:rgba(168,85,247,.5)}
+.stats-counters .stat-card b{display:block;font-size:30px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stats-counters .stat-card span{font-size:13px;color:#a1a1aa}
+/* --- Pasos con línea conectora --- */
+.steps-grid{position:relative}
+.steps-grid::before{content:"";position:absolute;top:44px;left:14%;right:14%;height:2px;background:linear-gradient(90deg,#A855F7,#3B82F6,#D946EF);opacity:.45;pointer-events:none}
+.step-card{position:relative}
+.step-card .step-num{width:48px;height:48px;font-size:20px;background:var(--grad);box-shadow:0 8px 20px rgba(168,85,247,.4)}
+/* --- Showcase de formatos --- */
+.fmt-layout{display:grid;grid-template-columns:1fr 340px;gap:28px;align-items:start}
+.fmt-pills{display:flex;flex-wrap:wrap;gap:10px}
+.fmt-pill{background:rgba(18,18,43,.7);color:#d4d4d8;border:1px solid #3f3f46;border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s ease;font-family:inherit}
+.fmt-pill:hover{border-color:var(--brand);color:#fff;transform:translateY(-2px)}
+.fmt-pill.on{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 8px 20px rgba(168,85,247,.35)}
+.fmt-preview-card{background:rgba(18,18,43,.7);backdrop-filter:blur(8px);border:1px solid #27272a;border-radius:20px;padding:24px;text-align:center;position:sticky;top:96px}
+.fmt-phone{width:190px;margin:0 auto 16px;border:3px solid #2e2e33;border-radius:24px;overflow:hidden;background:#000;box-shadow:0 16px 40px rgba(0,0,0,.55)}
+.fmt-phone svg{width:100%;height:auto;display:block}
+.fmt-pop{animation:fmtPop .35s ease}
+@keyframes fmtPop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.fmt-preview-card h3{font-size:19px;margin:0 0 8px}
+.fmt-preview-card p{color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 16px}
+.fmt-cta{width:100%;justify-content:center}
+/* --- Bento de funciones --- */
+.bento-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.bento-card{background:rgba(18,18,43,.6);backdrop-filter:blur(8px);border:1px solid #27272a;border-radius:18px;padding:26px;position:relative;overflow:hidden;transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease}
+.bento-card::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 50% 0%,rgba(168,85,247,.16),transparent 70%);opacity:0;transition:opacity .3s ease;pointer-events:none}
+.bento-card:hover{transform:translateY(-6px);box-shadow:0 18px 40px rgba(168,85,247,.22);border-color:rgba(168,85,247,.55)}
+.bento-card:hover::before{opacity:1}
+.bento-card.big{grid-column:span 2}
+.bento-card .feat-ico{font-size:32px;margin-bottom:14px;position:relative}
+.bento-card h3{font-size:19px;margin:0 0 10px;position:relative}
+.bento-card p{color:#a1a1aa;font-size:14px;line-height:1.65;margin:0;position:relative}
+.bento-card.big h3{font-size:22px}
+.bento-tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;position:relative}
+.bento-tags span{font-size:12px;font-weight:700;color:#C084FC;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.3);border-radius:999px;padding:5px 10px}
+/* --- Comparativa --- */
+.compare-wrap{max-width:860px;margin:0 auto;overflow-x:auto}
+.compare{width:100%;border-collapse:collapse;background:rgba(18,18,43,.6);border:1px solid #27272a;border-radius:16px;overflow:hidden;font-size:14px}
+.compare th,.compare td{padding:14px 16px;text-align:left;border-bottom:1px solid #27272a}
+.compare tr:last-child td{border-bottom:0}
+.compare thead th{background:rgba(168,85,247,.12);font-size:15px}
+.compare thead th.pro{color:#C084FC}
+.compare thead th.mano{color:#71717a}
+.compare td:first-child{font-weight:700;color:#fff}
+.compare td .ok{color:#4ADE80;font-weight:700}
+.compare td .no{color:#71717a}
+/* --- Planes rediseñados (mismo contenido y precios) --- */
+.plan-card.popular{border:1px solid transparent;background:linear-gradient(#12122B,#12122B) padding-box,linear-gradient(135deg,#A855F7,#3B82F6,#D946EF) border-box}
+.plan-card .plan-price{font-size:44px}
+/* --- FAQ acordeón animado --- */
+.faq-list details{transition:border-color .25s ease,box-shadow .25s ease}
+.faq-list details[open]{border-color:rgba(168,85,247,.55);box-shadow:0 8px 24px rgba(168,85,247,.12)}
+.faq-list summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.faq-list summary::-webkit-details-marker{display:none}
+.faq-list summary::after{content:"+";flex:none;width:28px;height:28px;border-radius:50%;background:rgba(168,85,247,.15);color:#C084FC;font-size:20px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:transform .3s ease;line-height:1}
+.faq-list details[open] summary::after{transform:rotate(45deg)}
+.faq-js details p{max-height:0;overflow:hidden;transition:max-height .35s ease,margin-top .35s ease;margin:0}
+/* --- CTA final con gradiente --- */
+.final-cta{background:linear-gradient(135deg,rgba(168,85,247,.16),rgba(59,130,246,.12),rgba(217,70,239,.14));border:1px solid rgba(168,85,247,.4);border-radius:24px;padding:64px 24px;margin-top:64px;position:relative;overflow:hidden}
+.final-cta::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 60% 80% at 50% 0%,rgba(168,85,247,.25),transparent 70%);pointer-events:none;animation:orbFloat 12s ease-in-out infinite}
+.final-cta h2{font-size:38px;position:relative}
+.final-cta p{position:relative}
+.final-cta .btn-brand{position:relative}
+/* --- Footer ampliado --- */
+.landing-foot{margin-top:64px;border-top:1px solid #27272a;padding:36px 0 8px;display:flex;flex-wrap:wrap;gap:28px;justify-content:space-between}
+.landing-foot .foot-col{min-width:170px}
+.landing-foot .foot-col h4{margin:0 0 12px;font-size:14px;color:#fff}
+.landing-foot .foot-col a{display:block;color:#a1a1aa;font-size:14px;text-decoration:none;margin-bottom:8px}
+.landing-foot .foot-col a:hover{color:#fff}
+.landing-foot .foot-brand{max-width:320px}
+.landing-foot .foot-brand p{color:#71717a;font-size:13px;line-height:1.6;margin:8px 0 0}
+.landing-foot .foot-bottom{flex-basis:100%;border-top:1px solid #27272a;padding-top:16px;color:#71717a;font-size:13px;display:flex;gap:8px;flex-wrap:wrap}
+.landing-foot .foot-bottom a{color:#fff;text-decoration:none;font-weight:700}
+/* --- Móvil: rediseño v76 --- */
+@media(max-width:800px){
+  .hero-form{flex-direction:column}
+  .hero-form button{width:100%}
+  .stats-counters{grid-template-columns:repeat(2,1fr)}
+  .bento-grid{grid-template-columns:1fr}
+  .bento-card.big{grid-column:span 1}
+  .fmt-layout{grid-template-columns:1fr}
+  .fmt-preview-card{position:static}
+  .steps-grid::before{display:none}
+  .final-cta h2{font-size:28px}
+  .final-cta{padding:48px 18px}
+  .landing-foot{flex-direction:column;gap:20px}
+}
+@media(prefers-reduced-motion:reduce){
+  .hero h1 .w,.hero-form,.hero-chips,.fmt-pop{animation:none;opacity:1}
+  .hero h1 .red{animation:none}
+  .hero-grid{display:none}
+  .marquee-track{animation:none}
+  .hero-orbs .orb{animation:none}
+  .hero-chip{animation:none}
+  .plan-card.popular{animation:none}
+  .btn-brand::after{animation:none}
+  .final-cta::before{animation:none}
+}
 @media(max-width:800px){
   .hero{grid-template-columns:1fr;padding:56px 0 44px;gap:36px}
   .hero h1{font-size:40px}
@@ -162,7 +288,6 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
   .hero-chip.c2{right:0}
   .hero-chip.c3{left:0}
   .stats-strip{grid-template-columns:repeat(2,1fr)}
-}
 }
 .card{background:var(--card);border:1px solid #27272a;border-radius:16px;padding:18px;margin-bottom:16px}
 h2{margin:0 0 12px;font-size:18px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
@@ -1224,6 +1349,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     <span class="brand"><img src="/logo-icon.png" alt="Clipzio Pro"> Clipzio Pro</span>
     <div class="nav-links">
       <a href="#como-funciona">Cómo funciona</a>
+      <a href="#formatos">Formatos</a>
       <a href="#funciones">Funciones</a>
       <a href="#planes">Planes</a>
       <a href="#faq">Preguntas</a>
@@ -1236,13 +1362,23 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
   <!-- Hero -->
   <section class="hero">
+    <div class="hero-grid" aria-hidden="true"></div>
     <div class="hero-orbs"><span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span></div>
     <div>
       <img src="/logo-wordmark.jpg" class="hero-logo" alt="Clipzio Pro">
       <span class="hero-badge">✦ IA · Sin API de YouTube</span>
-      <h1>Convierte videos largos en <span class="red">clips virales</span></h1>
+      <h1><span class="w" style="--d:.05s">Convierte</span> <span class="w" style="--d:.15s">videos</span> <span class="w" style="--d:.25s">largos</span> <span class="w" style="--d:.35s">en</span> <span class="w" style="--d:.45s"><span class="red">clips virales</span></span></h1>
       <p class="hero-sub">Pega el link de YouTube o Twitch y la IA encuentra los mejores momentos, los corta en vertical 9:16 con subtítulos y portada — listos para TikTok, Reels y Shorts.</p>
-      <div class="hero-cta">
+      <form class="hero-form" id="heroUrlForm">
+        <input id="heroUrl" type="url" placeholder="Pega el link de YouTube o Twitch…" autocomplete="off" spellcheck="false" aria-label="Link de YouTube o Twitch">
+        <button class="btn-brand" type="submit">Analizar con IA →</button>
+      </form>
+      <div class="hero-chips">
+        <span>✓ Sin API de YouTube</span>
+        <span>✓ 1080p · 9:16</span>
+        <span>✓ 10 modos de cámara</span>
+      </div>
+      <div class="hero-cta" style="margin-top:18px">
         <button class="btn-brand big" id="btnHeroStart">Crear mi primer clip →</button>
         <button class="btn-black big" id="btnHeroPlans">Ver planes</button>
       </div>
@@ -1255,7 +1391,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       </div>
       <span class="hero-chip c1">🔥 95% viral</span>
       <span class="hero-chip c2">📱 9:16 · 1080p</span>
-      <span class="hero-chip c3">💬 Subtítulos IA</span>
+      <span class="hero-chip c3">⏱ 43 min → ~5 min</span>
     </div>
   </section>
 
@@ -1271,12 +1407,13 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     <b>YouTube</b><b>Twitch</b><b>TikTok</b><b>Instagram Reels</b><b>YouTube Shorts</b>
   </section>
 
-  <!-- Datos -->
-  <section class="stats-strip reveal">
-    <div class="stat-card"><b>1080p</b><span>Calidad Full HD vertical</span></div>
-    <div class="stat-card"><b>9:16</b><span>Formato TikTok · Reels · Shorts</span></div>
-    <div class="stat-card"><b>15</b><span>Clips por video (plan Gold)</span></div>
-    <div class="stat-card"><b>3 pasos</b><span>Link → IA → Descarga</span></div>
+  <!-- Datos con contadores animados (solo datos reales del producto) -->
+  <section class="stats-counters reveal" aria-label="Datos de Clipzio Pro">
+    <div class="stat-card reveal"><b><span data-count="1080">0</span>p</b><span>Calidad Full HD vertical</span></div>
+    <div class="stat-card reveal"><b>9:16</b><span>Formato TikTok · Reels · Shorts</span></div>
+    <div class="stat-card reveal"><b><span data-count="60">0</span> min</b><span>Máximo por video analizado</span></div>
+    <div class="stat-card reveal"><b><span data-count="10">0</span></b><span>Modos de cámara</span></div>
+    <div class="stat-card reveal"><b><span data-count="3">0</span> pasos</b><span>Link → IA → Descarga</span></div>
   </section>
 
   <!-- Cómo funciona -->
@@ -1290,17 +1427,50 @@ body.panel-open>header,body.panel-open>main{display:none !important}
     </div>
   </section>
 
+  <!-- Showcase de formatos: 10 modos de cámara, vista previa interactiva -->
+  <section class="landing-sec reveal" id="formatos">
+    <h2>Un formato para <span class="grad">cada video</span></h2>
+    <p class="sec-sub">Toca un modo y mira cómo queda. Lo eliges en el paso 3 · Cámara cuando crees tu clip.</p>
+    <div class="fmt-layout">
+      <div class="fmt-pills reveal" id="fmtPills" role="tablist" aria-label="Modos de cámara"></div>
+      <div class="fmt-preview-card reveal">
+        <div class="fmt-phone" id="fmtPreview" aria-hidden="true"></div>
+        <h3 id="fmtName">Seguir al que habla</h3>
+        <p id="fmtHint">La cámara sigue a la persona que está hablando. Si no se ve ninguna cara, queda centrada.</p>
+        <button class="btn-brand fmt-cta" id="btnFmtTry" type="button">Crear un clip con este modo →</button>
+      </div>
+    </div>
+  </section>
+
   <!-- Funciones -->
   <section class="landing-sec reveal" id="funciones">
     <h2>Todo lo que necesitas para <span class="grad">clips que pegan</span></h2>
     <p class="sec-sub">Hecho para creadores, podcasts, entrevistas y lives.</p>
-    <div class="features-grid">
-      <div class="feat-card reveal"><div class="feat-ico">🎯</div><h3>Momentos virales con IA</h3><p>La IA busca lo gracioso, lo sorprendente, lo polémico y lo exclusivo — nunca el intro ni el relleno. Cada clip lleva su % viral.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico">💬</div><h3>Subtítulos virales y portada</h3><p>Subtítulos grandes con palabra clave resaltada y una portada con tu título de enganche: color, borde, fondo y posición a tu gusto.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico">🎥</div><h3>Cámara inteligente</h3><p>Sigue al que está hablando, doble cámara para entrevistas (uno arriba y otro abajo) o pantalla dividida para reacciones y gaming.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico">📺</div><h3>Clips automáticos de lives</h3><p>Conecta un live de YouTube o Twitch y los clips aparecen solos cada pocos minutos, sin que tengas que estar pendiente.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico">🖼️</div><h3>Videos e imágenes con IA</h3><p>Genera imágenes y videos con IA para tus portadas y tu contenido, sin salir de Clipzio Pro.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico">⚡</div><h3>Rápido de verdad</h3><p>El audio se baja en paralelo y la transcripción va por trozos: un video de 43 minutos se analiza en unos 5 minutos.</p></div>
+    <div class="bento-grid">
+      <div class="bento-card big reveal"><div class="feat-ico">🎯</div><h3>Momentos virales con IA</h3><p>La IA busca lo gracioso, lo sorprendente, lo polémico y lo exclusivo — nunca el intro ni el relleno. Cada clip lleva su % viral y su título de enganche.</p><div class="bento-tags"><span>Sin API de YouTube</span><span>% viral por clip</span></div></div>
+      <div class="bento-card reveal"><div class="feat-ico">💬</div><h3>Subtítulos virales y portada</h3><p>Subtítulos grandes con palabra clave resaltada y una portada con tu título de enganche: color, borde, fondo y posición a tu gusto.</p></div>
+      <div class="bento-card reveal"><div class="feat-ico">📺</div><h3>Clips automáticos de lives</h3><p>Conecta un live de YouTube o Twitch y los clips aparecen solos cada pocos minutos, sin que tengas que estar pendiente. Plan Gold.</p></div>
+      <div class="bento-card reveal"><div class="feat-ico">🖼️</div><h3>Videos e imágenes con IA</h3><p>Genera imágenes y videos con IA para tus portadas y tu contenido, sin salir de Clipzio Pro.</p></div>
+      <div class="bento-card reveal"><div class="feat-ico">⚡</div><h3>Rápido de verdad</h3><p>El audio se baja en paralelo y la transcripción va por trozos: un video de 43 minutos se analiza en unos 5 minutos.</p></div>
+      <div class="bento-card big reveal"><div class="feat-ico">🎥</div><h3>Cámara inteligente: 10 modos</h3><p>Sigue al que está hablando, doble cámara para entrevistas (uno arriba y otro abajo), pantalla dividida para reacciones y gaming, modo automático para entrevistas, video completo con fondo borroso o negro, y espejo.</p><div class="bento-tags"><span>10 modos</span><span>1080p · 9:16</span><span>Automático para entrevistas</span></div></div>
+    </div>
+  </section>
+
+  <!-- Comparativa: Clipzio Pro vs editar a mano -->
+  <section class="landing-sec reveal" id="comparativa">
+    <h2>Clipzio Pro <span class="grad">vs editar a mano</span></h2>
+    <p class="sec-sub">Lo mismo que harías tú, sin las horas de trabajo.</p>
+    <div class="compare-wrap reveal">
+      <table class="compare">
+        <thead><tr><th></th><th class="pro">Clipzio Pro</th><th class="mano">Editar a mano</th></tr></thead>
+        <tbody>
+          <tr><td>Tiempo por clip</td><td><span class="ok">✓ Minutos, con IA</span></td><td><span class="no">✗ Horas buscando y cortando</span></td></tr>
+          <tr><td>Buscar momentos</td><td><span class="ok">✓ La IA los propone con su % viral</span></td><td><span class="no">✗ Ver el video entero</span></td></tr>
+          <tr><td>Subtítulos</td><td><span class="ok">✓ Automáticos, estilo viral</span></td><td><span class="no">✗ Escribirlos palabra por palabra</span></td></tr>
+          <tr><td>Portada</td><td><span class="ok">✓ Con tu título de enganche</span></td><td><span class="no">✗ Hacerla en otra app</span></td></tr>
+          <tr><td>Formato vertical</td><td><span class="ok">✓ 9:16 en 1080p, automático</span></td><td><span class="no">✗ Recortar y ajustar a mano</span></td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -1411,12 +1581,33 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </section>
 
   <footer class="landing-foot">
-    <span><b style="color:#fff">Clipzio Pro</b> · Convierte videos en clips virales</span>
-    <span style="color:#71717a">·</span>
-    <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;font-weight:700">Marketingcaribe.com</a></span>
+    <div class="foot-col foot-brand">
+      <span class="brand" style="font-size:20px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px"><img src="/logo-icon.png" alt="Clipzio Pro" style="width:32px;height:32px;border-radius:9px"> Clipzio Pro</span>
+      <p>Convierte videos largos de YouTube y Twitch en clips verticales virales con IA. Sin API de YouTube, sin editar a mano.</p>
+    </div>
+    <div class="foot-col">
+      <h4>Producto</h4>
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#formatos">Formatos</a>
+      <a href="#funciones">Funciones</a>
+      <a href="#planes">Planes</a>
+    </div>
+    <div class="foot-col">
+      <h4>Ayuda</h4>
+      <a href="#faq">Preguntas frecuentes</a>
+      <a href="#accountCard">Crear cuenta</a>
+      <a href="#accountCard">Entrar</a>
+    </div>
+    <div class="foot-bottom">
+      <span><b style="color:#fff">Clipzio Pro</b> · De videos largos a clips virales</span>
+      <span>·</span>
+      <span>Precios en US$ · Paga por transferencia</span>
+      <span>·</span>
+      <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener">Marketingcaribe.com</a></span>
+    </div>
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=75"></script>
+<script src="app.js?v=76"></script>
 </body>
 </html>

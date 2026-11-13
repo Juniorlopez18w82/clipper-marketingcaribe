@@ -355,8 +355,8 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel-nav .tab .soon-lock{margin-left:auto;font-size:13px;opacity:.85}
 .panel-nav .tab svg{flex:none;width:19px;height:19px}
 .panel-nav .tab:hover{background:rgba(255,255,255,.06)}
-.panel-nav .tab.on{background:linear-gradient(90deg,rgba(var(--p-brand-rgb),.28),rgba(var(--p-brand2-rgb),.16));color:var(--p-white)}
-.panel-nav .tab.on svg{color:var(--p-brand-light)}
+.panel-nav .tab.on{background:rgba(var(--p-brand-rgb),.12);color:var(--p-white)}
+.panel-nav .tab.on svg{color:var(--p-white)}
 .panel-nav .tab.creator{margin-top:auto;border:1px solid var(--p-border2);color:var(--p-muted)}
 .panel-nav .tab.creator:hover{color:var(--p-text);background:rgba(255,255,255,.06)}
 .panel-inner{transition:max-width .35s ease}
@@ -604,6 +604,10 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .plan li.no{color:var(--p-muted2)}
 .panel .plan .tag{display:inline-block;background:var(--p-grad);color:var(--p-white);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700}
 .panel .plan .tag.mine{background:var(--p-surface2);border:1px solid var(--p-border)}
+.panel .plan li svg{width:16px;height:16px;vertical-align:-3px}
+.panel .plan .tag svg{width:13px;height:13px;vertical-align:-2px}
+.assign-plan-row .ap-pop svg{width:12px;height:12px;vertical-align:-2px}
+#adminPlans .rowline svg{width:13px;height:13px;vertical-align:-2px}
 .panel .plan button{width:100%;margin-top:14px}
 .panel .buybox{background:var(--p-surface);border:1px solid var(--p-border);border-radius:var(--p-radius);box-shadow:var(--p-shadow);padding:20px 24px;margin-top:16px}
 .panel .buybox h3{font-size:18px;font-weight:700;margin:0 0 4px;color:var(--p-text)}
@@ -1464,6 +1468,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=81"></script>
+<script src="app.js?v=82"></script>
 </body>
 </html>

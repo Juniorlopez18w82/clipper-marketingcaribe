@@ -101,6 +101,8 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .plan-card h3{font-size:20px;margin:0 0 4px}
 .plan-card .plan-price{font-size:36px;font-weight:800;margin:10px 0 2px}
 .plan-card .plan-price small{font-size:15px;color:#a1a1aa;font-weight:500}
+.plan-card .local-price{font-size:13px;color:#a1a1aa;margin:0 0 6px;min-height:16px}
+.plan-card .local-price:empty{display:none}
 .plan-card .plan-per{color:#71717a;font-size:13px;margin:0 0 18px}
 .plan-card ul{list-style:none;margin:0 0 24px;padding:0;display:flex;flex-direction:column;gap:9px;color:#d4d4d8;font-size:14px}
 .plan-card ul li::before{content:"✓ ";color:var(--brand);font-weight:800}
@@ -339,7 +341,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel .locked button{margin-top:16px}
 .panel .pane.is-locked .locked{display:block}
 .panel .pane.is-locked .pane-body{display:none}
-/* Bloqueo por plan (p. ej. Imágenes IA solo en Full): mismo estilo que
+/* Bloqueo por plan (p. ej. Imágenes IA solo en Gold): mismo estilo que
    el bloqueo sin plan, pero por nivel de plan. */
 .panel .locked-full{display:none;background:var(--card);border:1px solid #27272a;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.4);padding:32px 24px;margin:16px 0;text-align:center}
 .panel .locked-full .lock-icon{width:56px;height:56px;border-radius:50%;background:#A855F7;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
@@ -826,6 +828,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <h3>Lives</h3>
       <p class="sub">Clips automáticos de lives en curso · YouTube y Twitch</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar Clipzio Pro</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
+      <div class="locked-full"><div class="lock-icon">🔒</div><p>Los Lives están en el plan Gold</p><p class="muted">Tu plan actual no incluye clips de Lives. Actualiza a Gold para procesar transmisiones en vivo y convertirlas en clips.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver plan Gold</button></div>
       <div class="pane-body">
         <div class="card">
           <label>Link del live</label>
@@ -845,9 +848,9 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
     <div class="pane" id="pane-images" hidden>
       <h3>Imágenes IA</h3>
-      <p class="sub">Crea imágenes con IA para tus clips, portadas y publicaciones. Función del plan Full.</p>
+      <p class="sub">Crea imágenes con IA para tus clips, portadas y publicaciones. Función del plan Gold.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar Clipzio Pro</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
-      <div class="locked-full"><div class="lock-icon">🔒</div><p>Las imágenes con IA están en el plan Full</p><p class="muted">Tu plan actual no incluye imágenes dibujadas por IA. Pásate al plan Full para crearlas.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver plan Full</button></div>
+      <div class="locked-full"><div class="lock-icon">🔒</div><p>Las imágenes con IA están en el plan Gold</p><p class="muted">Tu plan actual no incluye imágenes dibujadas por IA. Pásate al plan Gold para crearlas.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver plan Gold</button></div>
       <div class="pane-body">
         <div class="card">
           <label>Describe tu imagen</label>
@@ -872,10 +875,10 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 
     <div class="pane" id="pane-videos" hidden>
       <h3>Videos IA</h3>
-      <p class="sub">Crea videos con IA desde un texto, con fal.ai. Función de los planes Pro y Full.</p>
+      <p class="sub">Crea videos con IA desde un texto, con fal.ai. Función de los planes Pro y Gold.</p>
       <p class="muted" style="margin-top:-6px">Cada generación crea <b style="color:#f4f4f5">UN clip corto</b>: como máximo <b style="color:#f4f4f5">~30 s</b> (Wan 3.0), y la mayoría de los modelos solo 4–15 s. <b style="color:#f4f4f5">Ningún modelo genera 1 minuto de una vez</b>: un video de 1 minuto se hace con varios clips cortos unidos.</p>
       <div class="locked"><div class="lock-icon">🔒</div><p>Debes contratar un plan para usar Clipzio Pro</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
-      <div class="locked-full"><div class="lock-icon">🔒</div><p>Los videos con IA están en los planes Pro y Full</p><p class="muted">Tu plan actual no incluye videos IA. Pásate a Pro o Full para crearlos.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes Pro y Full</button></div>
+      <div class="locked-full"><div class="lock-icon">🔒</div><p>Los videos con IA están en los planes Pro y Gold</p><p class="muted">Tu plan actual no incluye videos IA. Pásate a Pro o Gold para crearlos.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes Pro y Gold</button></div>
       <div class="pane-body">
         <div class="card">
           <label>Describe tu video</label>
@@ -1000,7 +1003,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
         <div class="card">
           <h4>Planes</h4>
           <div id="adminPlans"><p class="muted">Cargando…</p></div>
-          <label>Nombre del plan</label><input id="npName" type="text" placeholder="Ej: Full">
+          <label>Nombre del plan</label><input id="npName" type="text" placeholder="Ej: Gold">
           <div class="row"><div><label>Precio RD$</label><input id="npPrice" type="number" value="3500"></div><div><label>Días</label><input id="npDays" type="number" value="30"></div></div>
           <label>Características (una por línea)</label><textarea id="npFeatures" rows="4" placeholder="Videos ilimitados&#10;Hasta 15 clips por video"></textarea>
           <label><input type="checkbox" id="npPopular" style="width:18px;height:18px;vertical-align:-3px"> Más popular</label>
@@ -1269,7 +1272,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   <section class="stats-strip reveal">
     <div class="stat-card"><b>1080p</b><span>Calidad Full HD vertical</span></div>
     <div class="stat-card"><b>9:16</b><span>Formato TikTok · Reels · Shorts</span></div>
-    <div class="stat-card"><b>15</b><span>Clips por video (plan Full)</span></div>
+    <div class="stat-card"><b>15</b><span>Clips por video (plan Gold)</span></div>
     <div class="stat-card"><b>3 pasos</b><span>Link → IA → Descarga</span></div>
   </section>
 
@@ -1301,48 +1304,53 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   <!-- Planes -->
   <section class="landing-sec reveal" id="planes">
     <h2>Planes simples, <span class="grad">sin sorpresas</span></h2>
-    <p class="sec-sub">Paga por transferencia, sube tu comprobante y empieza. 30 días por plan.</p>
+    <p class="sec-sub">Empieza gratis por 1 día. Paga por transferencia, sube tu comprobante y sigue. Precios en dólares; abajo ves el equivalente en tu moneda.</p>
     <div class="landing-plans">
       <div class="plan-card reveal">
-        <h3>Básico</h3>
-        <div class="plan-price">RD$1,000 <small>/ mes</small></div>
-        <p class="plan-per">Para empezar a publicar clips</p>
+        <h3>Free</h3>
+        <div class="plan-price" data-usd="0">$0 <small>/ 1 día</small></div>
+        <div class="local-price" data-usd="0"></div>
+        <p class="plan-per">Prueba gratis, sin tarjeta</p>
         <ul>
-          <li>10 videos por semana</li>
-          <li>Hasta 5 clips por video</li>
-          <li>Calidad 720p</li>
-          <li>Tu propia marca de agua</li>
+          <li>1 día de acceso gratis</li>
+          <li>Acceso ilimitado por 24 horas</li>
+          <li>Prueba de las herramientas de IA</li>
+          <li>Clips de videos largos a cortos</li>
+          <li>Funciones principales de la plataforma</li>
         </ul>
-        <button class="btn-black" data-plan-cta>Empezar con Básico</button>
+        <button class="btn-black" data-plan-cta>Probar gratis 1 día</button>
       </div>
       <div class="plan-card reveal">
         <h3>Pro</h3>
-        <div class="plan-price">RD$2,000 <small>/ mes</small></div>
+        <div class="plan-price" data-usd="25">$25 <small>/ mes</small></div>
+        <div class="local-price" data-usd="25"></div>
         <p class="plan-per">Para publicar todas las semanas</p>
         <ul>
-          <li>25 videos por semana</li>
-          <li>Hasta 10 clips por video</li>
-          <li>Calidad 1080p</li>
-          <li>Clips de lives automáticos</li>
-          <li>Videos con IA</li>
-          <li>Tu propia marca de agua</li>
+          <li>Videos largos a clips cortos</li>
+          <li>IA que detecta momentos virales</li>
+          <li>Subtítulos automáticos</li>
+          <li>Edición de clips</li>
+          <li>Adaptación para TikTok, Reels y Shorts</li>
+          <li>Herramientas de optimización de contenido</li>
         </ul>
         <button class="btn-black" data-plan-cta>Empezar con Pro</button>
       </div>
       <div class="plan-card popular reveal">
         <span class="pop-tag">⭐ Más popular</span>
-        <h3>Full</h3>
-        <div class="plan-price">RD$3,500 <small>/ mes</small></div>
-        <p class="plan-per">Sin límites, para creadores serios</p>
+        <h3>Gold</h3>
+        <div class="plan-price" data-usd="35">$35 <small>/ mes</small></div>
+        <div class="local-price" data-usd="35"></div>
+        <p class="plan-per">La experiencia completa</p>
         <ul>
-          <li>Videos ilimitados</li>
-          <li>Hasta 15 clips por video</li>
-          <li>Calidad 1080p</li>
-          <li>Clips de lives automáticos</li>
-          <li>Videos e imágenes con IA</li>
-          <li>Tu propia marca de agua</li>
+          <li>Todo lo del plan Pro</li>
+          <li>Generación avanzada de clips con IA</li>
+          <li>Subtítulos automáticos avanzados</li>
+          <li>Edición profesional de clips</li>
+          <li>Procesamiento de Lives en vivo</li>
+          <li>Conversión de Lives a clips cortos</li>
+          <li>Momentos destacados durante el LIVE</li>
         </ul>
-        <button class="btn-brand" data-plan-cta>Empezar con Full</button>
+        <button class="btn-brand" data-plan-cta>Empezar con Gold</button>
       </div>
     </div>
   </section>
@@ -1355,8 +1363,8 @@ body.panel-open>header,body.panel-open>main{display:none !important}
       <details><summary>¿Necesito la API de YouTube?</summary><p>No. Solo pegas el link del video o del live y Clipzio Pro hace todo. No necesitas claves, ni permisos, ni conectar tu canal.</p></details>
       <details><summary>¿Qué videos puedo convertir?</summary><p>Cualquier video público de YouTube o Twitch, y lives en curso. También puedes subir tu propio archivo de video.</p></details>
       <details><summary>¿Cómo pago?</summary><p>Por transferencia bancaria. Eliges tu plan, pagas con el método que te convenga, subes el comprobante y el admin lo aprueba. Sin tarjeta.</p></details>
-      <details><summary>¿En qué calidad salen los clips?</summary><p>Vertical 9:16 en 1080p (Full y Pro) o 720p (Básico), con subtítulos, marco y portada con tu título de enganche.</p></details>
-      <details><summary>¿Puedo cancelar cuando quiera?</summary><p>Sí. Tu plan dura 30 días y no se renueva solo. Si no quieres seguir, simplemente no lo renuevas.</p></details>
+      <details><summary>¿En qué calidad salen los clips?</summary><p>Vertical 9:16 en 1080p, con subtítulos, marco y portada con tu título de enganche.</p></details>
+      <details><summary>¿Puedo cancelar cuando quiera?</summary><p>Sí. Los planes Pro y Gold duran 30 días y no se renuevan solos. Si no quieres seguir, simplemente no los renuevas. El plan Free dura 1 día.</p></details>
     </div>
   </section>
 
@@ -1406,6 +1414,6 @@ body.panel-open>header,body.panel-open>main{display:none !important}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=70"></script>
+<script src="app.js?v=71"></script>
 </body>
 </html>

@@ -2300,7 +2300,7 @@ async function loadCamTrack() {
   state.camTrackKey = key;
   const mode = $("cameraMode") && $("cameraMode").value;
   if (!pv || !state.clipsJob || !state.selected
-      || (mode !== "follow_speaker" && mode !== "follow_person" && mode !== "auto")) {
+      || mode !== "follow_speaker") {
     state.camTrack = null;
     if (pv) pv.style.objectPosition = "50% 50%";
     return;
@@ -2698,10 +2698,8 @@ $("btnSaveMeta").onclick = async () => {
 const CAMERA_HINTS = {
   center: "Centrada: el recorte 9:16 fijo en el centro del video, como siempre.",
   follow_speaker: "La cámara sigue a la persona que está hablando. Si no se ve ninguna cara, queda centrada.",
-  follow_person: "Sigue siempre a la persona de la zona que elijas. Si no se la ve, queda centrada.",
   dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo, cada una centrada.",
   split: "Para videos con una cara en una esquina (reacción, entrevista, juego): la cara arriba y el contenido abajo, en dos pantallas.",
-  auto: "Automático para entrevistas: detecta por escena si hay una o dos personas. Una persona sale centrada a pantalla completa; dos personas salen una arriba y otra abajo, cada una en su recorte. Los cambios de cámara cambian el encuadre al instante.",
   blur: "Video completo con fondo borroso: el video entero sin recortar en el centro, con el mismo video desenfocado de fondo arriba y abajo. El título gancho queda arriba todo el clip y los subtítulos abajo.",
   mirror: "Espejo completo: todo el video volteado horizontalmente, como en un espejo. La persona que se mueve a la derecha sale moviéndose a la izquierda.",
   mirror_blur: "Espejo + fondo borroso: el video volteado, entero sin recortar en el centro, con el mismo video desenfocado de fondo arriba y abajo. Título gancho arriba y subtítulos abajo.",
@@ -2713,27 +2711,53 @@ const CAMERA_HINTS = {
 const CAMERA_PREVIEWS = {
   center: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="38" r="10" fill="#e4e4e7"/><path d="M12 78 Q28 58 44 78 L44 100 L12 100 Z" fill="#e4e4e7"/></svg>`,
   follow_speaker: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="34" r="9" fill="#e4e4e7"/><path d="M14 70 Q28 54 42 70 L42 88 L14 88 Z" fill="#e4e4e7"/><path d="M6 94 h12 m-3 -3 l3 3 -3 3 M50 94 h-12 m3 -3 l-3 3 3 3" stroke="#A855F7" stroke-width="2" fill="none"/></svg>`,
-  follow_person: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="38" r="12" fill="none" stroke="#A855F7" stroke-width="2" stroke-dasharray="4 3"/><circle cx="28" cy="38" r="9" fill="#e4e4e7"/><path d="M13 76 Q28 58 43 76 L43 100 L13 100 Z" fill="#e4e4e7"/></svg>`,
   dual: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="16" r="7" fill="#e4e4e7"/><path d="M16 38 Q28 26 40 38 L40 50 L16 50 Z" fill="#e4e4e7"/><line x1="0" y1="50" x2="56" y2="50" stroke="#A855F7" stroke-width="2"/><circle cx="28" cy="66" r="7" fill="#FADE4C"/><path d="M16 88 Q28 76 40 88 L40 100 L16 100 Z" fill="#FADE4C"/></svg>`,
   split: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><rect x="6" y="6" width="44" height="34" rx="4" fill="#27272a" stroke="#A855F7" stroke-width="1.5"/><circle cx="28" cy="18" r="6" fill="#e4e4e7"/><path d="M18 36 Q28 28 38 36 L38 40 L18 40 Z" fill="#e4e4e7"/><rect x="6" y="46" width="44" height="48" rx="4" fill="#1f1f23"/><path d="M24 62 L38 70 L24 78 Z" fill="#A855F7"/></svg>`,
-  auto: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="28" cy="16" r="7" fill="#e4e4e7"/><path d="M16 38 Q28 26 40 38 L40 50 L16 50 Z" fill="#e4e4e7"/><line x1="0" y1="50" x2="56" y2="50" stroke="#A855F7" stroke-width="2"/><circle cx="28" cy="66" r="7" fill="#FADE4C"/><path d="M16 88 Q28 76 40 88 L40 100 L16 100 Z" fill="#FADE4C"/><path d="M46 6 l4 4 M50 6 l-4 4" stroke="#A855F7" stroke-width="2" fill="none"/></svg>`,
   blur: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><rect x="0" y="0" width="56" height="34" fill="#1f1f2b"/><rect x="10" y="6" width="36" height="6" rx="3" fill="#e4e4e7"/><rect x="16" y="15" width="24" height="5" rx="2.5" fill="#71717a"/><rect x="0" y="34" width="56" height="32" fill="#27272a" stroke="#A855F7" stroke-width="1.5"/><circle cx="28" cy="46" r="6" fill="#e4e4e7"/><path d="M18 62 Q28 54 38 62 L38 66 L18 66 Z" fill="#e4e4e7"/><rect x="0" y="66" width="56" height="34" fill="#1f1f2b"/><rect x="10" y="76" width="36" height="6" rx="3" fill="#FADE4C"/><rect x="16" y="86" width="24" height="5" rx="2.5" fill="#e4e4e7"/></svg>`,
   mirror: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><circle cx="20" cy="38" r="10" fill="#e4e4e7"/><path d="M4 78 Q20 58 36 78 L36 100 L4 100 Z" fill="#e4e4e7"/><path d="M8 88 h40 m-6 -4 l6 4 -6 4 M48 88 H8 m6 -4 l-6 4 6 4" stroke="#A855F7" stroke-width="2" fill="none"/></svg>`,
   mirror_blur: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><rect x="0" y="0" width="56" height="34" fill="#1f1f2b"/><rect x="10" y="6" width="36" height="6" rx="3" fill="#e4e4e7"/><rect x="16" y="15" width="24" height="5" rx="2.5" fill="#71717a"/><rect x="0" y="34" width="56" height="32" fill="#27272a" stroke="#A855F7" stroke-width="1.5"/><circle cx="28" cy="46" r="6" fill="#e4e4e7"/><path d="M18 62 Q28 54 38 62 L38 66 L18 66 Z" fill="#e4e4e7"/><path d="M16 50 h24 m-4 -3 l4 3 -4 3 M40 50 H16 m4 -3 l-4 3 4 3" stroke="#FADE4C" stroke-width="1.5" fill="none"/><rect x="0" y="66" width="56" height="34" fill="#1f1f2b"/><rect x="10" y="76" width="36" height="6" rx="3" fill="#FADE4C"/><rect x="16" y="86" width="24" height="5" rx="2.5" fill="#e4e4e7"/></svg>`,
   mirror_black: `<svg viewBox="0 0 56 100" width="56" height="100"><rect width="56" height="100" fill="#0A0A1F"/><rect x="0" y="0" width="56" height="34" fill="#000000"/><rect x="10" y="6" width="36" height="6" rx="3" fill="#e4e4e7"/><rect x="16" y="15" width="24" height="5" rx="2.5" fill="#71717a"/><rect x="0" y="34" width="56" height="32" fill="#27272a" stroke="#A855F7" stroke-width="1.5"/><circle cx="28" cy="46" r="6" fill="#e4e4e7"/><path d="M18 62 Q28 54 38 62 L38 66 L18 66 Z" fill="#e4e4e7"/><path d="M16 50 h24 m-4 -3 l4 3 -4 3 M40 50 H16 m4 -3 l-4 3 4 3" stroke="#FADE4C" stroke-width="1.5" fill="none"/><rect x="0" y="66" width="56" height="34" fill="#000000"/><rect x="10" y="76" width="36" height="6" rx="3" fill="#FADE4C"/><rect x="16" y="86" width="24" height="5" rx="2.5" fill="#e4e4e7"/></svg>`,
 };
+// Demo en video de cada modo de cámara (2026-11-13, Juan: que el usuario
+// vea cómo queda su clip ANTES de procesarlo). Cada modo tiene un demo
+// corto en /demos/cam-<modo>.mp4 (Hot Ones, 10 s, 720p). Si el video no
+// carga, se muestra el diagrama SVG de antes.
 function updateCameraPreview() {
-  const box = $("cameraPreview");
-  if (!box) return;
+  const v = $("cameraDemo");
+  const fb = $("cameraDemoFallback");
   const m = ($("cameraMode") && $("cameraMode").value) || "center";
-  box.innerHTML = CAMERA_PREVIEWS[m] || CAMERA_PREVIEWS.center;
+  if (!v) return;
+  if (v.dataset.mode !== m) {
+    v.dataset.mode = m;
+    v.src = "/demos/cam-" + m + ".mp4";
+    v.load();
+    const p = v.play();
+    if (p) p.catch(() => {});
+  }
+  if (fb) fb.style.display = "none";
+  v.style.display = "block";
 }
-// Dibuja el mini diagrama al cargar (el select arranca en
-// "Seguir al que habla").
+(function initCameraDemo() {
+  const v = $("cameraDemo"), wrap = $("cameraDemoWrap"), fb = $("cameraDemoFallback");
+  if (!v || !wrap) return;
+  v.addEventListener("error", () => {
+    // Sin demo (archivo ausente): diagrama SVG como antes.
+    v.style.display = "none";
+    if (fb) {
+      const m = ($("cameraMode") && $("cameraMode").value) || "center";
+      fb.innerHTML = CAMERA_PREVIEWS[m] || CAMERA_PREVIEWS.center;
+      fb.style.display = "block";
+    }
+  });
+  wrap.addEventListener("click", () => {
+    if (v.style.display === "none") return;
+    if (v.paused) { const p = v.play(); if (p) p.catch(() => {}); }
+    else v.pause();
+  });
+})();
 updateCameraPreview();
 $("cameraMode").onchange = () => {
   const m = $("cameraMode").value;
-  $("cameraPersonRow").hidden = m !== "follow_person";
   $("facecamRow").hidden = m !== "split";
   $("cameraHint").textContent = CAMERA_HINTS[m] || CAMERA_HINTS.center;
   updateCameraPreview();
@@ -2893,8 +2917,8 @@ if (_heroForm) {
 // previa usa los SVG y textos que ya existen (CAMERA_PREVIEWS/HINTS).
 const FMT_MODES = [
   ["center", "Centrada"], ["follow_speaker", "Seguir al que habla"],
-  ["follow_person", "Elegir una persona"], ["dual", "Doble cámara"],
-  ["split", "Pantalla dividida"], ["auto", "Automático"],
+  ["dual", "Doble cámara"],
+  ["split", "Pantalla dividida"],
   ["blur", "Video completo · fondo borroso"], ["mirror", "Espejo completo"],
   ["mirror_blur", "Espejo · fondo borroso"], ["mirror_black", "Espejo · fondo negro"],
 ];

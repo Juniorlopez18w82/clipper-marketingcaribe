@@ -10,9 +10,31 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script>/* Si hay sesión guardada, NO mostrar el login ni un instante: se oculta
    la landing y sale "Cargando tu panel…" hasta validar el token. */
-try { if (localStorage.getItem("clipper_token")) { document.documentElement.className += " booting"; } } catch (e) {}</script>
+try { if (localStorage.getItem("clipper_token")) { document.documentElement.className += " booting"; } } catch (e) {}
+try { if (localStorage.getItem("clipper_theme") === "light") { document.documentElement.classList.add("light"); } } catch (e) {}</script>
 <style>
 :root{--bg:#030422;--brand:#9202e9;--brand2:#0185fc;--brand3:#9202e9;--grad:linear-gradient(135deg,#0185fc,#9202e9);--yellow:#FADE4C;--card:#12122B;--text:#f4f4f5;--muted:#a1a1aa;--p-bg:#030422;--p-surface:#12122B;--p-surface2:#181838;--p-border:rgba(255,255,255,.08);--p-border2:rgba(255,255,255,.14);--p-text:#F4F4F5;--p-muted:#A1A1AA;--p-muted2:#71717A;--p-brand:#9202e9;--p-brand2:#0185fc;--p-brand-rgb:146,2,233;--p-brand2-rgb:1,133,252;--p-grad:linear-gradient(135deg,#0185fc,#9202e9);--p-shadow:0 10px 30px rgba(0,0,0,.35);--p-shadow-lg:0 18px 48px rgba(0,0,0,.45);--p-radius:16px;--p-ok:#4ADE80;--p-ok-bg:rgba(34,197,94,.16);--p-warn:#FACC15;--p-warn-bg:rgba(250,204,21,.14);--p-err:#F87171;--p-err-bg:rgba(248,113,113,.14);--p-info:#60A5FA;--p-info-bg:rgba(96,165,250,.16);--p-yt:#FF6B6B;--p-yt-bg:rgba(255,0,0,.16);--p-tw:#C4A5FF;--p-tw-bg:rgba(145,70,255,.20);--p-white:#fff;--p-black:#000;--p-brand-light:#B45CF5}
+/* ---------- Modo claro (v124, Juan) ---------- */
+html.light{--bg:#f1f3f9;--card:#ffffff;--text:#111827;--muted:#5b6472;--p-bg:#f1f3f9;--p-surface:#ffffff;--p-surface2:#e9edf5;--p-border:rgba(15,23,42,.12);--p-border2:rgba(15,23,42,.22);--p-text:#111827;--p-muted:#5b6472;--p-muted2:#8a93a3;--p-shadow:0 10px 30px rgba(15,23,42,.10);--p-shadow-lg:0 18px 48px rgba(15,23,42,.14);--p-brand-light:#9202e9}
+html.light body.panel-open{background:var(--p-bg)}
+html.light input[type=text],html.light input[type=url],html.light input[type=email],html.light input[type=password],html.light input[type=number],html.light select,html.light textarea{background:#fff;border-color:rgba(15,23,42,.22);color:var(--p-text)}
+html.light input[type=color]{background:#fff;border-color:rgba(15,23,42,.22)}
+html.light #accountCard,html.light #accountCard h2{color:var(--p-text)}
+html.light #accountCard input{background:#fff;color:var(--p-text);border-color:rgba(15,23,42,.22)}
+html.light .landing-nav{background:rgba(255,255,255,.92);border-bottom-color:rgba(15,23,42,.12)}
+html.light .landing-nav .brand{color:#111827}
+html.light .landing-nav .nav-links a{color:#5b6472}
+html.light .landing-nav .nav-links a:hover{color:#111827}
+html.light .plan-card{border-color:rgba(15,23,42,.14)}
+html.light .plan-card ul,html.light .platforms b{color:#374151}
+html.light .landing-sec .sec-sub{color:#5b6472}
+html.light .hero-chips span{color:#374151;background:rgba(146,2,233,.08);border-color:rgba(146,2,233,.3)}
+html.light .fmt-pill{background:rgba(255,255,255,.9);color:#374151;border-color:rgba(15,23,42,.2)}
+html.light .plan-card.popular{background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,#0185fc,#9202e9) border-box}
+html.light .theme-btn{color:#111827}
+.theme-btn{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--p-border);background:var(--p-surface);color:var(--p-text);cursor:pointer;flex:none}
+.theme-btn:hover{border-color:var(--p-border2)}
+.theme-btn svg{width:19px;height:19px}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,Arial,sans-serif}
 header{padding:18px 20px;border-bottom:3px solid var(--brand);display:flex;justify-content:space-between;align-items:center}
 header b{color:var(--brand);font-size:22px}
@@ -799,6 +821,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
     <span class="brand" id="brandHome" title="Volver al inicio"><img src="/logo-icon.png" alt="Clipzio Pro"> <span class="brand-name">Clipzio Pro</span></span>
     <span class="spacer"></span>
     <span class="who"><b id="panelCountdown" class="countdown"></b><span class="planbadge" id="panelUserPlan">Sin plan</span></span>
+    <button class="theme-btn" id="btnTheme" type="button" aria-label="Cambiar a modo claro" title="Cambiar a modo claro"></button>
     <button class="ghost" id="btnLogoutTop">Cerrar sesión</button>
   </div>
   <div class="nav-overlay" id="navOverlay"></div>
@@ -1199,7 +1222,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
     <div class="pane" id="pane-videos" hidden>
       <h3>Videos IA</h3>
       <p class="sub">Crea videos con IA desde un texto, con fal.ai. Función de los planes Pro y Gold.</p>
-      <p class="muted" style="margin-top:-6px">Cada generación crea <b style="color:#f4f4f5">UN clip corto</b>: como máximo <b style="color:#f4f4f5">~30 s</b> (Wan 3.0), y la mayoría de los modelos solo 4–15 s. <b style="color:#f4f4f5">Ningún modelo genera 1 minuto de una vez</b>: un video de 1 minuto se hace con varios clips cortos unidos.</p>
+      <p class="muted" style="margin-top:-6px">Cada generación crea <b style="color:var(--p-text)">UN clip corto</b>: como máximo <b style="color:var(--p-text)">~30 s</b> (Wan 3.0), y la mayoría de los modelos solo 4–15 s. <b style="color:var(--p-text)">Ningún modelo genera 1 minuto de una vez</b>: un video de 1 minuto se hace con varios clips cortos unidos.</p>
       <div class="locked"><div class="lock-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><p>Debes contratar un plan para usar Clipzio Pro</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="locked-full"><div class="lock-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><p>Los videos con IA están en los planes Pro y Gold</p><p class="muted">Tu plan actual no incluye videos IA. Pásate a Pro o Gold para crearlos.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes Pro y Gold</button></div>
       <div class="pane-body">
@@ -1558,6 +1581,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
       <a href="#planes">Planes</a>
     </div>
     <div class="nav-actions">
+      <button class="theme-btn" id="btnThemeLanding" type="button" aria-label="Cambiar a modo claro" title="Cambiar a modo claro"></button>
       <button class="ghost" id="btnNavLogin">Entrar</button>
       <button class="btn-brand" id="btnNavRegister">Crear cuenta</button>
     </div>
@@ -1666,6 +1690,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=123"></script>
+<script src="app.js?v=124"></script>
 </body>
 </html>

@@ -2013,6 +2013,7 @@ function resetCreateFlow() {
   $("candidatesCard").hidden = true;
   $("step3Card").hidden = true;
   $("configCard").hidden = true;
+  if ($("createGrid")) $("createGrid").classList.add("create-centered");
   $("resultCard").hidden = true;
   hidePreview();
   setJobProgress(0);
@@ -2778,6 +2779,7 @@ function selectClip(c, el) {
   // El paso 3 (subtítulos + render) solo aparece DESPUÉS de elegir un clip.
   $("step3Card").hidden = false;
   $("configCard").hidden = false;
+  if ($("createGrid")) $("createGrid").classList.remove("create-centered");
   $("resultCard").hidden = true;
   $("step3Card").scrollIntoView({ behavior: "smooth" });
 }

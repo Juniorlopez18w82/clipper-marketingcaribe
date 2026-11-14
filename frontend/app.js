@@ -2070,6 +2070,8 @@ function wzSyncFromEditor() {
   set("wzFrameColor", $("frameColor") ? $("frameColor").value : "#FADE4C");
   set("wzFrameWidth", $("frameWidth") ? $("frameWidth").value : 14);
   set("wzCameraMode", $("cameraMode") ? $("cameraMode").value : "follow_speaker");
+  set("wzRangeStart", $("rangeStart") ? $("rangeStart").value : 0);
+  set("wzRangeEnd", $("rangeEnd") ? $("rangeEnd").value : 120);
   set("wzMaxClips", $("cfgMaxClips") ? $("cfgMaxClips").value : 5);
   set("wzMinClip", $("cfgMinClip") ? $("cfgMinClip").value : 20);
   set("wzMaxClip", $("cfgMaxClip") ? $("cfgMaxClip").value : 45);
@@ -2091,6 +2093,9 @@ function wzSyncToEditor() {
     cam.value = $("wzCameraMode").value;
     cam.dispatchEvent(new Event("change", { bubbles: true }));
   }
+  const rs = $("rangeStart"), re = $("rangeEnd");
+  if (rs) { rs.value = $("wzRangeStart").value; rs.dispatchEvent(new Event("input", { bubbles: true })); }
+  if (re) { re.value = $("wzRangeEnd").value; re.dispatchEvent(new Event("input", { bubbles: true })); }
   set("cfgMaxClips", $("wzMaxClips").value);
   set("cfgMinClip", $("wzMinClip").value);
   set("cfgMaxClip", $("wzMaxClip").value);
@@ -2130,7 +2135,7 @@ $("wzBack").onclick = () => wzGoTo(_wzStep - 1);
 $("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
 $("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
 document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
-["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality"].forEach((id) => {
+["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality"].forEach((id) => {
   const el = $(id);
   if (!el) return;
   el.addEventListener("input", wzSyncToEditor);

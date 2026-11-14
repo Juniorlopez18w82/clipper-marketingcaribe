@@ -11,7 +11,7 @@ Statuses: active (monitored), paused (kept, not processed), stopped
 (user stopped it), ended (the live finished — video_info says
 is_live False). A session never deletes its clips.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey,
                         Integer, String)
@@ -83,6 +83,19 @@ class LiveSession(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
 
 
+def _live_next_run_at(session: LiveSession) -> str | None:
+    """Cuándo toca la próxima ronda de clips (ISO). None = toca ahora."""
+    if session.status != "active":
+        return None
+    if not session.last_run_at:
+        return None
+    last = session.last_run_at
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    nxt = last + timedelta(minutes=float(session.interval_minutes or 10))
+    return nxt.isoformat()
+
+
 def live_session_out(session: LiveSession, clip_count: int = 0) -> dict:
     url = session.url or ""
     return {
@@ -116,6 +129,7 @@ def live_session_out(session: LiveSession, clip_count: int = 0) -> dict:
         "last_end": session.last_end,
         "last_run_at": (session.last_run_at.isoformat()
                         if session.last_run_at else None),
+        "next_run_at": _live_next_run_at(session),
         "total_clips": session.total_clips,
         "clip_count": clip_count,
         "last_error": session.last_error or "",

@@ -339,6 +339,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 body.panel-open{background:var(--p-bg);background-image:radial-gradient(900px 520px at 12% -10%,rgba(var(--p-brand-rgb),.16),transparent 60%),radial-gradient(820px 480px at 92% 0%,rgba(var(--p-brand2-rgb),.12),transparent 60%);background-attachment:fixed}
 body.panel-open>header,body.panel-open>main{display:none !important}
 .panel{background:transparent;color:var(--p-text);font-family:'Poppins',system-ui,Arial,sans-serif}
+button,input,select,textarea{font-family:inherit}
 .panel [hidden]{display:none !important}
 .panel .pane:not([hidden]){animation:paneIn .3s ease}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -1732,6 +1733,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=132"></script>
+<script src="app.js?v=133"></script>
 </body>
 </html>

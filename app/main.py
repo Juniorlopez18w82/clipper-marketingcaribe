@@ -49,6 +49,7 @@ from pathlib import Path
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form,
                      HTTPException, UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -114,6 +115,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
+# Compresión gzip (2026-11-13, Juan: la web va lenta): el HTML (129 KB)
+# y app.js (157 KB) iban sin comprimir; con gzip bajan ~70% y la página
+# carga mucho más rápido en conexiones lentas.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 _executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 
 

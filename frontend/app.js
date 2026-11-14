@@ -1,5 +1,20 @@
 // Clipzio Pro — frontend (same origin, talks to /api/*)
 const $ = (id) => document.getElementById(id);
+// ---------- Modo claro / oscuro (v124, Juan) ----------
+const SUN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>';
+const MOON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z"/></svg>';
+function applyTheme(light) {
+  document.documentElement.classList.toggle("light", !!light);
+  try { localStorage.setItem("clipper_theme", light ? "light" : "dark"); } catch (e) {}
+  // En oscuro se muestra el sol (pasar a claro); en claro la luna (volver a oscuro).
+  const icon = light ? MOON_SVG : SUN_SVG;
+  const label = light ? "Cambiar a modo oscuro" : "Cambiar a modo claro";
+  for (const id of ["btnTheme", "btnThemeLanding"]) {
+    const b = $(id);
+    if (b) { b.innerHTML = icon; b.setAttribute("aria-label", label); b.setAttribute("title", label); }
+  }
+}
+function toggleTheme() { applyTheme(!document.documentElement.classList.contains("light")); }
 // Anti-copia (v123, Juan): sin clic derecho ni atajos de DevTools
 // (F12, Ctrl+Shift+I/J/C, Ctrl+U ver fuente, Ctrl+S guardar).
 // Disuasivo, en silencio (sin avisos ni alertas): lo que protege de
@@ -378,6 +393,10 @@ $("btnRegister").onclick = async () => {
 };
 $("btnLogout").onclick = doLogout;
 $("btnLogoutTop").onclick = doLogout;
+$("btnTheme").onclick = toggleTheme;
+const _btl = $("btnThemeLanding"); if (_btl) _btl.onclick = toggleTheme;
+// Tema guardado (el <head> ya puso la clase; aquí solo se sincroniza el icono).
+try { applyTheme(localStorage.getItem("clipper_theme") === "light"); } catch (e) { applyTheme(false); }
 const btnLogoutNav = $("btnLogoutNav");
 if (btnLogoutNav) btnLogoutNav.onclick = doLogout;
 $("btnShowPanel").onclick = () => openPanel();

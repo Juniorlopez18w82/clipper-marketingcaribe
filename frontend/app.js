@@ -534,7 +534,15 @@ document.querySelectorAll(".panel .tab[data-tab]").forEach((btn) => {
   };
 });
 $("btnBackToPanel").onclick = () => document.querySelector('[data-tab="home"]').click();
-$("brandHome").onclick = () => { closePanel(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+// Logo: si hay sesión, manda al panel (Inicio); sin sesión, a la landing.
+$("brandHome").onclick = () => {
+  if (state.user) { goTab("home"); window.scrollTo({ top: 0 }); }
+  else { closePanel(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+};
+$("brandLanding").onclick = () => {
+  if (state.user) { openPanel(); goTab("home"); }
+  else window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
 // ---------- Panel Admin: pestañas (una sección a la vez) ----------
 document.querySelectorAll("#adminTabs .mini-tab").forEach((btn) => {

@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script>/* Si hay sesión guardada, NO mostrar el login ni un instante: se oculta
    la landing y sale "Cargando tu panel…" hasta validar el token. */
 try { if (localStorage.getItem("clipper_token")) { document.documentElement.className += " booting"; } } catch (e) {}
@@ -338,7 +338,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
    dentro de --p-grad y de las variables semánticas de :root). */
 body.panel-open{background:var(--p-bg);background-image:radial-gradient(900px 520px at 12% -10%,rgba(var(--p-brand-rgb),.16),transparent 60%),radial-gradient(820px 480px at 92% 0%,rgba(var(--p-brand2-rgb),.12),transparent 60%);background-attachment:fixed}
 body.panel-open>header,body.panel-open>main{display:none !important}
-.panel{background:transparent;color:var(--p-text);font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.panel{background:transparent;color:var(--p-text);font-family:'Poppins',system-ui,Arial,sans-serif}
 .panel [hidden]{display:none !important}
 .panel .pane:not([hidden]){animation:paneIn .3s ease}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -1695,6 +1695,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=127"></script>
+<script src="app.js?v=128"></script>
 </body>
 </html>

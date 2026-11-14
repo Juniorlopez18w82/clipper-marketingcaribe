@@ -1042,7 +1042,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
             <button class="wz-step on" data-wz="0">1 · Subtítulos</button>
             <button class="wz-step" data-wz="1">2 · Marca de agua</button>
             <button class="wz-step" data-wz="2">3 · Cámara</button>
-            <button class="wz-step" data-wz="3">4 · Calidad</button>
+            <button class="wz-step" data-wz="3">4 · Clips y calidad</button>
           </div>
           <div class="wizard-body">
             <div class="wz-pane" data-wz-pane="0">
@@ -1082,6 +1082,13 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
               <p class="muted">En el paso 3 (editor) verás la demo en video de cada modo.</p>
             </div>
             <div class="wz-pane" data-wz-pane="3" hidden>
+              <label>Cantidad de clips (máx.)</label>
+              <input id="wzMaxClips" type="number" value="5" min="1" max="15">
+              <div class="row">
+                <div><label>Duración mínima del clip (seg)</label><input id="wzMinClip" type="number" value="20" min="5" max="120"></div>
+                <div><label>Duración máxima del clip (seg)</label><input id="wzMaxClip" type="number" value="45" min="10" max="180"></div>
+              </div>
+              <p class="muted">La IA busca momentos de entre el mínimo y el máximo, y te muestra hasta la cantidad que elijas.</p>
               <label>Calidad de salida</label>
               <select id="wzQuality"><option value="1080p" selected>Full HD 1080p (1080×1920)</option><option value="720p">HD 720p (720×1280)</option></select>
               <p class="muted">El video final siempre es vertical 9:16, listo para Reels, TikTok y Shorts.</p>
@@ -1625,6 +1632,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=103"></script>
+<script src="app.js?v=104"></script>
 </body>
 </html>

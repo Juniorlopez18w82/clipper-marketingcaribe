@@ -1154,6 +1154,7 @@ const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
 const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+const GEAR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.24.6.86 1 1.55 1H21a2 2 0 1 1 0 4h-.09c-.69 0-1.31.4-1.51 1z"/></svg>';
 const TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 function fmtDur(s) {
   s = Math.max(0, Math.round(s || 0));
@@ -1458,6 +1459,7 @@ async function loadLives() {
           ${s.status === "active" ? `<button class="icon-btn" data-live-pause="${s.id}" title="Pausar">${PAUSE_SVG}</button>` : ""}
           ${s.status === "paused" || s.status === "stopped" ? `<button class="icon-btn" data-live-resume="${s.id}" title="Reanudar">${PLAY_SVG}</button>` : ""}
           ${s.status === "active" || s.status === "paused" ? `<button class="icon-btn" data-live-stop="${s.id}" title="Detener">${STOP_SVG}</button>` : ""}
+          <button class="icon-btn" data-live-cfg="${s.id}" title="Configurar live">${GEAR_SVG}</button>
           <button class="icon-btn del" data-live-del="${s.id}" title="Eliminar">${TRASH_SVG}</button>
         </div>
         <div class="live-clips" id="live-clips-${s.id}" style="margin-top:14px"><p class="muted">Cargando clips…</p></div>`;
@@ -1481,6 +1483,7 @@ async function loadLives() {
     box.querySelectorAll("[data-live-resume]").forEach((b) => b.onclick = () => liveControl(b.dataset.liveResume, "resume"));
     box.querySelectorAll("[data-live-stop]").forEach((b) => b.onclick = () => liveControl(b.dataset.liveStop, "stop"));
     box.querySelectorAll("[data-live-del]").forEach((b) => b.onclick = () => liveDelete(b));
+    box.querySelectorAll("[data-live-cfg]").forEach((b) => b.onclick = () => openLiveConfig(+b.dataset.liveCfg, list));
   } catch {
     box.innerHTML = "<p class='muted'>No se pudieron cargar tus lives.</p>";
   }
@@ -1501,6 +1504,75 @@ async function liveControl(id, action) {
   }
 }
 
+// ---------- Configurar live (v131, Juan) ----------
+// Modal en la tarjeta del live (junto a Iniciar/Pausar/Reanudar/Detener/
+// Eliminar). Guarda la config en la sesión; el monitor la lee en cada
+// ronda, así que aplica a los próximos clips sin reiniciar el live.
+let _liveCfgId = null;
+function openLiveConfig(id, list) {
+  const s = (list || []).find((x) => x.id === id);
+  if (!s) return;
+  _liveCfgId = id;
+  const set = (el, v) => { if (el != null) el.value = v; };
+  set($("lcCamera"), s.camera_mode || "follow_speaker");
+  set($("lcQuality"), s.quality || "1080p");
+  set($("lcPerRound"), String(s.clips_per_round || 3));
+  set($("lcInterval"), String(s.interval_minutes || 10));
+  set($("lcMinLen"), s.min_len != null ? s.min_len : 20);
+  set($("lcMaxLen"), s.max_len != null ? s.max_len : 45);
+  set($("lcShowSubs"), s.show_subtitles === false ? "0" : "1");
+  set($("lcSubStyle"), s.subtitle_style || "viral");
+  set($("lcSubSize"), s.subtitle_size != null ? s.subtitle_size : 76);
+  set($("lcSubPos"), s.subtitle_position || "bottom");
+  set($("lcBrandText"), s.brand_text || "");
+  set($("lcHlColor"), s.highlight_color || "#FADE4C");
+  set($("lcFrameEnabled"), s.frame_enabled === false ? "0" : "1");
+  set($("lcFrameColor"), s.frame_color || "#FADE4C");
+  $("liveConfigTitle").textContent = "Configurar live";
+  $("liveConfigSub").textContent = (s.title ? s.title + " · " : "") + "Se aplica a los próximos clips de este live.";
+  $("liveConfigMsg").textContent = "";
+  $("liveConfigModal").hidden = false;
+}
+function closeLiveConfig() { $("liveConfigModal").hidden = true; _liveCfgId = null; }
+$("liveConfigClose").onclick = closeLiveConfig;
+$("liveConfigCancel").onclick = closeLiveConfig;
+$("liveConfigModal").addEventListener("click", (e) => { if (e.target === $("liveConfigModal")) closeLiveConfig(); });
+$("liveConfigSave").onclick = async () => {
+  if (!_liveCfgId) return;
+  const btn = $("liveConfigSave");
+  const msg = $("liveConfigMsg");
+  btn.disabled = true;
+  msg.textContent = "Guardando…";
+  try {
+    await apiFetch(`/api/lives/${_liveCfgId}`, {
+      method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        camera_mode: $("lcCamera").value,
+        quality: $("lcQuality").value,
+        clips_per_round: parseInt($("lcPerRound").value || "3", 10),
+        interval_minutes: parseInt($("lcInterval").value || "10", 10),
+        min_len: parseFloat($("lcMinLen").value || "20"),
+        max_len: parseFloat($("lcMaxLen").value || "45"),
+        show_subtitles: $("lcShowSubs").value === "1",
+        subtitle_style: $("lcSubStyle").value,
+        subtitle_size: parseInt($("lcSubSize").value || "76", 10),
+        subtitle_position: $("lcSubPos").value,
+        brand_text: $("lcBrandText").value.trim(),
+        highlight_color: $("lcHlColor").value,
+        frame_enabled: $("lcFrameEnabled").value === "1",
+        frame_color: $("lcFrameColor").value,
+      }),
+    });
+    msg.textContent = "Configuración guardada. Aplica a los próximos clips.";
+    loadLives();
+    setTimeout(closeLiveConfig, 700);
+  } catch (e) {
+    msg.textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
 async function liveDelete(btn) {
   // Dos toques para confirmar: el botón se pone rojo en el 1er toque.
   if (btn.dataset.confirm !== "1") {
@@ -1518,14 +1590,10 @@ async function liveDelete(btn) {
   }
 }
 
-// Arranca un live. cfg = config elegida en "Configurar live" (v129);
-// sin cfg usa los defaults (cámara "Seguir al que habla", etc.).
-async function startLive(cfg) {
+$("btnStartLive").onclick = async () => {
   const url = $("liveUrl").value.trim();
   const msg = $("liveMsg");
   if (!url) { msg.textContent = "Pega el link del live."; return; }
-  // Sin cfg explícita, usa la guardada en "Configurar live" (por live).
-  const config = cfg || _liveConfig;
   msg.textContent = "Comprobando que el live esté en curso…";
   $("btnStartLive").disabled = true;
   try {
@@ -1535,32 +1603,16 @@ async function startLive(cfg) {
         url,
         interval_minutes: parseInt($("liveInterval").value || "10", 10),
         clips_per_round: parseInt($("liveClipsPerRound").value || "3", 10),
-        ...(config || {}),
       }),
     });
     msg.textContent = `Live agregado. El primer clip llega en ~${d.interval_minutes} min.`;
     $("liveUrl").value = "";
-    // La config era solo para este live: se borra (cada live se
-    // configura por separado).
-    _liveConfig = null;
     loadLives();
   } catch (e) {
     msg.textContent = "Error: " + e.message;
   } finally {
     $("btnStartLive").disabled = false;
   }
-}
-$("btnStartLive").onclick = () => startLive(null);
-// "Configurar live" (v129, Juan): abre el mismo asistente que al poner
-// un video (subtítulos, marca, cámara, clips y calidad); al aceptar,
-// el live arranca con esa configuración.
-$("btnConfigLive").onclick = () => {
-  // Se puede configurar aunque no haya link todavía (v130, Juan): la
-  // config queda guardada para el live que se inicie después.
-  _wzLive = true;
-  const _wzt = $("wzTitle"); if (_wzt) _wzt.textContent = "Configura tu live";
-  const _wzg = $("wzGo"); if (_wzg) _wzg.textContent = "Empezar live";
-  wzOpen({ title: "Live en curso", thumb: "" });
 };
 
 // ---------- Imágenes IA (fal.ai, plan Gold) ----------
@@ -2122,12 +2174,6 @@ $("url").addEventListener("input", () => {
 // para configurar el clip ANTES de Sacar clips. Escribe en los
 // campos del editor (paso 3), que es la única fuente de verdad.
 let _wzStep = 0;
-// _wzLive: el asistente está configurando un LIVE (no un clip normal):
-// al aceptar, arranca el live con la config elegida (v129, Juan).
-let _wzLive = false;
-// _liveConfig: config elegida en "Configurar live" para el PRÓXIMO live
-// que se inicie (por live, no global). Se borra al arrancar el live.
-let _liveConfig = null;
 let _wzShownForUrl = "";
 const WZ_TOTAL = 4;
 function wzSyncFromEditor() {
@@ -2175,26 +2221,6 @@ function wzSyncToEditor() {
   set("cfgQuality", $("wzQuality").value);
   set("model", $("wzModel").value);
 }
-// Config del live desde los campos del editor (los mismos que lee
-// buildRenderBody para un clip normal). El asistente los escribe con
-// wzSyncToEditor antes de aceptar, así que aquí ya llevan lo elegido.
-function buildLiveConfig() {
-  return {
-    camera_mode: $("cameraMode").value,
-    facecam_corner: $("facecamCorner").value,
-    frame_enabled: $("frameEnabled").checked,
-    frame_color: $("frameColor").value,
-    frame_width: parseInt($("frameWidth").value || "14", 10),
-    brand_text: $("brandText").value,
-    show_subtitles: $("showSubs").value === "1",
-    subtitle_style: $("subStyle").value,
-    subtitle_size: parseInt($("subSize").value || "76", 10),
-    subtitle_position: $("subPos").value,
-    highlight_color: $("hlColor").value,
-    quality: $("cfgQuality").value,
-    template: state.templateTouched ? null : (state.userTemplate || "Gancho grande"),
-  };
-}
 function wzGoTo(n) {
   _wzStep = Math.max(0, Math.min(WZ_TOTAL - 1, n));
   document.querySelectorAll(".wz-step").forEach((b) => b.classList.toggle("on", +b.dataset.wz === _wzStep));
@@ -2219,9 +2245,6 @@ function wzOpen(override) {
 function wzClose() {
   $("configWizard").hidden = true;
   document.body.style.overflow = "";
-  _wzLive = false;
-  const _wzt = $("wzTitle"); if (_wzt) _wzt.textContent = "Configura tu clip";
-  const _wzg = $("wzGo"); if (_wzg) _wzg.textContent = "Sacar clips";
 }
 function wzMaybeOpen(url) {
   if (!url || url === _wzShownForUrl) return;
@@ -2232,20 +2255,7 @@ function wzMaybeOpen(url) {
 $("wzClose").onclick = wzClose;
 $("wzBack").onclick = () => wzGoTo(_wzStep - 1);
 $("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
-$("wzGo").onclick = () => {
-  wzSyncToEditor();
-  if (_wzLive) {
-    const cfg = buildLiveConfig();
-    const url = $("liveUrl").value.trim();
-    wzClose();
-    if (url) { startLive(cfg); return; }
-    // Sin link todavía: se guarda la config para este live y se avisa.
-    _liveConfig = cfg;
-    $("liveMsg").textContent = "Configuración guardada para este live. Pega el link y dale a Empezar.";
-    return;
-  }
-  wzClose(); $("btnClips").click();
-};
+$("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
 document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
 ["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality", "wzModel"].forEach((id) => {
   const el = $(id);

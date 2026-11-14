@@ -2070,6 +2070,9 @@ function wzSyncFromEditor() {
   set("wzFrameColor", $("frameColor") ? $("frameColor").value : "#FADE4C");
   set("wzFrameWidth", $("frameWidth") ? $("frameWidth").value : 14);
   set("wzCameraMode", $("cameraMode") ? $("cameraMode").value : "follow_speaker");
+  set("wzMaxClips", $("cfgMaxClips") ? $("cfgMaxClips").value : 5);
+  set("wzMinClip", $("cfgMinClip") ? $("cfgMinClip").value : 20);
+  set("wzMaxClip", $("cfgMaxClip") ? $("cfgMaxClip").value : 45);
   set("wzQuality", $("cfgQuality") ? $("cfgQuality").value : "1080p");
 }
 function wzSyncToEditor() {
@@ -2088,6 +2091,9 @@ function wzSyncToEditor() {
     cam.value = $("wzCameraMode").value;
     cam.dispatchEvent(new Event("change", { bubbles: true }));
   }
+  set("cfgMaxClips", $("wzMaxClips").value);
+  set("cfgMinClip", $("wzMinClip").value);
+  set("cfgMaxClip", $("wzMaxClip").value);
   set("cfgQuality", $("wzQuality").value);
 }
 function wzGoTo(n) {
@@ -2124,7 +2130,7 @@ $("wzBack").onclick = () => wzGoTo(_wzStep - 1);
 $("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
 $("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
 document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
-["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzQuality"].forEach((id) => {
+["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality"].forEach((id) => {
   const el = $(id);
   if (!el) return;
   el.addEventListener("input", wzSyncToEditor);

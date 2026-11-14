@@ -174,7 +174,21 @@ def _user_id_from_token(token: str) -> int | None:
 def start_session(db: Session, user: User, ip: str | None,
                   agent: str | None) -> str:
     """Crea la sesión única: invalida cualquier sesión anterior de la
-    cuenta (el token viejo deja de valer en la próxima petición)."""
+    cuenta (el token viejo deja de valer en la próxima petición).
+    Una sola sesión por IP (v114, Juan): si OTRA cuenta tiene una sesión
+    activa desde esta misma IP, se cierra y esta es la que queda."""
+    if ip:
+        others = db.query(User).filter(
+            User.id != user.id,
+            User.active_session_ip == ip,
+            User.active_session_id.isnot(None),
+        ).all()
+        for other in others:
+            other.active_session_id = None
+            other.active_session_ip = None
+            other.active_session_agent = None
+            other.active_session_at = None
+            db.add(other)
     sid = secrets.token_urlsafe(32)
     user.active_session_id = sid
     user.active_session_ip = ip

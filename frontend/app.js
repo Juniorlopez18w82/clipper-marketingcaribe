@@ -1452,6 +1452,7 @@ async function loadLives() {
               ${s.uploader ? `<span class="muted" style="font-size:12px">${esc(s.uploader)}</span>` : ""}
             </div>
             <p class="live-meta">${s.clips_per_round} clip${s.clips_per_round === 1 ? "" : "s"} cada ${s.interval_minutes} min · ${s.clip_count || 0} clips</p>
+            ${s.status === "active" ? `<p class="live-countdown" data-next-run="${esc(s.next_run_at || "")}">${TIMER_SVG}<span>${liveCountdownText(s.next_run_at)}</span></p>` : ""}
           </div>
         </div>
         ${err}
@@ -1572,6 +1573,29 @@ $("liveConfigSave").onclick = async () => {
     btn.disabled = false;
   }
 };
+
+// ---------- Cronómetro del próximo clip (v134, Juan) ----------
+// Muestra cuánto falta para la próxima ronda de clips del live.
+// Se actualiza cada segundo; la lista se refresca cada 30 s.
+function liveCountdownText(nextRunAt) {
+  if (!nextRunAt) return "Generando clip…";
+  const ms = new Date(nextRunAt).getTime() - Date.now();
+  if (isNaN(ms) || ms <= 0) return "Generando clip…";
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  const ss = String(sec).padStart(2, "0");
+  return "Próximo clip en " + (h > 0 ? h + ":" + mm + ":" + ss : mm + ":" + ss);
+}
+function tickLiveCountdowns() {
+  document.querySelectorAll(".live-countdown").forEach((el) => {
+    const span = el.querySelector("span");
+    if (span) span.textContent = liveCountdownText(el.dataset.nextRun || "");
+  });
+}
+setInterval(tickLiveCountdowns, 1000);
 
 async function liveDelete(btn) {
   // Dos toques para confirmar: el botón se pone rojo en el 1er toque.

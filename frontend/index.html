@@ -502,6 +502,15 @@ gigantes, con los botones como bloques morados enormes. --- */
 .vid-status.bad{color:var(--p-err)}
 /* --- Creador dentro del panel (Crear Clip): 2 columnas --- */
 .panel .create-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.panel .create-grid.create-centered{grid-template-columns:1fr}
+.panel .create-grid.create-centered>div:last-child{display:none}
+/* Crear Clip centrado y PRO (v109): tarjeta hero centrada, icono y botones con icono. */
+#urlCard{max-width:680px;margin:0 auto;padding:28px 28px 24px}
+#urlCard .hero-icon{width:56px;height:56px;margin:0 auto 14px;border-radius:16px;background:var(--p-grad);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 8px 24px rgba(168,85,247,.45)}
+#urlCard .hero-icon svg{width:26px;height:26px}
+#urlCard h2{text-align:center}
+#btnClips,#btnUpload{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+#btnClips svg,#btnUpload svg{width:16px;height:16px;flex:none}
 .panel .create-grid .card h2{font-size:18px;font-weight:700;color:var(--p-text);margin:0 0 12px}
 /* --- Tarjetas de clip: SISTEMA ÚNICO .clip-card (biblioteca + candidatos) --- */
 /* Biblioteca multimedia profesional (OpusClip / YouTube Studio): la
@@ -851,12 +860,13 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
       <p class="sub">Pega el link o sube tu video, la IA busca los mejores momentos y tú eliges el clip.</p>
       <div class="locked"><div class="lock-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><p>Debes contratar un plan para usar Clipzio Pro</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
-      <div class="create-grid">
+      <div class="create-grid create-centered" id="createGrid">
       <div>
-      <section class="card">
+      <section class="card" id="urlCard">
+        <div class="hero-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
         <h2>Pega un enlace para empezar</h2>
-        <label>Link de YouTube</label>
-        <input id="url" type="url" placeholder="youtube.com/watch?v=…">
+        <label>Link de YouTube o Twitch</label>
+        <input id="url" type="url" placeholder="youtube.com/watch?v=… o twitch.tv/…">
         <div id="urlPreview" class="url-preview" hidden>
           <img id="urlPreviewThumb" alt="" referrerpolicy="no-referrer">
           <div class="url-preview-info">
@@ -865,8 +875,8 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
           </div>
         </div>
         <div class="row" style="margin-top:12px">
-          <button id="btnClips">Sacar clips</button>
-          <button id="btnUpload" class="black">Subir archivo</button>
+          <button id="btnClips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></svg> Sacar clips</button>
+          <button id="btnUpload" class="black"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg> Subir archivo</button>
           <input id="uploadFile" type="file" accept="video/*" hidden>
         </div>
         <p id="uploadInfo" class="muted" hidden></p>
@@ -1655,6 +1665,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=108"></script>
+<script src="app.js?v=109"></script>
 </body>
 </html>

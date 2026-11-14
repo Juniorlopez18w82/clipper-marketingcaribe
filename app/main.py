@@ -1001,7 +1001,26 @@ def _live_round(session_id: int) -> None:
         session.last_end = end
         session.last_run_at = datetime.now(timezone.utc)
         session.total_clips = int(session.total_clips or 0) + rendered
-        session.last_error = ""
+        if rendered == 0:
+            # Sin clips en esta ronda: explicar por qué, para que no
+            # parezca que el live está roto (v135, Juan: "sale generando
+            # pero no se genera nada"). Si casi no hay palabras en la
+            # transcripción, no se escuchó conversación (música o
+            # silencio); si hay palabras pero no salieron clips, no hubo
+            # momentos buenos en ese tramo.
+            tseg = (result.get("transcript") or {}).get("segments") or []
+            nwords = sum(len(sg.get("words") or []) for sg in tseg)
+            if nwords < 50:
+                session.last_error = (
+                    "En esta ronda no se escuchó conversación "
+                    "(puede ser música). Se reintenta en "
+                    f"{session.interval_minutes} min.")
+            else:
+                session.last_error = (
+                    "No se encontraron momentos para clip en esta ronda. "
+                    f"Se reintenta en {session.interval_minutes} min.")
+        else:
+            session.last_error = ""
         db.commit()
         logger.info("live session %s round: %s-%s -> %d clips",
                     session.id, round(start, 1), round(end, 1), rendered)

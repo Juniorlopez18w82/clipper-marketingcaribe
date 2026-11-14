@@ -230,25 +230,19 @@ def get_current_user(
     account (is_suspended, set by the admin) gets 403 on every call
     except for admins themselves, so it cannot use the panel until
     reactivated. Sesión única (v111): el token debe llevar el
-    session_id vigente y venir de la IP del login; si la cuenta inició
-    sesión en otro dispositivo/IP, este token ya no vale."""
+    session_id vigente; si la cuenta inició sesión en otro dispositivo,
+    este token ya no vale. La IP se registra en el login solo como
+    auditoría (no se exige: la IP real cambia sola entre peticiones)."""
     user_id, sid = _token_payload(credentials.credentials) if credentials else (None, None)
     user = db.query(User).filter(User.id == user_id).first() if user_id else None
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Inicia sesión para continuar")
     active = getattr(user, "active_session_id", None)
-    if active is not None:
-        if sid != active:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                detail="Tu sesión se cerró porque iniciaste "
-                                "sesión en otro dispositivo")
-        req_ip = request.client.host if request.client else None
-        saved_ip = getattr(user, "active_session_ip", None)
-        if saved_ip and req_ip and req_ip != saved_ip:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                detail="Tu sesión es de otra IP. "
-                                "Inicia sesión de nuevo")
+    if active is not None and sid != active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Tu sesión se cerró porque iniciaste "
+                            "sesión en otro dispositivo")
     if getattr(user, "is_suspended", False) and not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Tu cuenta está suspendida. "

@@ -386,9 +386,10 @@ body.nav-collapsed .panel-inner{max-width:none}
 .panel-foot b{color:var(--p-text)}
 .panel-foot a{color:var(--p-text);text-decoration:none;font-weight:700}
 /* Asistente de configuración (v102): pantalla completa al pegar el link. */
-.wizard-overlay{position:fixed;inset:0;z-index:300;background:var(--p-bg);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
+.wizard-overlay{position:fixed;inset:0;z-index:300;background:var(--p-bg);overflow:auto}
 .wizard-overlay[hidden]{display:none}
-.wizard-card{width:min(680px,100%);background:var(--p-surface);border:1px solid var(--p-border);border-radius:20px;padding:28px;box-shadow:var(--p-shadow-lg)}
+.wizard-card{width:100%;min-height:100%;background:var(--p-surface);border:0;border-radius:0;padding:36px 24px;box-shadow:none}
+.wizard-inner{max-width:760px;margin:0 auto}
 .wizard-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
 .wizard-title{display:flex;gap:14px;align-items:center;min-width:0}
 .wizard-title img{width:72px;height:40px;object-fit:cover;border-radius:8px;flex:none;background:#000}
@@ -1026,6 +1027,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
       <!-- Asistente de configuración (v102): aparece al pegar el link, antes de Sacar clips. -->
       <div id="configWizard" class="wizard-overlay" hidden>
         <div class="wizard-card">
+          <div class="wizard-inner">
           <div class="wizard-head">
             <div class="wizard-title">
               <img id="wzThumb" alt="" referrerpolicy="no-referrer">
@@ -1090,6 +1092,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
             <span id="wzCounter" class="muted">Paso 1 de 4</span>
             <button id="wzNext">Siguiente →</button>
             <button id="wzGo" class="btn-brand" hidden>Sacar clips</button>
+          </div>
           </div>
         </div>
       </div>
@@ -1622,6 +1625,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=102"></script>
+<script src="app.js?v=103"></script>
 </body>
 </html>

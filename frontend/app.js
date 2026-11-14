@@ -2012,6 +2012,7 @@ function resetCreateFlow() {
   state.pvClip = null;
   $("candidatesCard").hidden = true;
   $("step3Card").hidden = true;
+  $("configCard").hidden = true;
   $("resultCard").hidden = true;
   hidePreview();
   setJobProgress(0);
@@ -2084,6 +2085,7 @@ function wzSyncFromEditor() {
   set("wzMinClip", $("cfgMinClip") ? $("cfgMinClip").value : 20);
   set("wzMaxClip", $("cfgMaxClip") ? $("cfgMaxClip").value : 45);
   set("wzQuality", $("cfgQuality") ? $("cfgQuality").value : "1080p");
+  set("wzModel", $("model") ? $("model").value : "base");
 }
 function wzSyncToEditor() {
   const set = (id, v) => { const el = $(id); if (el != null) el.value = v; };
@@ -2108,6 +2110,7 @@ function wzSyncToEditor() {
   set("cfgMinClip", $("wzMinClip").value);
   set("cfgMaxClip", $("wzMaxClip").value);
   set("cfgQuality", $("wzQuality").value);
+  set("model", $("wzModel").value);
 }
 function wzGoTo(n) {
   _wzStep = Math.max(0, Math.min(WZ_TOTAL - 1, n));
@@ -2119,11 +2122,13 @@ function wzGoTo(n) {
   $("wzNext").hidden = last;
   $("wzGo").hidden = !last;
 }
-function wzOpen() {
+function wzOpen(override) {
   wzSyncFromEditor();
-  const thumb = $("urlPreviewThumb");
-  if (thumb) $("wzThumb").src = thumb.src || "";
-  $("wzVideoTitle").textContent = $("urlPreviewTitle") ? $("urlPreviewTitle").textContent : "";
+  const title = (override && override.title) || ($("urlPreviewTitle") ? $("urlPreviewTitle").textContent : "");
+  const thumbSrc = (override && override.thumb !== undefined) ? override.thumb : ($("urlPreviewThumb") ? $("urlPreviewThumb").src : "");
+  $("wzVideoTitle").textContent = title;
+  const wzThumb = $("wzThumb");
+  if (wzThumb) { wzThumb.src = thumbSrc || ""; wzThumb.style.display = thumbSrc ? "" : "none"; }
   $("configWizard").hidden = false;
   document.body.style.overflow = "hidden";
   wzGoTo(0);
@@ -2143,7 +2148,7 @@ $("wzBack").onclick = () => wzGoTo(_wzStep - 1);
 $("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
 $("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
 document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
-["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality"].forEach((id) => {
+["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality", "wzModel"].forEach((id) => {
   const el = $(id);
   if (!el) return;
   el.addEventListener("input", wzSyncToEditor);
@@ -2205,6 +2210,7 @@ $("uploadFile").onchange = async () => {
     });
     state.uploadedFile = d.file_id;
     info.textContent = `Archivo listo: ${d.filename} (${mb} MB). Dale a "Sacar clips".`;
+    wzOpen({ title: d.filename, thumb: "" });
     $("videoMeta").textContent = "";
   } catch (e) {
     state.uploadedFile = null;
@@ -2771,6 +2777,7 @@ function selectClip(c, el) {
   updatePreview();
   // El paso 3 (subtítulos + render) solo aparece DESPUÉS de elegir un clip.
   $("step3Card").hidden = false;
+  $("configCard").hidden = false;
   $("resultCard").hidden = true;
   $("step3Card").scrollIntoView({ behavior: "smooth" });
 }

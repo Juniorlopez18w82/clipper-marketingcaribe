@@ -974,8 +974,22 @@ def _live_round(session_id: int) -> None:
                     clip_title=c.get("title") or "",
                     clip_score=c.get("score"),
                     video_title=st.get("title") or session.title,
-                    brand_text=brand,
-                    live_session_id=session.id)
+                    brand_text=(session.brand_text or brand),
+                    live_session_id=session.id,
+                    camera_mode=(session.camera_mode or "follow_speaker"),
+                    facecam_corner=(session.facecam_corner or "top-left"),
+                    frame_enabled=(session.frame_enabled is not False),
+                    frame_color=(session.frame_color
+                                 or DEFAULT_FRAME_COLOR),
+                    frame_width=int(session.frame_width
+                                    or DEFAULT_FRAME_WIDTH),
+                    show_subtitles=(session.show_subtitles is not False),
+                    subtitle_style=(session.subtitle_style or "viral"),
+                    subtitle_size=int(session.subtitle_size or 76),
+                    subtitle_position=(session.subtitle_position or "bottom"),
+                    highlight_color=session.highlight_color,
+                    quality=(session.quality or "1080p"),
+                    template=session.template)
                 _run_render_job(rjob["id"], req)
                 rdone = jobs.get(rjob["id"]) or {}
                 if rdone.get("status") == "done":
@@ -1997,6 +2011,21 @@ class LiveCreateRequest(BaseModel):
     clips_per_round: int = 3
     min_len: float = 20.0
     max_len: float = 45.0
+    # Render prefs de "Configurar live" (mismo asistente que un video
+    # normal). Opcionales: sin ellas el live usa los defaults.
+    camera_mode: str = "follow_speaker"
+    facecam_corner: str = "top-left"
+    frame_enabled: bool = True
+    frame_color: str = DEFAULT_FRAME_COLOR
+    frame_width: int = DEFAULT_FRAME_WIDTH
+    brand_text: str | None = None
+    show_subtitles: bool = True
+    subtitle_style: str = "viral"
+    subtitle_size: int = 76
+    subtitle_position: str = "bottom"
+    highlight_color: str | None = None
+    quality: str = "1080p"
+    template: str | None = None
 
 
 def _require_live_plan(db: Session, user: User | None) -> None:
@@ -2056,6 +2085,19 @@ def api_lives_create(req: LiveCreateRequest,
         uploader=st.get("uploader") or "",
         thumbnail=st.get("thumbnail") or "", interval_minutes=interval,
         clips_per_round=per_round, min_len=min_len, max_len=max_len,
+        camera_mode=(req.camera_mode or "follow_speaker"),
+        facecam_corner=(req.facecam_corner or "top-left"),
+        frame_enabled=(req.frame_enabled is not False),
+        frame_color=(req.frame_color or DEFAULT_FRAME_COLOR),
+        frame_width=int(req.frame_width or DEFAULT_FRAME_WIDTH),
+        brand_text=(req.brand_text or None),
+        show_subtitles=(req.show_subtitles is not False),
+        subtitle_style=(req.subtitle_style or "viral"),
+        subtitle_size=int(req.subtitle_size or 76),
+        subtitle_position=(req.subtitle_position or "bottom"),
+        highlight_color=(req.highlight_color or None),
+        quality=(req.quality or "1080p"),
+        template=(req.template or None),
         status=STATUS_ACTIVE)
     db.add(session)
     db.commit()

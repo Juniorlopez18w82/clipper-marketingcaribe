@@ -155,6 +155,34 @@ def _ensure_user_pref_columns() -> None:
         logger.warning("User columns migration failed: %s", e)
 
 
+def _ensure_user_session_columns() -> None:
+    """Add the single-session columns to an existing users table.
+
+    Same pattern as _ensure_user_pref_columns: create_all() never adds
+    columns to an existing table, so ALTER TABLE on boot.
+    """
+    from sqlalchemy import inspect
+
+    cols = {
+        "active_session_id": "VARCHAR(64)",
+        "active_session_ip": "VARCHAR(45)",
+        "active_session_agent": "VARCHAR(255)",
+        "active_session_at": "TIMESTAMP",
+    }
+    try:
+        existing = {c["name"] for c in inspect(engine).get_columns("users")}
+        missing = [k for k in cols if k not in existing]
+        if not missing:
+            return
+        with engine.begin() as conn:
+            for name in missing:
+                conn.exec_driver_sql(
+                    f'ALTER TABLE users ADD COLUMN "{name}" {cols[name]}')
+        logger.info("Migrated users table: added %s", ", ".join(missing))
+    except Exception as e:  # noqa: BLE001 — migration is best-effort
+        logger.warning("User session columns migration failed: %s", e)
+
+
 def _ensure_clip_columns() -> None:
     """Add the score/section_start columns to an existing clips table.
 
@@ -205,6 +233,7 @@ def init_db() -> None:
         logger.warning("DB init failed (%s): %s", db_backend(), e)
         return
     _ensure_user_pref_columns()
+    _ensure_user_session_columns()
     _ensure_clip_columns()
     _ensure_live_columns()
     _ensure_plan_columns()

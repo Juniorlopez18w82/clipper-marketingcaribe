@@ -1385,7 +1385,7 @@ function updateBulkBar() {
   const n = _bulkSelected.size;
   $("bulkCount").textContent = `${n} seleccionado${n === 1 ? "" : "s"}`;
   $("bulkDeleteBtn").disabled = n === 0;
-  $("bulkDeleteBtn").textContent = `${TRASH_SVG} Eliminar seleccionados${n ? ` (${n})` : ""}`;
+  $("bulkDeleteBtn").innerHTML = `${TRASH_SVG} Eliminar seleccionados${n ? ` (${n})` : ""}`;
   const all = $("bulkSelectAll");
   if (all) all.checked = _myClips.length > 0 && _bulkSelected.size === _myClips.length;
 }

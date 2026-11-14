@@ -352,24 +352,6 @@ const btnLogoutNav = $("btnLogoutNav");
 if (btnLogoutNav) btnLogoutNav.onclick = doLogout;
 $("btnShowPanel").onclick = () => openPanel();
 // ---------- Acceso rápido (2026-11-12, Juan: que el login tenga el
-// admin y el demo listos para entrar en 1 clic, porque la sesión se
-// pierde al recargar). Rellena correo+contraseña y entra directo.
-// Son las cuentas semilla (la contraseña del admin es la inicial;
-// cámbiala en Mi Cuenta → Cambiar contraseña).
-async function quickLogin(email, password) {
-  $("authEmail").value = email;
-  $("authPass").value = password;
-  $("authMsg").textContent = "Entrando…";
-  try {
-    const d = await apiFetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }) });
-    localStorage.setItem("clipper_token", d.access_token);
-    $("authMsg").textContent = "";
-    showUser(d.user);
-  } catch (e) { $("authMsg").textContent = "Error: " + e.message; }
-}
-$("btnQuickAdmin").onclick = () => quickLogin("admin@marketingcaribe.com", "Admin1234!");
-$("btnQuickDemo").onclick = () => quickLogin("usuario@marketingcaribe.com", "Usuario1234!");
 // ---------- Animaciones al hacer scroll (landing, 2026-11-12) ----------
 (function () {
   const els = document.querySelectorAll(".reveal");

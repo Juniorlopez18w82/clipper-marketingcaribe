@@ -113,8 +113,6 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 .final-cta{text-align:center;padding:72px 0 8px}
 .final-cta h2{font-size:34px;margin:0 0 12px}
 .final-cta p{color:#a1a1aa;margin:0 0 24px}
-.quick-login{display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid #27272a}
-.quick-login .small{padding:7px 12px;font-size:13px}
 /* ---------- Home moderna v62 (2026-11-12, Juan: "muy básica" — más
    moderna, con animaciones): orbes de color que flotan, titular con
    degradado en movimiento, chips flotantes alrededor del teléfono,
@@ -1635,11 +1633,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
         <button id="btnRegister" class="btn-black">Crear cuenta</button>
       </div>
       <p id="authMsg" class="muted"></p>
-      <div class="quick-login">
-        <span class="muted small">Acceso rápido:</span>
-        <button class="small ghost" id="btnQuickAdmin" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l4 3.5L12 5l5 6.5L21 8l-1.6 10H4.6z"/><path d="M5 21h14"/></svg> Admin</button>
-        <button class="small ghost" id="btnQuickDemo" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 19.5c1.2-3 3.6-4.5 6.5-4.5s5.3 1.5 6.5 4.5"/></svg> Demo</button>
-      </div>
     </div>
     <div id="authLoggedIn" hidden>
       <p>Hola, <b id="authUserName" style="color:#9202e9"></b></p>
@@ -1673,6 +1666,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=120"></script>
+<script src="app.js?v=121"></script>
 </body>
 </html>

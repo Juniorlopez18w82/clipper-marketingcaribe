@@ -31,13 +31,15 @@ html.light .landing-sec .sec-sub{color:#5b6472}
 html.light .hero-chips span{color:#374151;background:rgba(146,2,233,.08);border-color:rgba(146,2,233,.3)}
 html.light .fmt-pill{background:rgba(255,255,255,.9);color:#374151;border-color:rgba(15,23,42,.2)}
 html.light .plan-card.popular{background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,#0185fc,#9202e9) border-box}
-html.light .panel-nav .tab.on{background:rgba(146,2,233,.14);color:#9202e9}
-html.light .panel-nav .tab.on svg{color:#9202e9}
+html.light .panel .planbadge{background:rgba(15,23,42,.08);color:#111827}
+html.light .panel .planbadge.admin{background:var(--p-grad);color:#fff}
+html.light .panel-nav .tab.on{background:rgba(146,2,233,.18);color:#6d0bb8}
+html.light .panel-nav .tab.on svg{color:#6d0bb8}
 html.light .panel-nav .tab:hover{background:rgba(15,23,42,.06)}
-html.light .theme-btn{color:#111827}
-.theme-btn{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--p-border);background:var(--p-surface);color:var(--p-text);cursor:pointer;flex:none}
-.theme-btn:hover{border-color:var(--p-border2)}
-.theme-btn svg{width:19px;height:19px}
+html.light .panel .theme-btn,html.light .landing-nav .theme-btn{color:#111827}
+.panel .theme-btn,.landing-nav .theme-btn{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--p-border);background:var(--p-surface);color:var(--p-text);cursor:pointer;flex:none;padding:0;box-shadow:none}
+.panel .theme-btn:hover,.landing-nav .theme-btn:hover{border-color:var(--p-border2);transform:none;box-shadow:none}
+.panel .theme-btn svg,.landing-nav .theme-btn svg{width:19px;height:19px}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:'Poppins',system-ui,Arial,sans-serif}
 header{padding:18px 20px;border-bottom:3px solid var(--brand);display:flex;justify-content:space-between;align-items:center}
 header b{color:var(--brand);font-size:22px}
@@ -1693,6 +1695,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=126"></script>
+<script src="app.js?v=127"></script>
 </body>
 </html>

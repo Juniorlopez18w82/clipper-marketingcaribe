@@ -19,6 +19,7 @@ absolute original-video times by adding the section start):
 
 The user picks the window in the frontend; nothing is auto-published.
 """
+import concurrent.futures
 import json
 import logging
 import math
@@ -142,6 +143,14 @@ LLM_MAX_SECONDS = 60.0
 LLM_MAX_CLIPS = 5
 # Keep the prompt bounded for very long sections.
 LLM_MAX_TRANSCRIPT_CHARS = 24000
+# Partir la transcripción en partes con cruce (v137, Juan: analizar TODO
+# el video sin perder ningún momento, aunque el viral esté al final).
+# Cada parte se analiza EN PARALELO con la IA (mismo tiempo que una
+# sola); el cruce (final de una parte + inicio de la siguiente) evita
+# que una historia se corte en el límite entre dos partes.
+LLM_CHUNK_SECONDS = 1200.0  # 20 min por parte
+LLM_CHUNK_OVERLAP_SECONDS = 180.0  # 3 min de cruce entre partes
+LLM_CHUNK_MAX_PARTS = 8  # tope de partes (videos larguísimos)
 
 
 def _flatten_words(segments: list[dict]) -> list[dict]:
@@ -527,6 +536,89 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
     return kept
 
 
+def _llm_chunk_ranges(t_start: float, t_end: float) -> list[tuple]:
+    """Rangos de tiempo de las partes, con cruce (v137).
+
+    Cada parte cubre LLM_CHUNK_SECONDS; la siguiente empieza
+    LLM_CHUNK_OVERLAP_SECONDS antes de que termine la anterior, así el
+    final de una parte y el inicio de la siguiente se analizan juntos y
+    ninguna historia se corta en el límite. La última parte llega hasta
+    el final del video. Si el video es larguísimo, las partes se
+    agrandan para no pasar de LLM_CHUNK_MAX_PARTS.
+    """
+    duration = t_end - t_start
+    if duration <= 0:
+        return []
+    chunk = LLM_CHUNK_SECONDS
+    overlap = LLM_CHUNK_OVERLAP_SECONDS
+    step = chunk - overlap
+    n = max(1, math.ceil((duration - overlap) / step))
+    if n > LLM_CHUNK_MAX_PARTS:
+        chunk = (duration + (LLM_CHUNK_MAX_PARTS - 1) * overlap) / LLM_CHUNK_MAX_PARTS
+        step = chunk - overlap
+        n = LLM_CHUNK_MAX_PARTS
+    ranges = []
+    for i in range(n):
+        r0 = t_start + i * step
+        r1 = t_end if i == n - 1 else min(t_end, r0 + chunk)
+        ranges.append((r0, r1))
+    return ranges
+
+
+def _llm_chunk_candidates(chunk_segments: list[dict], max_clips: int,
+                          min_len: float, max_len: float,
+                          abs_start: float) -> list[dict] | None:
+    """Una llamada a la IA para UNA parte de la transcripción.
+
+    Misma lógica que el selector de una sola llamada (prompt, Groq,
+    parseo, validación, puntuación 95/90/85... en orden de la IA),
+    pero solo sobre los segmentos de esta parte. Devuelve None si la
+    parte falla (la parte no aporta nada; las demás siguen).
+    """
+    if not chunk_segments:
+        return None
+    words = _flatten_words(chunk_segments)
+    if len(words) < 8:
+        return None
+    t_start = min(float(s.get("start", 0) or 0) for s in chunk_segments)
+    t_end = max(float(s.get("end", 0) or 0) for s in chunk_segments)
+    if t_end <= t_start:
+        return None
+    prompt = _llm_prompt(chunk_segments, max_clips, min_len, max_len)
+    content = _groq_chat(prompt)
+    if content is None:
+        return None
+    items = _parse_llm_clips(content)
+    if items is None:
+        return None
+    valid = _validate_llm_clips(items, words, t_start, t_end,
+                                abs_start=abs_start)
+    if not valid:
+        return None
+    candidates = []
+    for i, c in enumerate(valid[:max(1, max_clips)]):
+        candidates.append({**c, "score": round(95 - 5 * i, 1)})
+    candidates.sort(key=lambda c: c["start"])
+    return candidates
+
+
+def _clips_overlap(a: dict, b: dict) -> bool:
+    """True si dos candidatos son el mismo momento (v137).
+
+    El mismo momento puede salir en dos partes por el cruce; se
+    detecta por inicio casi igual o por solape de más de la mitad del
+    clip más corto.
+    """
+    if abs(a["start"] - b["start"]) <= 10.0:
+        return True
+    lo = max(a["start"], b["start"])
+    hi = min(a["end"], b["end"])
+    if hi <= lo:
+        return False
+    shorter = min(a["end"] - a["start"], b["end"] - b["start"])
+    return (hi - lo) > 0.5 * shorter
+
+
 def build_candidates_llm(segments: list[dict], max_clips: int = LLM_MAX_CLIPS,
                          min_len: float = 20.0,
                          max_len: float = LLM_MAX_SECONDS,
@@ -548,21 +640,96 @@ def build_candidates_llm(segments: list[dict], max_clips: int = LLM_MAX_CLIPS,
     t_end = max(float(s.get("end", 0) or 0) for s in segments)
     if t_end <= t_start:
         return None
-    prompt = _llm_prompt(segments, max_clips, min_len, max_len)
-    content = _groq_chat(prompt)
-    if content is None:
+    # v137: partir TODO el video en partes con cruce y analizar cada
+    # parte EN PARALELO (mismo tiempo que una sola llamada). Cada parte
+    # recibe toda la atención de la IA, así ningún momento se pierde,
+    # esté al principio, en el medio o al final.
+    ranges = _llm_chunk_ranges(t_start, t_end)
+    chunks = []
+    for (r0, r1) in ranges:
+        part = [s for s in segments
+                if r0 <= float(s.get("start", 0) or 0) < r1
+                or (r0 <= float(s.get("end", 0) or 0) < r1)]
+        if part:
+            chunks.append(part)
+    if not chunks:
         return None
-    items = _parse_llm_clips(content)
-    if items is None:
-        return None
-    valid = _validate_llm_clips(items, words, t_start, t_end,
-                                abs_start=abs_start)
-    if not valid:
+    # Cada parte se analiza en paralelo; se etiqueta cada candidato
+    # con su parte para el reparto final.
+    per_part: list[list[dict]] = []
+    with concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(chunks)) as ex:
+        futures = [ex.submit(_llm_chunk_candidates, part, max_clips,
+                             min_len, max_len, abs_start)
+                   for part in chunks]
+        for idx, f in enumerate(futures):
+            try:
+                cands = f.result()
+            except Exception as e:  # noqa: BLE001 — una parte no tumba el resto
+                logger.warning("Groq LLM chunk failed (%s)", e)
+                cands = None
+            if cands:
+                for c in cands:
+                    c["_part"] = idx
+                per_part.append(cands)
+    if not per_part:
         logger.warning("Groq LLM returned no valid clips; "
                        "falling back to heuristic")
         return None
-    candidates = []
-    for i, c in enumerate(valid[:max(1, max_clips)]):
-        candidates.append({**c, "score": round(95 - 5 * i, 1)})
-    candidates.sort(key=lambda c: c["start"])
-    return candidates
+    # Quitar duplicados (mismo momento en dos partes por el cruce):
+    # se queda el de mayor puntuación.
+    all_candidates: list[dict] = [c for lst in per_part for c in lst]
+    all_candidates.sort(key=lambda c: (-c["score"], c["start"]))
+    unique: list[dict] = []
+    for c in all_candidates:
+        if all(not _clips_overlap(c, p) for p in unique):
+            unique.append(c)
+    # Reparto por partes (round-robin): el mejor de cada parte, luego
+    # el segundo mejor de cada parte, etc. Así TODO el video queda
+    # representado — incluido el final — y ningún momento se pierde por
+    # estar en una parte tardía. Si hay más partes que clips pedidos,
+    # se eligen las partes repartidas por todo el video (primera y
+    # última incluidas).
+    by_part: dict[int, list[dict]] = {}
+    for c in unique:
+        by_part.setdefault(c["_part"], []).append(c)
+    for lst in by_part.values():
+        lst.sort(key=lambda c: (-c["score"], c["start"]))
+    part_ids = sorted(by_part.keys())
+    n_want = max(1, max_clips)
+    if len(part_ids) > n_want:
+        if n_want == 1:
+            chosen_ids = [part_ids[-1]]
+        else:
+            chosen_ids = sorted({round(i * (len(part_ids) - 1) / (n_want - 1))
+                                 for i in range(n_want)})
+            chosen_ids = [part_ids[i] for i in chosen_ids]
+    else:
+        chosen_ids = part_ids
+    picked: list[dict] = []
+    rnd = 0
+    while len(picked) < n_want:
+        added = False
+        for pid in chosen_ids:
+            lst = by_part.get(pid, [])
+            if rnd < len(lst):
+                cand = lst[rnd]
+                if cand not in picked:
+                    picked.append(cand)
+                    added = True
+                    if len(picked) >= n_want:
+                        break
+        if not added:
+            break
+        rnd += 1
+    if len(picked) < n_want:
+        rest = [c for c in unique if c not in picked]
+        rest.sort(key=lambda c: (-c["score"], c["start"]))
+        for c in rest:
+            if len(picked) >= n_want:
+                break
+            picked.append(c)
+    for c in picked:
+        c.pop("_part", None)
+    picked.sort(key=lambda c: c["start"])
+    return picked

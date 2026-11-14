@@ -1524,6 +1524,8 @@ async function startLive(cfg) {
   const url = $("liveUrl").value.trim();
   const msg = $("liveMsg");
   if (!url) { msg.textContent = "Pega el link del live."; return; }
+  // Sin cfg explícita, usa la guardada en "Configurar live" (por live).
+  const config = cfg || _liveConfig;
   msg.textContent = "Comprobando que el live esté en curso…";
   $("btnStartLive").disabled = true;
   try {
@@ -1533,11 +1535,14 @@ async function startLive(cfg) {
         url,
         interval_minutes: parseInt($("liveInterval").value || "10", 10),
         clips_per_round: parseInt($("liveClipsPerRound").value || "3", 10),
-        ...(cfg || {}),
+        ...(config || {}),
       }),
     });
     msg.textContent = `Live agregado. El primer clip llega en ~${d.interval_minutes} min.`;
     $("liveUrl").value = "";
+    // La config era solo para este live: se borra (cada live se
+    // configura por separado).
+    _liveConfig = null;
     loadLives();
   } catch (e) {
     msg.textContent = "Error: " + e.message;
@@ -1550,9 +1555,8 @@ $("btnStartLive").onclick = () => startLive(null);
 // un video (subtítulos, marca, cámara, clips y calidad); al aceptar,
 // el live arranca con esa configuración.
 $("btnConfigLive").onclick = () => {
-  const url = $("liveUrl").value.trim();
-  const msg = $("liveMsg");
-  if (!url) { msg.textContent = "Pega el link del live."; return; }
+  // Se puede configurar aunque no haya link todavía (v130, Juan): la
+  // config queda guardada para el live que se inicie después.
   _wzLive = true;
   const _wzt = $("wzTitle"); if (_wzt) _wzt.textContent = "Configura tu live";
   const _wzg = $("wzGo"); if (_wzg) _wzg.textContent = "Empezar live";
@@ -2121,6 +2125,9 @@ let _wzStep = 0;
 // _wzLive: el asistente está configurando un LIVE (no un clip normal):
 // al aceptar, arranca el live con la config elegida (v129, Juan).
 let _wzLive = false;
+// _liveConfig: config elegida en "Configurar live" para el PRÓXIMO live
+// que se inicie (por live, no global). Se borra al arrancar el live.
+let _liveConfig = null;
 let _wzShownForUrl = "";
 const WZ_TOTAL = 4;
 function wzSyncFromEditor() {
@@ -2229,8 +2236,12 @@ $("wzGo").onclick = () => {
   wzSyncToEditor();
   if (_wzLive) {
     const cfg = buildLiveConfig();
+    const url = $("liveUrl").value.trim();
     wzClose();
-    startLive(cfg);
+    if (url) { startLive(cfg); return; }
+    // Sin link todavía: se guarda la config para este live y se avisa.
+    _liveConfig = cfg;
+    $("liveMsg").textContent = "Configuración guardada para este live. Pega el link y dale a Empezar.";
     return;
   }
   wzClose(); $("btnClips").click();

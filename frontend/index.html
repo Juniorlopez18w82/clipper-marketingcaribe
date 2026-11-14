@@ -870,12 +870,11 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
           <input id="uploadFile" type="file" accept="video/*" hidden>
         </div>
         <p id="uploadInfo" class="muted" hidden></p>
-        <div class="row">
+        <div class="row" hidden>
           <div><label>Analizar desde (seg)</label><input id="rangeStart" type="number" value="0" min="0"></div>
           <div><label>Hasta (seg)</label><input id="rangeEnd" type="number" value="120" min="10"></div>
           <div><label>Modelo Whisper</label><select id="model"><option value="base" selected>base (recomendado)</option><option value="tiny">tiny (rápido)</option><option value="small">small (más preciso, lento)</option></select></div>
         </div>
-        <p class="muted">Por defecto se analiza el video completo: los clips pueden salir de cualquier minuto. Los videos largos tardan más (la transcripción se hace por partes).</p>
         <span id="videoMeta" class="muted"></span>
       </section>
 
@@ -986,7 +985,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
         <p class="muted" style="text-align:center" id="pvNote">9:16 · 1080×1920 · Reels / TikTok / Shorts</p>
       </section>
 
-      <section class="card">
+      <section class="card" id="configCard" hidden>
         <h2>Configuración</h2>
         <div class="mini-tabs">
           <button class="mini-tab on" data-cfg="template">Plantilla</button>
@@ -1113,6 +1112,8 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
               <p class="muted">La IA busca momentos de entre el mínimo y el máximo, y te muestra hasta la cantidad que elijas.</p>
               <label>Calidad de salida</label>
               <select id="wzQuality"><option value="1080p" selected>Full HD 1080p (1080×1920)</option><option value="720p">HD 720p (720×1280)</option></select>
+              <label>Modelo Whisper</label>
+              <select id="wzModel"><option value="base" selected>base (recomendado)</option><option value="tiny">tiny (rápido)</option><option value="small">small (más preciso, lento)</option></select>
               <p class="muted">El video final siempre es vertical 9:16, listo para Reels, TikTok y Shorts.</p>
             </div>
           </div>
@@ -1654,6 +1655,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=107"></script>
+<script src="app.js?v=108"></script>
 </body>
 </html>

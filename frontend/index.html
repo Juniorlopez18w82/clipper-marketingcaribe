@@ -385,6 +385,26 @@ body.nav-collapsed .panel-inner{max-width:none}
 .panel-foot{margin-top:32px;border-top:1px solid var(--p-border);padding:20px 4px 8px;color:var(--p-muted);font-size:13px;display:flex;gap:8px 24px;flex-wrap:wrap;justify-content:space-between}
 .panel-foot b{color:var(--p-text)}
 .panel-foot a{color:var(--p-text);text-decoration:none;font-weight:700}
+/* Asistente de configuración (v102): pantalla completa al pegar el link. */
+.wizard-overlay{position:fixed;inset:0;z-index:300;background:var(--p-bg);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
+.wizard-overlay[hidden]{display:none}
+.wizard-card{width:min(680px,100%);background:var(--p-surface);border:1px solid var(--p-border);border-radius:20px;padding:28px;box-shadow:var(--p-shadow-lg)}
+.wizard-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
+.wizard-title{display:flex;gap:14px;align-items:center;min-width:0}
+.wizard-title img{width:72px;height:40px;object-fit:cover;border-radius:8px;flex:none;background:#000}
+.wizard-title h3{margin:0;font-size:22px}
+.wizard-title p{margin:2px 0 0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+.wizard-steps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.wz-step{flex:1;min-width:110px;background:transparent;border:1px solid var(--p-border);color:var(--p-muted);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;text-align:center}
+.wz-step.on{background:rgba(var(--p-brand-rgb),.12);border-color:rgba(var(--p-brand-rgb),.45);color:var(--p-text)}
+.wizard-body label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--p-text)}
+.wizard-body label:first-child{margin-top:0}
+.wizard-body select,.wizard-body input[type=text],.wizard-body input[type=number]{width:100%;background:var(--p-surface2);border:1px solid var(--p-border);color:var(--p-text);border-radius:10px;padding:11px 12px;font-size:15px}
+.wizard-body .row{display:flex;gap:12px}
+.wizard-body .row>div{flex:1}
+.wizard-foot{display:flex;align-items:center;gap:12px;margin-top:24px}
+.wizard-foot #wzCounter{flex:1;text-align:center}
+.wizard-foot button{padding:11px 18px;border-radius:10px;font-weight:700;cursor:pointer}
 .panel-inner{max-width:none;margin:0} /* v100: ancho completo — el panel dejaba mucho espacio vacío a los lados (960px centrado) */
 .panel .pane h3{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--p-text);margin:0 0 6px}
 .panel .sub{color:var(--p-muted);font-size:15px;line-height:1.6;margin:0 0 20px}
@@ -1003,6 +1023,76 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
       </div>
       </div>
       </div>
+      <!-- Asistente de configuración (v102): aparece al pegar el link, antes de Sacar clips. -->
+      <div id="configWizard" class="wizard-overlay" hidden>
+        <div class="wizard-card">
+          <div class="wizard-head">
+            <div class="wizard-title">
+              <img id="wzThumb" alt="" referrerpolicy="no-referrer">
+              <div>
+                <h3>Configura tu clip</h3>
+                <p id="wzVideoTitle" class="muted"></p>
+              </div>
+            </div>
+            <button class="modal-x" id="wzClose" aria-label="Cerrar">×</button>
+          </div>
+          <div class="wizard-steps" id="wzSteps">
+            <button class="wz-step on" data-wz="0">1 · Subtítulos</button>
+            <button class="wz-step" data-wz="1">2 · Marca de agua</button>
+            <button class="wz-step" data-wz="2">3 · Cámara</button>
+            <button class="wz-step" data-wz="3">4 · Calidad</button>
+          </div>
+          <div class="wizard-body">
+            <div class="wz-pane" data-wz-pane="0">
+              <label>Subtítulos</label>
+              <select id="wzShowSubs"><option value="1" selected>Con subtítulos virales</option><option value="0">Sin subtítulos</option></select>
+              <div class="row">
+                <div><label>Estilo</label><select id="wzSubStyle"><option value="viral" selected>Viral (blanco + amarillo)</option><option value="plain">Blanco</option><option value="yellow">Amarillo</option></select></div>
+                <div><label>Tamaño</label><input id="wzSubSize" type="number" value="76" min="40" max="110"></div>
+              </div>
+              <label>Posición</label>
+              <select id="wzSubPos"><option value="bottom" selected>Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select>
+            </div>
+            <div class="wz-pane" data-wz-pane="1" hidden>
+              <div class="switchrow">
+                <label class="switch"><input type="checkbox" id="wzFrameEnabled" checked><span class="slider"></span></label>
+                <div><b>Con marco</b><br><span class="muted">Marco amarillo + nombre arriba</span></div>
+              </div>
+              <label>Nombre que saldrá en el marco (marca de agua)</label>
+              <input id="wzBrandText" type="text" value="@marketingcaribe">
+              <div class="row">
+                <div><label>Color del marco</label><input id="wzFrameColor" type="color" value="#FADE4C"></div>
+                <div><label>Grosor (px)</label><input id="wzFrameWidth" type="number" value="14" min="0" max="40"></div>
+              </div>
+            </div>
+            <div class="wz-pane" data-wz-pane="2" hidden>
+              <label>Cámara</label>
+              <select id="wzCameraMode">
+                <option value="center">Centrada — encuadre fijo en el centro del video</option>
+                <option value="follow_speaker" selected>Seguir al que habla — la cámara sigue a quien está hablando</option>
+                <option value="dual">Doble cámara — dos personas: una arriba y otra abajo, cada una centrada</option>
+                <option value="split">Pantalla dividida — la cara arriba y el contenido abajo</option>
+                <option value="blur">Video completo con fondo borroso — el video entero sin recortar, título arriba y subtítulos abajo</option>
+                <option value="mirror">Espejo completo — todo el video volteado, como en un espejo</option>
+                <option value="mirror_blur">Espejo + fondo borroso — video volteado completo, con fondo borroso arriba y abajo</option>
+                <option value="mirror_black">Espejo + fondo negro — video volteado completo, con fondo negro arriba y abajo</option>
+              </select>
+              <p class="muted">En el paso 3 (editor) verás la demo en video de cada modo.</p>
+            </div>
+            <div class="wz-pane" data-wz-pane="3" hidden>
+              <label>Calidad de salida</label>
+              <select id="wzQuality"><option value="1080p" selected>Full HD 1080p (1080×1920)</option><option value="720p">HD 720p (720×1280)</option></select>
+              <p class="muted">El video final siempre es vertical 9:16, listo para Reels, TikTok y Shorts.</p>
+            </div>
+          </div>
+          <div class="wizard-foot">
+            <button class="ghost" id="wzBack">← Atrás</button>
+            <span id="wzCounter" class="muted">Paso 1 de 4</span>
+            <button id="wzNext">Siguiente →</button>
+            <button id="wzGo" class="btn-brand" hidden>Sacar clips</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="pane" id="pane-lives" hidden>
@@ -1532,6 +1622,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=101"></script>
+<script src="app.js?v=102"></script>
 </body>
 </html>

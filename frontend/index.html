@@ -1082,6 +1082,10 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
               <p class="muted">En el paso 3 (editor) verás la demo en video de cada modo.</p>
             </div>
             <div class="wz-pane" data-wz-pane="3" hidden>
+              <div class="row">
+                <div><label>Analizar desde (seg)</label><input id="wzRangeStart" type="number" value="0" min="0"></div>
+                <div><label>Hasta (seg)</label><input id="wzRangeEnd" type="number" value="120" min="10"></div>
+              </div>
               <label>Cantidad de clips (máx.)</label>
               <input id="wzMaxClips" type="number" value="5" min="1" max="15">
               <div class="row">
@@ -1632,6 +1636,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=104"></script>
+<script src="app.js?v=105"></script>
 </body>
 </html>

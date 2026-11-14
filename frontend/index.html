@@ -1096,7 +1096,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
             <div class="wizard-title">
               <img id="wzThumb" alt="" referrerpolicy="no-referrer">
               <div>
-                <h3>Configura tu clip</h3>
+                <h3 id="wzTitle">Configura tu clip</h3>
                 <p id="wzVideoTitle" class="muted"></p>
               </div>
             </div>
@@ -1189,7 +1189,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
             <div><label>Cada cuánto</label><select id="liveInterval"><option value="2">cada 2 min</option><option value="5">cada 5 min</option><option value="10" selected>cada 10 min</option><option value="15">cada 15 min</option><option value="30">cada 30 min</option><option value="60">cada 60 min</option></select></div>
           </div>
           <p class="muted" style="font-size:12px">El live debe estar en curso. Los clips aparecen abajo solos.</p>
-          <div style="margin-top:14px"><button id="btnStartLive"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg> Empezar</button></div>
+          <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap"><button id="btnStartLive"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg> Empezar</button><button id="btnConfigLive" class="ghost" type="button" title="Configurar cámara, subtítulos, marca y calidad antes de empezar">Configurar live</button></div>
           <p id="liveMsg" class="muted"></p>
         </div>
         <h4 style="margin:20px 0 4px">Mis lives</h4>
@@ -1695,6 +1695,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=128"></script>
+<script src="app.js?v=129"></script>
 </body>
 </html>

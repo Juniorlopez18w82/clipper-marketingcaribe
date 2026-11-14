@@ -2013,6 +2013,8 @@ function resetCreateFlow() {
   state.words = null;
   state.pvClip = null;
   $("urlCard").hidden = false;
+  $("createTitle").textContent = "Crear Clip";
+  $("createSub").hidden = false;
   $("candidatesCard").hidden = true;
   $("step3Card").hidden = true;
   $("configCard").hidden = true;
@@ -2780,8 +2782,11 @@ function selectClip(c, el) {
   playPreviewClip(c);
   updatePreview();
   // El paso 3 (subtítulos + render) solo aparece DESPUÉS de elegir un clip.
-  // Al editar, el form de crear (URL) se oculta para no estorbar.
+  // Al editar, el form de crear (URL) se oculta para no estorbar y el
+  // encabezado pasa a "Editando Clip" (sin el subtítulo de crear).
   $("urlCard").hidden = true;
+  $("createTitle").textContent = "Editando Clip";
+  $("createSub").hidden = true;
   $("step3Card").hidden = false;
   $("configCard").hidden = false;
   if ($("createGrid")) $("createGrid").classList.remove("create-centered");

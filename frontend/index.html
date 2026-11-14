@@ -1189,7 +1189,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
             <div><label>Cada cuánto</label><select id="liveInterval"><option value="2">cada 2 min</option><option value="5">cada 5 min</option><option value="10" selected>cada 10 min</option><option value="15">cada 15 min</option><option value="30">cada 30 min</option><option value="60">cada 60 min</option></select></div>
           </div>
           <p class="muted" style="font-size:12px">El live debe estar en curso. Los clips aparecen abajo solos.</p>
-          <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap"><button id="btnStartLive"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg> Empezar</button><button id="btnConfigLive" class="ghost" type="button" title="Configurar cámara, subtítulos, marca y calidad antes de empezar">Configurar live</button></div>
+          <div style="margin-top:14px"><button id="btnStartLive"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg> Empezar</button></div>
           <p id="liveMsg" class="muted"></p>
         </div>
         <h4 style="margin:20px 0 4px">Mis lives</h4>
@@ -1512,6 +1512,43 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
       </div>
     </div>
   </div>
+  <!-- Configurar live (v131, Juan): modal en la tarjeta del live, junto a
+       Iniciar/Pausar/Reanudar/Detener/Eliminar. Aplica a los próximos clips. -->
+  <div id="liveConfigModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="liveConfigTitle" style="width:min(560px,94vw)">
+      <button class="modal-x" id="liveConfigClose" aria-label="Cerrar">×</button>
+      <h3 id="liveConfigTitle">Configurar live</h3>
+      <p class="muted" id="liveConfigSub" style="font-size:13px;margin:0 0 16px">Se aplica a los próximos clips de este live.</p>
+      <div class="cfg-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label>Cámara</label><select id="lcCamera">
+          <option value="follow_speaker">Seguir al que habla</option>
+          <option value="center">Centrada</option>
+          <option value="dual">Doble cámara</option>
+          <option value="split">Pantalla dividida</option>
+          <option value="blur">Video completo con fondo borroso</option>
+          <option value="mirror">Espejo completo</option>
+          <option value="mirror_blur">Espejo + fondo borroso</option>
+          <option value="mirror_black">Espejo + fondo negro</option>
+        </select></div>
+        <div><label>Calidad</label><select id="lcQuality"><option value="1080p">1080p</option><option value="720p">720p</option></select></div>
+        <div><label>Clips cada vez</label><select id="lcPerRound"><option value="1">1 clip</option><option value="2">2 clips</option><option value="3">3 clips</option><option value="4">4 clips</option><option value="5">5 clips</option></select></div>
+        <div><label>Cada cuánto</label><select id="lcInterval"><option value="2">cada 2 min</option><option value="5">cada 5 min</option><option value="10">cada 10 min</option><option value="15">cada 15 min</option><option value="30">cada 30 min</option><option value="60">cada 60 min</option></select></div>
+        <div><label>Duración mín. del clip (s)</label><input id="lcMinLen" type="number" min="5" max="120" step="1"></div>
+        <div><label>Duración máx. del clip (s)</label><input id="lcMaxLen" type="number" min="5" max="180" step="1"></div>
+        <div><label>Subtítulos</label><select id="lcShowSubs"><option value="1">Sí</option><option value="0">No</option></select></div>
+        <div><label>Estilo de subtítulo</label><select id="lcSubStyle"><option value="viral">Viral</option><option value="plain">Sencillo</option><option value="yellow">Amarillo</option></select></div>
+        <div><label>Tamaño de subtítulo</label><input id="lcSubSize" type="number" min="30" max="120" step="1"></div>
+        <div><label>Posición de subtítulo</label><select id="lcSubPos"><option value="bottom">Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select></div>
+        <div><label>Marca de agua</label><input id="lcBrandText" type="text" placeholder="@marketingcaribe"></div>
+        <div><label>Color de palabra clave</label><input id="lcHlColor" type="color"></div>
+        <div><label>Marco</label><select id="lcFrameEnabled"><option value="1">Sí</option><option value="0">No</option></select></div>
+        <div><label>Color del marco</label><input id="lcFrameColor" type="color"></div>
+      </div>
+      <div class="modal-actions"><button class="ghost" id="liveConfigCancel" type="button">Cancelar</button><button class="btn-brand" id="liveConfigSave" type="button">Guardar configuración</button></div>
+      <p id="liveConfigMsg" class="muted" style="margin:10px 0 0"></p>
+    </div>
+  </div>
+
   <div id="coverModal" class="modal-backdrop" hidden>
     <div class="modal-card cover-modal" role="dialog" aria-modal="true" aria-labelledby="coverModalTitle">
       <button class="modal-x" id="coverModalClose" aria-label="Cerrar">×</button>
@@ -1695,6 +1732,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=130"></script>
+<script src="app.js?v=131"></script>
 </body>
 </html>

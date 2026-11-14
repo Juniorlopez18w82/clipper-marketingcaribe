@@ -2434,6 +2434,49 @@ function applyCamTrack(t) {
   pv.style.objectPosition = pct.toFixed(1) + "% 50%";
 }
 
+// Cámara en la vista previa (v107): el modo se ve ANTES de Renderizar.
+// Aplica la clase cam-* al .phone (espejo, blur, dual, split) y pone el
+// objectPosition en línea (dual/split usan dos zonas). follow_speaker lo
+// mueve el track (applyCamTrack), así que ahí no se toca.
+function applyCameraPreviewMode() {
+  const phone = $("phone"), pv = $("pvVideo"), v2 = $("pvVideo2");
+  const mode = ($("cameraMode") && $("cameraMode").value) || "center";
+  if (!phone || !pv) return;
+  phone.classList.remove("cam-mirror", "cam-mirror_black", "cam-blur", "cam-mirror_blur", "cam-dual", "cam-split");
+  if (mode === "mirror") phone.classList.add("cam-mirror");
+  else if (mode === "mirror_black") phone.classList.add("cam-mirror_black");
+  else if (mode === "blur") phone.classList.add("cam-blur");
+  else if (mode === "mirror_blur") phone.classList.add("cam-mirror_blur");
+  else if (mode === "dual") phone.classList.add("cam-dual");
+  else if (mode === "split") phone.classList.add("cam-split");
+  if (mode === "dual") {
+    pv.style.objectPosition = "50% 18%";
+    if (v2) v2.style.objectPosition = "50% 82%";
+  } else if (mode === "split") {
+    pv.style.objectPosition = "50% 12%";
+    if (v2) v2.style.objectPosition = "50% 60%";
+  } else if (mode !== "follow_speaker") {
+    pv.style.objectPosition = "50% 50%";
+  }
+  syncPreviewDupes();
+}
+// Los videos duplicados (fondo borroso, segunda mitad) siguen al principal.
+function syncPreviewDupes() {
+  const pv = $("pvVideo");
+  if (!pv) return;
+  const src = pv.dataset.src || pv.src || "";
+  ["pvVideoBg", "pvVideo2"].forEach((id) => {
+    const d = $(id);
+    if (!d) return;
+    if (src && d.dataset.src !== src) { d.dataset.src = src; d.src = src; d.load(); }
+    if (!pv.paused) d.play().catch(() => {});
+    else d.pause();
+    try { if (src && Math.abs(d.currentTime - pv.currentTime) > 0.3) d.currentTime = pv.currentTime; } catch (e) {}
+  });
+}
+$("pvVideo").addEventListener("play", () => { ["pvVideoBg", "pvVideo2"].forEach((id) => { const d = $(id); if (d) d.play().catch(() => {}); }); });
+$("pvVideo").addEventListener("pause", () => { ["pvVideoBg", "pvVideo2"].forEach((id) => { const d = $(id); if (d) d.pause(); }); });
+
 // Reproduce el trozo del clip elegido en la vista previa 9:16 (sin sonido).
 // El video es SOLO el trozo del clip (clip-video, 2026-11-11): el análisis
 // baja solo audio (rápido) y el video se baja bajo demanda para este
@@ -2451,6 +2494,7 @@ function playPreviewClip(c) {
   // El encuadre de la vista previa sigue al que habla (si el modo es
   // follow_speaker / follow_person); si no, queda centrado.
   loadCamTrack();
+  applyCameraPreviewMode();
   const startAt = () => {
     // Si el usuario ya eligió otro clip mientras cargaban los metadatos,
     // este arranque queda obsoleto.
@@ -2683,7 +2727,7 @@ $("pvVideo").addEventListener("timeupdate", () => {
     try { pv.currentTime = Math.max(0, state.pvClip.start - (state.pvOffset || 0) + 0.01); } catch (e) {}
     return;
   }
-  if (t >= 0) { updatePreviewSubs(t); applyCamTrack(t); }
+  if (t >= 0) { updatePreviewSubs(t); applyCamTrack(t); syncPreviewDupes(); }
 });
 
 // Sonido de la vista previa: suena por defecto (Juan lo pidió); el botón
@@ -2880,6 +2924,7 @@ $("cameraMode").onchange = () => {
   // Cambiar el modo mueve el encuadre de la vista previa al instante
   // (si hay un clip elegido).
   if (state.selected) loadCamTrack();
+  applyCameraPreviewMode();
 };
 if ($("cameraPerson")) {
   $("cameraPerson").onchange = () => { if (state.selected) loadCamTrack(); };

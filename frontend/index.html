@@ -380,7 +380,8 @@ body.nav-collapsed .panel-inner{max-width:none}
   body.create-wide .panel-nav{display:none}
 }
 /* --- Contenido --- */
-.panel-content{flex:1;min-width:0;padding:32px}
+.panel-content{flex:1;min-width:0;padding:32px;display:flex;flex-direction:column;min-height:calc(100vh - 60px)}
+.panel-inner{flex:1}
 /* Footer del panel (v101): se ve en todas las pestañas, al pie del contenido. */
 .panel-foot{margin-top:32px;border-top:1px solid var(--p-border);padding:20px 4px 8px;color:var(--p-muted);font-size:13px;display:flex;gap:8px 24px;flex-wrap:wrap;justify-content:space-between}
 .panel-foot b{color:var(--p-text)}
@@ -502,6 +503,7 @@ gigantes, con los botones como bloques morados enormes. --- */
 .vid-status.bad{color:var(--p-err)}
 /* --- Creador dentro del panel (Crear Clip): 2 columnas --- */
 .panel .create-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+#pane-create>h3,#pane-create>p.sub{text-align:center}
 .panel .create-grid.create-centered{grid-template-columns:1fr}
 .panel .create-grid.create-centered>div:last-child{display:none}
 /* Crear Clip centrado y PRO (v109): tarjeta hero centrada, icono y botones con icono. */
@@ -1382,7 +1384,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
       </div>
       <footer class="panel-foot">
         <span><b>Clipzio Pro</b> · De videos largos a clips virales</span>
-        <span>Precios en US$ · Paga por transferencia</span>
         <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener">Marketingcaribe.com</a></span>
       </footer>
     </div>
@@ -1658,13 +1659,11 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
     <div class="foot-bottom">
       <span><b style="color:#fff">Clipzio Pro</b> · De videos largos a clips virales</span>
       <span>·</span>
-      <span>Precios en US$ · Paga por transferencia</span>
-      <span>·</span>
       <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener">Marketingcaribe.com</a></span>
     </div>
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=109"></script>
+<script src="app.js?v=110"></script>
 </body>
 </html>

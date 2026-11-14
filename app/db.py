@@ -70,7 +70,14 @@ def _ensure_live_columns() -> None:
     """
     from sqlalchemy import inspect
 
-    cols = {"thumbnail": "VARCHAR(500)"}
+    cols = {"thumbnail": "VARCHAR(500)",
+            "camera_mode": "VARCHAR(32)", "facecam_corner": "VARCHAR(32)",
+            "frame_enabled": "BOOLEAN", "frame_color": "VARCHAR(16)",
+            "frame_width": "INTEGER", "brand_text": "VARCHAR(255)",
+            "show_subtitles": "BOOLEAN", "subtitle_style": "VARCHAR(16)",
+            "subtitle_size": "INTEGER", "subtitle_position": "VARCHAR(16)",
+            "highlight_color": "VARCHAR(16)", "quality": "VARCHAR(16)",
+            "template": "VARCHAR(64)"}
     try:
         existing = {c["name"]
                     for c in inspect(engine).get_columns("live_sessions")}

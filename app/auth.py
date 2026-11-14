@@ -11,10 +11,11 @@
 """
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
@@ -63,6 +64,13 @@ class User(Base):
     template = Column(String(80), nullable=False, default="Gancho grande")
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
+    # Sesión única (2026-11-13, Juan: una sola sesión activa por cuenta,
+    # atada a una IP y un dispositivo): cada login genera un session_id
+    # nuevo e invalida el anterior; el token lleva el session_id y la IP.
+    active_session_id = Column(String(64), nullable=True)
+    active_session_ip = Column(String(45), nullable=True)
+    active_session_agent = Column(String(255), nullable=True)
+    active_session_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # Usuarios de prueba (seed). Las claves se guardan con bcrypt, como el
@@ -141,18 +149,50 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, session_id: str | None = None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
-    return jwt.encode({"sub": str(user_id), "exp": expire},
-                      SECRET_KEY, algorithm=ALGORITHM)
+    payload: dict = {"sub": str(user_id), "exp": expire}
+    if session_id:
+        payload["sid"] = session_id
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _token_payload(token: str) -> tuple[int | None, str | None]:
+    """Decodifica el JWT: (user_id, session_id). Sin sid = token viejo."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return int(payload.get("sub")), payload.get("sid")
+    except (JWTError, ValueError, TypeError):
+        return None, None
 
 
 def _user_id_from_token(token: str) -> int | None:
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return int(payload.get("sub"))
-    except (JWTError, ValueError, TypeError):
-        return None
+    user_id, _sid = _token_payload(token)
+    return user_id
+
+
+def start_session(db: Session, user: User, ip: str | None,
+                  agent: str | None) -> str:
+    """Crea la sesión única: invalida cualquier sesión anterior de la
+    cuenta (el token viejo deja de valer en la próxima petición)."""
+    sid = secrets.token_urlsafe(32)
+    user.active_session_id = sid
+    user.active_session_ip = ip
+    user.active_session_agent = (agent or "")[:255] or None
+    user.active_session_at = datetime.now(timezone.utc)
+    db.add(user)
+    db.commit()
+    return sid
+
+
+def end_session(db: Session, user: User) -> None:
+    """Cierra la sesión: el token vigente deja de valer."""
+    user.active_session_id = None
+    user.active_session_ip = None
+    user.active_session_agent = None
+    user.active_session_at = None
+    db.add(user)
+    db.commit()
 
 
 def register_user(db: Session, name: str, email: str, password: str) -> User:
@@ -182,18 +222,33 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> User:
     """Require a valid token. 401 if missing/invalid. A suspended
     account (is_suspended, set by the admin) gets 403 on every call
     except for admins themselves, so it cannot use the panel until
-    reactivated."""
-    user_id = _user_id_from_token(credentials.credentials) if credentials else None
+    reactivated. Sesión única (v111): el token debe llevar el
+    session_id vigente y venir de la IP del login; si la cuenta inició
+    sesión en otro dispositivo/IP, este token ya no vale."""
+    user_id, sid = _token_payload(credentials.credentials) if credentials else (None, None)
     user = db.query(User).filter(User.id == user_id).first() if user_id else None
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Inicia sesión para continuar")
+    active = getattr(user, "active_session_id", None)
+    if active is not None:
+        if sid != active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Tu sesión se cerró porque iniciaste "
+                                "sesión en otro dispositivo")
+        req_ip = request.client.host if request.client else None
+        saved_ip = getattr(user, "active_session_ip", None)
+        if saved_ip and req_ip and req_ip != saved_ip:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Tu sesión es de otra IP. "
+                                "Inicia sesión de nuevo")
     if getattr(user, "is_suspended", False) and not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Tu cuenta está suspendida. "
@@ -207,7 +262,13 @@ def get_optional_user(
 ) -> User | None:
     """v1 helper: return the user when a valid token is sent, else None.
     Never raises — public endpoints stay public."""
-    user_id = _user_id_from_token(credentials.credentials) if credentials else None
+    user_id, sid = _token_payload(credentials.credentials) if credentials else (None, None)
     if not user_id:
         return None
-    return db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        return None
+    active = getattr(user, "active_session_id", None)
+    if active is not None and sid != active:
+        return None
+    return user

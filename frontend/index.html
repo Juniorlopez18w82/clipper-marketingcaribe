@@ -381,6 +381,10 @@ body.nav-collapsed .panel-inner{max-width:none}
 }
 /* --- Contenido --- */
 .panel-content{flex:1;min-width:0;padding:32px}
+/* Footer del panel (v101): se ve en todas las pestañas, al pie del contenido. */
+.panel-foot{margin-top:32px;border-top:1px solid var(--p-border);padding:20px 4px 8px;color:var(--p-muted);font-size:13px;display:flex;gap:8px 24px;flex-wrap:wrap;justify-content:space-between}
+.panel-foot b{color:var(--p-text)}
+.panel-foot a{color:var(--p-text);text-decoration:none;font-weight:700}
 .panel-inner{max-width:none;margin:0} /* v100: ancho completo — el panel dejaba mucho espacio vacío a los lados (960px centrado) */
 .panel .pane h3{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--p-text);margin:0 0 6px}
 .panel .sub{color:var(--p-muted);font-size:15px;line-height:1.6;margin:0 0 20px}
@@ -1243,6 +1247,11 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
     </div>
 
       </div>
+      <footer class="panel-foot">
+        <span><b>Clipzio Pro</b> · De videos largos a clips virales</span>
+        <span>Precios en US$ · Paga por transferencia</span>
+        <span>Desarrollo by <a href="https://marketingcaribe.com" target="_blank" rel="noopener">Marketingcaribe.com</a></span>
+      </footer>
     </div>
   </div>
   <!-- Modal: asignar plan a un usuario (Panel Admin > Usuarios) -->
@@ -1523,6 +1532,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=100"></script>
+<script src="app.js?v=101"></script>
 </body>
 </html>

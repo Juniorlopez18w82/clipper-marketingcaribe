@@ -1518,7 +1518,9 @@ async function liveDelete(btn) {
   }
 }
 
-$("btnStartLive").onclick = async () => {
+// Arranca un live. cfg = config elegida en "Configurar live" (v129);
+// sin cfg usa los defaults (cámara "Seguir al que habla", etc.).
+async function startLive(cfg) {
   const url = $("liveUrl").value.trim();
   const msg = $("liveMsg");
   if (!url) { msg.textContent = "Pega el link del live."; return; }
@@ -1531,6 +1533,7 @@ $("btnStartLive").onclick = async () => {
         url,
         interval_minutes: parseInt($("liveInterval").value || "10", 10),
         clips_per_round: parseInt($("liveClipsPerRound").value || "3", 10),
+        ...(cfg || {}),
       }),
     });
     msg.textContent = `Live agregado. El primer clip llega en ~${d.interval_minutes} min.`;
@@ -1541,6 +1544,19 @@ $("btnStartLive").onclick = async () => {
   } finally {
     $("btnStartLive").disabled = false;
   }
+}
+$("btnStartLive").onclick = () => startLive(null);
+// "Configurar live" (v129, Juan): abre el mismo asistente que al poner
+// un video (subtítulos, marca, cámara, clips y calidad); al aceptar,
+// el live arranca con esa configuración.
+$("btnConfigLive").onclick = () => {
+  const url = $("liveUrl").value.trim();
+  const msg = $("liveMsg");
+  if (!url) { msg.textContent = "Pega el link del live."; return; }
+  _wzLive = true;
+  const _wzt = $("wzTitle"); if (_wzt) _wzt.textContent = "Configura tu live";
+  const _wzg = $("wzGo"); if (_wzg) _wzg.textContent = "Empezar live";
+  wzOpen({ title: "Live en curso", thumb: "" });
 };
 
 // ---------- Imágenes IA (fal.ai, plan Gold) ----------
@@ -2102,6 +2118,9 @@ $("url").addEventListener("input", () => {
 // para configurar el clip ANTES de Sacar clips. Escribe en los
 // campos del editor (paso 3), que es la única fuente de verdad.
 let _wzStep = 0;
+// _wzLive: el asistente está configurando un LIVE (no un clip normal):
+// al aceptar, arranca el live con la config elegida (v129, Juan).
+let _wzLive = false;
 let _wzShownForUrl = "";
 const WZ_TOTAL = 4;
 function wzSyncFromEditor() {
@@ -2149,6 +2168,26 @@ function wzSyncToEditor() {
   set("cfgQuality", $("wzQuality").value);
   set("model", $("wzModel").value);
 }
+// Config del live desde los campos del editor (los mismos que lee
+// buildRenderBody para un clip normal). El asistente los escribe con
+// wzSyncToEditor antes de aceptar, así que aquí ya llevan lo elegido.
+function buildLiveConfig() {
+  return {
+    camera_mode: $("cameraMode").value,
+    facecam_corner: $("facecamCorner").value,
+    frame_enabled: $("frameEnabled").checked,
+    frame_color: $("frameColor").value,
+    frame_width: parseInt($("frameWidth").value || "14", 10),
+    brand_text: $("brandText").value,
+    show_subtitles: $("showSubs").value === "1",
+    subtitle_style: $("subStyle").value,
+    subtitle_size: parseInt($("subSize").value || "76", 10),
+    subtitle_position: $("subPos").value,
+    highlight_color: $("hlColor").value,
+    quality: $("cfgQuality").value,
+    template: state.templateTouched ? null : (state.userTemplate || "Gancho grande"),
+  };
+}
 function wzGoTo(n) {
   _wzStep = Math.max(0, Math.min(WZ_TOTAL - 1, n));
   document.querySelectorAll(".wz-step").forEach((b) => b.classList.toggle("on", +b.dataset.wz === _wzStep));
@@ -2173,6 +2212,9 @@ function wzOpen(override) {
 function wzClose() {
   $("configWizard").hidden = true;
   document.body.style.overflow = "";
+  _wzLive = false;
+  const _wzt = $("wzTitle"); if (_wzt) _wzt.textContent = "Configura tu clip";
+  const _wzg = $("wzGo"); if (_wzg) _wzg.textContent = "Sacar clips";
 }
 function wzMaybeOpen(url) {
   if (!url || url === _wzShownForUrl) return;
@@ -2183,7 +2225,16 @@ function wzMaybeOpen(url) {
 $("wzClose").onclick = wzClose;
 $("wzBack").onclick = () => wzGoTo(_wzStep - 1);
 $("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
-$("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
+$("wzGo").onclick = () => {
+  wzSyncToEditor();
+  if (_wzLive) {
+    const cfg = buildLiveConfig();
+    wzClose();
+    startLive(cfg);
+    return;
+  }
+  wzClose(); $("btnClips").click();
+};
 document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
 ["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality", "wzModel"].forEach((id) => {
   const el = $(id);

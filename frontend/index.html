@@ -351,10 +351,10 @@ body.nav-collapsed .panel-inner{max-width:none}
 .modal-x{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:var(--p-surface2);color:var(--p-text);font-size:18px;line-height:1;cursor:pointer}
 .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
 .modal-actions a.btn-dl{background:var(--p-grad);color:var(--p-white);padding:10px 18px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block}
-.modal-card.viewer{width:min(360px,94vw);text-align:center}
+.modal-card.viewer{width:min(520px,96vw);max-height:96vh;padding:18px;text-align:center}
 #clipModalMeta svg{width:15px;height:15px;vertical-align:-2px}
 .modal-card.viewer h3{padding-right:32px}
-.modal-card.viewer video{width:270px;max-width:100%;aspect-ratio:9/16;border-radius:16px;background:var(--p-black);display:block;margin:12px auto 0;object-fit:cover;border:1px solid var(--p-border)}
+.modal-card.viewer video{width:min(380px,100%);max-width:100%;max-height:calc(96vh - 230px);aspect-ratio:9/16;border-radius:16px;background:var(--p-black);display:block;margin:12px auto 0;object-fit:cover;border:1px solid var(--p-border)}
 .modal-card.viewer .modal-actions{justify-content:center}
 .fab-add-user{position:fixed;right:24px;bottom:24px;z-index:150;width:56px;height:56px;border-radius:50%;border:0;background:var(--p-grad);color:var(--p-white);font-size:30px;line-height:1;cursor:pointer;box-shadow:0 8px 24px rgba(var(--p-brand-rgb),.45);display:flex;align-items:center;justify-content:center;transition:transform .2s ease,box-shadow .2s ease}
 .fab-add-user:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 12px 32px rgba(var(--p-brand-rgb),.55)}
@@ -1665,6 +1665,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=115"></script>
+<script src="app.js?v=116"></script>
 </body>
 </html>

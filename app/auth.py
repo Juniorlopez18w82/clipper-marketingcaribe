@@ -239,7 +239,17 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Inicia sesión para continuar")
     active = getattr(user, "active_session_id", None)
-    if active is not None and sid != active:
+    if sid is None:
+        # Token viejo sin sid: solo vale si el usuario nunca inició sesión
+        # con la sesión única (v111+). Si ya tiene sesión vigente, el
+        # token viejo quedó invalidado por el login nuevo.
+        if active is not None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Tu sesión se cerró porque iniciaste "
+                                "sesión en otro dispositivo")
+    elif sid != active:
+        # Token con sid que no coincide: otro login lo invalidó, o se
+        # cerró la sesión (logout deja active en None).
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Tu sesión se cerró porque iniciaste "
                             "sesión en otro dispositivo")

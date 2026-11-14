@@ -142,14 +142,14 @@ LLM_MIN_SECONDS = 15.0
 LLM_MAX_SECONDS = 60.0
 LLM_MAX_CLIPS = 5
 # Keep the prompt bounded for very long sections.
-LLM_MAX_TRANSCRIPT_CHARS = 24000
+LLM_MAX_TRANSCRIPT_CHARS = 16000
 # Partir la transcripción en partes con cruce (v137, Juan: analizar TODO
 # el video sin perder ningún momento, aunque el viral esté al final).
 # Cada parte se analiza EN PARALELO con la IA (mismo tiempo que una
 # sola); el cruce (final de una parte + inicio de la siguiente) evita
 # que una historia se corte en el límite entre dos partes.
-LLM_CHUNK_SECONDS = 1200.0  # 20 min por parte
-LLM_CHUNK_OVERLAP_SECONDS = 180.0  # 3 min de cruce entre partes
+LLM_CHUNK_SECONDS = 600.0  # 10 min por parte (v139: 20 min daba ~8700 tokens y Groq 413)
+LLM_CHUNK_OVERLAP_SECONDS = 120.0  # 2 min de cruce entre partes
 LLM_CHUNK_MAX_PARTS = 8  # tope de partes (videos larguísimos)
 
 
@@ -471,15 +471,22 @@ def _snap_to_sentences(first: int, last: int, words: list[dict],
 
 def _validate_llm_clips(items: list[dict], words: list[dict],
                         t_start: float, t_end: float,
-                        abs_start: float = 0.0) -> list[dict]:
+                        abs_start: float = 0.0,
+                        min_len: float = LLM_MIN_SECONDS,
+                        max_len: float = LLM_MAX_SECONDS) -> list[dict]:
     """Validate LLM clips hard and snap them to word boundaries. Drops:
     non-numeric or missing times, ranges outside the transcript, clips
-    shorter than 15 s or longer than 60 s after snapping, clips with
-    fewer than 8 words, clips that start inside the video intro
-    (absolute start < 15 s — greetings/channel bumper, never viral),
-    and any clip overlapping one already kept (LLM order wins:
-    better-ranked clips are kept first). Returns the kept clips in LLM
-    order with snapped times."""
+    outside the requested duration (a little looser: up to 5 s shorter
+    than min_len / 5 s longer than max_len, so a good clip is not thrown
+    away for being a couple of seconds off), clips with fewer than 8
+    words, clips that start inside the video intro (absolute start <
+    15 s — greetings/channel bumper, never viral), and any clip
+    overlapping one already kept (LLM order wins: better-ranked clips
+    are kept first). Returns the kept clips in LLM order with snapped
+    times. (v139: antes usaba 15-60 s fijos aunque se pidieran 60-90 s,
+    así la validación tiraba casi todos los clips de la IA.)"""
+    v_min = max(8.0, min_len - 5.0)
+    v_max = max_len + 5.0
     kept = []
     for item in items:
         if not isinstance(item, dict):
@@ -507,7 +514,7 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
         if abs_start + s < 15.0:
             continue
         first, last = _snap_to_sentences(first, last, words,
-                                         LLM_MIN_SECONDS, LLM_MAX_SECONDS)
+                                         v_min, v_max)
         s, e = words[first]["s"], words[last]["e"]
         # Si la palabra siguiente empieza antes de que termine la última
         # (los tiempos de Whisper se solapan), cortar ahí: si no, el audio
@@ -517,7 +524,7 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
         if last + 1 < len(words) and words[last + 1]["s"] < e:
             e = words[last + 1]["s"]
         duration = e - s
-        if duration < LLM_MIN_SECONDS or duration > LLM_MAX_SECONDS:
+        if duration < v_min or duration > v_max:
             continue
         if last - first + 1 < 8:
             continue
@@ -592,7 +599,8 @@ def _llm_chunk_candidates(chunk_segments: list[dict], max_clips: int,
     if items is None:
         return None
     valid = _validate_llm_clips(items, words, t_start, t_end,
-                                abs_start=abs_start)
+                                abs_start=abs_start,
+                                min_len=min_len, max_len=max_len)
     if not valid:
         return None
     candidates = []

@@ -47,7 +47,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form,
-                     HTTPException, UploadFile)
+                     HTTPException, Request, UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -1061,27 +1061,43 @@ def health():
 
 # ---------------------------------------------------------------- auth
 @app.post("/api/auth/register", response_model=TokenResponse)
-def api_register(req: RegisterRequest, db: Session = Depends(get_db)):
+def api_register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     try:
         user = auth.register_user(db, req.name, req.email, req.password)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    ip = request.client.host if request.client else None
+    sid = auth.start_session(db, user, ip,
+                             request.headers.get("user-agent"))
     out = auth.user_out(user)
     out["plan_expires"] = _plan_expires_for(db, user)
-    return {"access_token": auth.create_access_token(user.id), "user": out}
+    return {"access_token": auth.create_access_token(user.id, sid), "user": out}
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
-def api_login(req: LoginRequest, db: Session = Depends(get_db)):
+def api_login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = auth.authenticate_user(db, req.email, req.password)
     if user is None:
         raise HTTPException(401, "Correo o contraseña incorrectos")
     if getattr(user, "is_suspended", False) and not user.is_admin:
         raise HTTPException(403, "Tu cuenta está suspendida. "
                                  "Contacta al administrador.")
+    # Sesión única (v111): este login invalida cualquier sesión anterior
+    # de la cuenta (otro dispositivo/IP queda fuera).
+    ip = request.client.host if request.client else None
+    sid = auth.start_session(db, user, ip,
+                             request.headers.get("user-agent"))
     out = auth.user_out(user)
     out["plan_expires"] = _plan_expires_for(db, user)
-    return {"access_token": auth.create_access_token(user.id), "user": out}
+    return {"access_token": auth.create_access_token(user.id, sid), "user": out}
+
+
+@app.post("/api/auth/logout")
+def api_logout(db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    """Cierra la sesión en el servidor: el token deja de valer."""
+    auth.end_session(db, user)
+    return {"ok": True}
 
 
 @app.get("/api/auth/me", response_model=UserResponse)
@@ -1615,14 +1631,19 @@ async def api_upload(file: UploadFile = File(...),
 
 # ---------------------------------------------------------------- impersonar (admin entra a la cuenta de un usuario)
 @app.post("/api/admin/impersonate/{user_id}")
-def api_admin_impersonate(user_id: int, db: Session = Depends(get_db),
+def api_admin_impersonate(user_id: int, request: Request, db: Session = Depends(get_db),
                           _admin: User = Depends(require_admin)):
     target = db.query(User).filter(User.id == user_id).first()
     if target is None:
         raise HTTPException(404, "Usuario no encontrado")
     if target.is_admin:
         raise HTTPException(400, "No se puede impersonar a otro admin")
-    return {"access_token": auth.create_access_token(target.id),
+    # El token impersonado también lleva sesión (invalida la sesión real
+    # del usuario mientras el admin está dentro de su cuenta).
+    ip = request.client.host if request.client else None
+    sid = auth.start_session(db, target, ip,
+                             request.headers.get("user-agent"))
+    return {"access_token": auth.create_access_token(target.id, sid),
             "user": auth.user_out(target)}
 
 

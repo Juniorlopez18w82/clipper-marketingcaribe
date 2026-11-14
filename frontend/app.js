@@ -235,6 +235,8 @@ function updateTopBar() {
 // "23 h 59 min" sin recargar).
 setInterval(() => { if (state.user) updateTopBar(); }, 60000);
 function doLogout() {
+  // Cierra la sesión también en el servidor (v111): el token deja de valer.
+  try { fetch("/api/auth/logout", { method: "POST", headers: authHeaders() }).catch(() => {}); } catch (e) {}
   localStorage.removeItem("clipper_token");
   localStorage.removeItem("clipper_user");
   localStorage.removeItem("clipper_admin_token");

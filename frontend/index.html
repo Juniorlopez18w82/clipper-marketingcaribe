@@ -54,7 +54,7 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 60px}
 }
 /* ---------- Landing moderna (2026-11-12, Juan: tipo wayin.ai/clip-maker) ---------- */
 .landing-nav{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:24px;padding:14px 0;background:rgba(17,17,19,.92);backdrop-filter:blur(8px);border-bottom:1px solid #27272a}
-.landing-nav .brand{font-size:20px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px}
+.landing-nav .brand{font-size:20px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px;cursor:pointer}
 .landing-nav .brand img{width:32px;height:32px;border-radius:9px}
 .hero-logo{width:300px;max-width:80%;height:auto;display:block;margin-bottom:20px;border-radius:12px}
 .foot-logo{display:block;margin:0 auto 20px;width:300px;max-width:80%;height:auto;border-radius:14px}
@@ -1516,7 +1516,7 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
 <main>
   <!-- Barra superior de la landing -->
   <nav class="landing-nav">
-    <span class="brand"><img src="/logo-icon.png" alt="Clipzio Pro"> Clipzio Pro</span>
+    <span class="brand" id="brandLanding" title="Ir a mi panel"><img src="/logo-icon.png" alt="Clipzio Pro"> Clipzio Pro</span>
     <div class="nav-links">
       <a href="#planes">Planes</a>
     </div>
@@ -1636,6 +1636,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=105"></script>
+<script src="app.js?v=106"></script>
 </body>
 </html>

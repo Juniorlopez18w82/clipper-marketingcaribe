@@ -1,5 +1,16 @@
 // Clipzio Pro — frontend (same origin, talks to /api/*)
 const $ = (id) => document.getElementById(id);
+// Anti-copia (v123, Juan): sin clic derecho ni atajos de DevTools
+// (F12, Ctrl+Shift+I/J/C, Ctrl+U ver fuente, Ctrl+S guardar).
+// Disuasivo, en silencio (sin avisos ni alertas): lo que protege de
+// verdad es el backend + el login, esto solo frena al curioso.
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+document.addEventListener("keydown", (e) => {
+  const k = (e.key || "").toLowerCase();
+  if (e.key === "F12" || e.keyCode === 123) { e.preventDefault(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (k === "i" || k === "j" || k === "c")) { e.preventDefault(); return; }
+  if ((e.ctrlKey || e.metaKey) && (k === "u" || k === "s")) { e.preventDefault(); return; }
+}, true);
 // toast(): aviso DENTRO del sistema (barra superior de la página).
 // Reemplaza a alert() del navegador: ningún mensaje sale en ventana
 // emergente. (2026-11-12, Juan.)

@@ -141,7 +141,7 @@ LLM_MIN_SECONDS = 15.0
 LLM_MAX_SECONDS = 60.0
 LLM_MAX_CLIPS = 5
 # Keep the prompt bounded for very long sections.
-LLM_MAX_TRANSCRIPT_CHARS = 12000
+LLM_MAX_TRANSCRIPT_CHARS = 24000
 
 
 def _flatten_words(segments: list[dict]) -> list[dict]:
@@ -150,6 +150,48 @@ def _flatten_words(segments: list[dict]) -> list[dict]:
         for w in s.get("words", []):
             words.append({"w": w["w"], "s": w["s"], "e": w["e"]})
     return words
+
+
+def _sample_transcript(segments: list[dict], budget: int) -> str:
+    """Reparte `budget` caracteres por todo el video.
+
+    Divide los segmentos en bloques de tiempo y toma de cada bloque un
+    trozo contiguo (líneas completas, en orden), para que la IA vea
+    ideas completas del inicio, el medio y el final, no solo el
+    principio. Devuelve el texto ya unido por líneas.
+    """
+    if not segments:
+        return ""
+    starts = [float(s.get("start", 0) or 0) for s in segments]
+    ends = [float(s.get("end", 0) or 0) for s in segments]
+    t0, t1 = min(starts), max(ends)
+    if t1 <= t0:
+        return "\n".join(
+            f"[{float(s.get('start', 0)):.1f}-{float(s.get('end', 0)):.1f}] "
+            f"{(s.get('text') or '').strip()}" for s in segments)[:budget]
+    nblocks = 8
+    per_block = max(1, budget // nblocks)
+    span = (t1 - t0) / nblocks
+    kept: list[str] = []
+    for b in range(nblocks):
+        b0 = t0 + b * span
+        b1 = t0 + (b + 1) * span if b < nblocks - 1 else t1 + 1
+        used = 0
+        for s in segments:
+            st = float(s.get("start", 0) or 0)
+            if st < b0 or st >= b1:
+                continue
+            text = (s.get("text") or "").strip()
+            if not text:
+                continue
+            line = (f"[{float(s.get('start', 0)):.1f}-"
+                    f"{float(s.get('end', 0)):.1f}] {text}")
+            if used + len(line) + 1 > per_block and kept:
+                break
+            kept.append(line)
+            used += len(line) + 1
+    out = "\n".join(kept)
+    return out[:budget].rsplit("\n", 1)[0] if len(out) > budget else out
 
 
 def _llm_prompt(segments: list[dict], max_clips: int,
@@ -162,7 +204,13 @@ def _llm_prompt(segments: list[dict], max_clips: int,
             lines.append(f"[{float(s.get('start', 0)):.1f}-{float(s.get('end', 0)):.1f}] {text}")
     transcript = "\n".join(lines)
     if len(transcript) > LLM_MAX_TRANSCRIPT_CHARS:
-        transcript = transcript[:LLM_MAX_TRANSCRIPT_CHARS].rsplit("\n", 1)[0]
+        # Antes se cortaba a los primeros N caracteres: la IA solo veía
+        # el principio del video y los clips salían de los primeros
+        # minutos. Ahora se reparte el presupuesto por TODO el video:
+        # se divide en bloques de tiempo y de cada bloque se toma un
+        # trozo contiguo (para que la IA vea ideas completas del inicio,
+        # el medio y el final).
+        transcript = _sample_transcript(segments, LLM_MAX_TRANSCRIPT_CHARS)
     return (
         "Eres un editor de clips virales para TikTok, Reels y Shorts. "
         "Te doy la transcripción de un video con marcas de tiempo en segundos.\n"

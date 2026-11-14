@@ -1393,7 +1393,7 @@ function setBulkSelectMode(on) {
   _bulkSelectMode = on;
   if (!on) _bulkSelected.clear();
   $("bulkBar").hidden = !on;
-  $("bulkToggleBtn").textContent = on ? "✕ Salir de selección" : CHECKBOX_SVG + " Seleccionar";
+  $("bulkToggleBtn").innerHTML = on ? "✕ Salir de selección" : CHECKBOX_SVG + " Seleccionar";
   updateBulkBar();
   renderMyClipsPage();
 }

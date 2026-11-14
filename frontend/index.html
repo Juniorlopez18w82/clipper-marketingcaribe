@@ -867,8 +867,8 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
 
     <div class="pane" id="pane-create" hidden>
       <button class="ghost small" id="btnBackToPanel" style="margin-bottom:14px">← Volver al panel</button>
-      <h3>Crear Clip</h3>
-      <p class="sub">Pega el link o sube tu video, la IA busca los mejores momentos y tú eliges el clip.</p>
+      <h3 id="createTitle">Crear Clip</h3>
+      <p class="sub" id="createSub">Pega el link o sube tu video, la IA busca los mejores momentos y tú eliges el clip.</p>
       <div class="locked"><div class="lock-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><p>Debes contratar un plan para usar Clipzio Pro</p><p class="muted">Elige un plan, paga por transferencia y sube tu comprobante. Cuando el admin lo apruebe, se desbloquea todo.</p><button onclick="document.querySelector('[data-tab=plans]').click()">Ver planes</button></div>
       <div class="pane-body">
       <div class="create-grid create-centered" id="createGrid">
@@ -1673,6 +1673,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=118"></script>
+<script src="app.js?v=119"></script>
 </body>
 </html>

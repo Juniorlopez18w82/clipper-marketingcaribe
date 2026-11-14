@@ -137,6 +137,18 @@ async function apiFetch(path, opts = {}) {
   }
   const d = await safeJson(r);
   if (!r.ok) {
+    if (r.status === 401 && path !== "/api/auth/login" && path !== "/api/auth/register") {
+      // Sesión invalidada (otro inicio de sesión con esta IP/cuenta):
+      // cerrar la sesión en el acto, sin esperar a recargar la página.
+      try {
+        localStorage.removeItem("clipper_token");
+        localStorage.removeItem("clipper_user");
+        localStorage.removeItem("clipper_admin_token");
+        localStorage.removeItem("clipper_impersonating");
+        sessionStorage.removeItem("clipper_tab");
+      } catch (e) {}
+      if (typeof showUser === "function") showUser(null);
+    }
     const e = new Error((d && d.detail) || FRIENDLY_ERROR);
     e.status = r.status;
     throw e;
@@ -234,6 +246,13 @@ function updateTopBar() {
 // La cuenta atrás se actualiza sola cada minuto (de "29 días" a
 // "23 h 59 min" sin recargar).
 setInterval(() => { if (state.user) updateTopBar(); }, 60000);
+// Sesión única (v122): revalidar cada 30 s. Si otra cuenta entró con la
+// misma IP (o la misma cuenta en otro lado), el 401 de apiFetch cierra
+// la sesión al instante, aunque no se recargue la página.
+setInterval(() => {
+  if (!state.user) return;
+  apiFetch("/api/auth/me", { headers: authHeaders() }).catch(() => {});
+}, 30000);
 function doLogout() {
   // Cierra la sesión también en el servidor (v111): el token deja de valer.
   try { fetch("/api/auth/logout", { method: "POST", headers: authHeaders() }).catch(() => {}); } catch (e) {}

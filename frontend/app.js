@@ -2185,9 +2185,12 @@ $("url").addEventListener("input", () => {
       $("urlPreviewTitle").textContent = info.title || url;
       $("urlPreviewMeta").textContent = `${info.uploader || ""} · ${mins}`.replace(/^ · /, "");
       $("urlPreview").hidden = false;
+      // v138: el "Hasta" se pone en la duración completa ANTES de abrir
+      // el asistente; antes el asistente abría con el 120 por defecto y
+      // al aceptar lo devolvía, así el video quedaba capado en 2 min.
+      if (!state.rangeEndTouched && info.duration) $("rangeEnd").value = info.duration;
       wzMaybeOpen(url);
       state.videoTitle = info.title || "";
-      if (!state.rangeEndTouched && info.duration) $("rangeEnd").value = info.duration;
     } catch (e) {
       $("urlPreview").hidden = true;
     }
@@ -2237,8 +2240,12 @@ function wzSyncToEditor() {
     cam.dispatchEvent(new Event("change", { bubbles: true }));
   }
   const rs = $("rangeStart"), re = $("rangeEnd");
-  if (rs) { rs.value = $("wzRangeStart").value; rs.dispatchEvent(new Event("input", { bubbles: true })); }
-  if (re) { re.value = $("wzRangeEnd").value; re.dispatchEvent(new Event("input", { bubbles: true })); }
+  // v138: sin dispatchEvent("input") — ese evento marcaba
+  // rangeEndTouched=true aunque el cambio viniera del asistente (no del
+  // usuario), y eso impedía que el "Hasta" se pusiera en la duración
+  // completa al darle a Sacar clips.
+  if (rs) rs.value = $("wzRangeStart").value;
+  if (re) re.value = $("wzRangeEnd").value;
   set("cfgMaxClips", $("wzMaxClips").value);
   set("cfgMinClip", $("wzMinClip").value);
   set("cfgMaxClip", $("wzMaxClip").value);
@@ -2284,8 +2291,15 @@ document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyn
 ["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality", "wzModel"].forEach((id) => {
   const el = $(id);
   if (!el) return;
-  el.addEventListener("input", wzSyncToEditor);
-  el.addEventListener("change", wzSyncToEditor);
+  // v138: si el usuario cambia el rango A MANO en el asistente, se
+  // marca como tocado para que se respete (antes lo marcaba también el
+  // sincronizado automático, y eso capaba el video en 2 min).
+  const onEdit = () => {
+    wzSyncToEditor();
+    if (id === "wzRangeStart" || id === "wzRangeEnd") state.rangeEndTouched = true;
+  };
+  el.addEventListener("input", onEdit);
+  el.addEventListener("change", onEdit);
 });
 $("rangeEnd").addEventListener("input", () => { state.rangeEndTouched = true; });
 $("btnUpload").onclick = () => $("uploadFile").click();

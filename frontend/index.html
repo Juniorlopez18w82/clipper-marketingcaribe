@@ -329,7 +329,7 @@ body.panel-open>header,body.panel-open>main{display:none !important}
 .panel-top .nav-toggle svg{width:20px;height:20px;transition:transform .25s ease}
 body.nav-collapsed .panel-top .nav-toggle svg{transform:scaleX(-1)}
 body.nav-collapsed .panel-nav{margin-left:-248px;opacity:0;pointer-events:none}
-body.nav-collapsed .panel-inner{max-width:1080px}
+body.nav-collapsed .panel-inner{max-width:none}
 .panel-top .nav-toggle .ico-menu{display:none}
 .panel-top .nav-toggle .ico-panel{display:block}
 .panel-top .brand{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:var(--p-text);cursor:pointer}
@@ -374,14 +374,14 @@ body.nav-collapsed .panel-inner{max-width:1080px}
 .panel-inner{transition:max-width .35s ease}
 @media(min-width:801px){
   body.create-wide .panel-nav{margin-left:-248px;opacity:0;pointer-events:none}
-  body.create-wide .panel-inner{max-width:1080px}
+  body.create-wide .panel-inner{max-width:none}
 }
 @media(max-width:800px){
   body.create-wide .panel-nav{display:none}
 }
 /* --- Contenido --- */
 .panel-content{flex:1;min-width:0;padding:32px}
-.panel-inner{max-width:960px;margin:0 auto}
+.panel-inner{max-width:none;margin:0} /* v100: ancho completo — el panel dejaba mucho espacio vacío a los lados (960px centrado) */
 .panel .pane h3{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--p-text);margin:0 0 6px}
 .panel .sub{color:var(--p-muted);font-size:15px;line-height:1.6;margin:0 0 20px}
 .panel .card{background:var(--p-surface);border:1px solid var(--p-border);border-radius:var(--p-radius);box-shadow:var(--p-shadow);padding:20px 24px;margin-bottom:16px}
@@ -1523,6 +1523,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=99"></script>
+<script src="app.js?v=100"></script>
 </body>
 </html>

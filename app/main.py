@@ -2028,6 +2028,27 @@ class LiveCreateRequest(BaseModel):
     template: str | None = None
 
 
+class LiveUpdateRequest(BaseModel):
+    # Todo opcional: solo se actualiza lo que viene (None = sin cambio).
+    interval_minutes: int | None = None
+    clips_per_round: int | None = None
+    min_len: float | None = None
+    max_len: float | None = None
+    camera_mode: str | None = None
+    facecam_corner: str | None = None
+    frame_enabled: bool | None = None
+    frame_color: str | None = None
+    frame_width: int | None = None
+    brand_text: str | None = None
+    show_subtitles: bool | None = None
+    subtitle_style: str | None = None
+    subtitle_size: int | None = None
+    subtitle_position: str | None = None
+    highlight_color: str | None = None
+    quality: str | None = None
+    template: str | None = None
+
+
 def _require_live_plan(db: Session, user: User | None) -> None:
     """Lives son SOLO del plan Gold (2026-11-12, Juan).
 
@@ -2194,6 +2215,56 @@ def api_lives_delete(session_id: int,
     db.delete(session)
     db.commit()
     return {"ok": True}
+
+
+@app.patch("/api/lives/{session_id}")
+def api_lives_update(session_id: int, req: LiveUpdateRequest,
+                     user: User | None = Depends(get_optional_user),
+                     db: Session = Depends(get_db)):
+    """Actualizar la config de un live ya creado (modal en la tarjeta).
+
+    Aplica a los clips que saque a partir de ahora: el monitor relee la
+    sesión de la BD en cada ronda, así que no hace falta reiniciar el live.
+    """
+    _require_live_plan(db, user)
+    session = _live_owner(db, user, session_id)
+    if req.interval_minutes is not None:
+        session.interval_minutes = max(2, min(60, int(req.interval_minutes)))
+    if req.clips_per_round is not None:
+        session.clips_per_round = max(1, min(5, int(req.clips_per_round)))
+    if req.min_len is not None:
+        session.min_len = max(5.0, min(120.0, float(req.min_len)))
+    if req.max_len is not None:
+        session.max_len = max(session.min_len, min(180.0, float(req.max_len)))
+    if req.camera_mode is not None:
+        session.camera_mode = req.camera_mode or "follow_speaker"
+    if req.facecam_corner is not None:
+        session.facecam_corner = req.facecam_corner or "top-left"
+    if req.frame_enabled is not None:
+        session.frame_enabled = bool(req.frame_enabled)
+    if req.frame_color is not None:
+        session.frame_color = req.frame_color or DEFAULT_FRAME_COLOR
+    if req.frame_width is not None:
+        session.frame_width = int(req.frame_width or DEFAULT_FRAME_WIDTH)
+    if req.brand_text is not None:
+        session.brand_text = req.brand_text or None
+    if req.show_subtitles is not None:
+        session.show_subtitles = bool(req.show_subtitles)
+    if req.subtitle_style is not None:
+        session.subtitle_style = req.subtitle_style or "viral"
+    if req.subtitle_size is not None:
+        session.subtitle_size = int(req.subtitle_size or 76)
+    if req.subtitle_position is not None:
+        session.subtitle_position = req.subtitle_position or "bottom"
+    if req.highlight_color is not None:
+        session.highlight_color = req.highlight_color or None
+    if req.quality is not None:
+        session.quality = req.quality or "1080p"
+    if req.template is not None:
+        session.template = req.template or None
+    db.commit()
+    db.refresh(session)
+    return live_session_out(session, session.total_clips or 0)
 
 
 @app.get("/api/jobs/{job_id}")

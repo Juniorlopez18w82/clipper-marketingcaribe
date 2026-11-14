@@ -2029,7 +2029,7 @@ let _urlPreviewTimer = null;
 $("url").addEventListener("input", () => {
   clearTimeout(_urlPreviewTimer);
   const url = $("url").value.trim();
-  if (!url || !/youtube\.com|youtu\.be/.test(url)) {
+  if (!url || !/youtube\.com|youtu\.be|twitch\.tv/.test(url)) {
     $("urlPreview").hidden = true;
     return;
   }
@@ -2043,12 +2043,92 @@ $("url").addEventListener("input", () => {
       $("urlPreviewTitle").textContent = info.title || url;
       $("urlPreviewMeta").textContent = `${info.uploader || ""} · ${mins}`.replace(/^ · /, "");
       $("urlPreview").hidden = false;
+      wzMaybeOpen(url);
       state.videoTitle = info.title || "";
       if (!state.rangeEndTouched && info.duration) $("rangeEnd").value = info.duration;
     } catch (e) {
       $("urlPreview").hidden = true;
     }
   }, 800);
+});
+// ---------- Asistente de configuración (v102) ----------
+// Al pegar un link válido aparece a pantalla completa, por pasos,
+// para configurar el clip ANTES de Sacar clips. Escribe en los
+// campos del editor (paso 3), que es la única fuente de verdad.
+let _wzStep = 0;
+let _wzShownForUrl = "";
+const WZ_TOTAL = 4;
+function wzSyncFromEditor() {
+  const set = (id, v) => { const el = $(id); if (el != null) el.value = v; };
+  const setChk = (id, v) => { const el = $(id); if (el) el.checked = !!v; };
+  set("wzShowSubs", $("showSubs") ? $("showSubs").value : "1");
+  set("wzSubStyle", $("subStyle") ? $("subStyle").value : "viral");
+  set("wzSubSize", $("subSize") ? $("subSize").value : 76);
+  set("wzSubPos", $("subPos") ? $("subPos").value : "bottom");
+  setChk("wzFrameEnabled", $("frameEnabled") ? $("frameEnabled").checked : true);
+  set("wzBrandText", $("brandText") ? $("brandText").value : "@marketingcaribe");
+  set("wzFrameColor", $("frameColor") ? $("frameColor").value : "#FADE4C");
+  set("wzFrameWidth", $("frameWidth") ? $("frameWidth").value : 14);
+  set("wzCameraMode", $("cameraMode") ? $("cameraMode").value : "follow_speaker");
+  set("wzQuality", $("cfgQuality") ? $("cfgQuality").value : "1080p");
+}
+function wzSyncToEditor() {
+  const set = (id, v) => { const el = $(id); if (el != null) el.value = v; };
+  const setChk = (id, v) => { const el = $(id); if (el) el.checked = !!v; };
+  set("showSubs", $("wzShowSubs").value);
+  set("subStyle", $("wzSubStyle").value);
+  set("subSize", $("wzSubSize").value);
+  set("subPos", $("wzSubPos").value);
+  setChk("frameEnabled", $("wzFrameEnabled").checked);
+  set("brandText", $("wzBrandText").value);
+  set("frameColor", $("wzFrameColor").value);
+  set("frameWidth", $("wzFrameWidth").value);
+  const cam = $("cameraMode");
+  if (cam && cam.value !== $("wzCameraMode").value) {
+    cam.value = $("wzCameraMode").value;
+    cam.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  set("cfgQuality", $("wzQuality").value);
+}
+function wzGoTo(n) {
+  _wzStep = Math.max(0, Math.min(WZ_TOTAL - 1, n));
+  document.querySelectorAll(".wz-step").forEach((b) => b.classList.toggle("on", +b.dataset.wz === _wzStep));
+  document.querySelectorAll(".wz-pane").forEach((p) => { p.hidden = +p.dataset.wzPane !== _wzStep; });
+  $("wzCounter").textContent = `Paso ${_wzStep + 1} de ${WZ_TOTAL}`;
+  $("wzBack").style.visibility = _wzStep === 0 ? "hidden" : "visible";
+  const last = _wzStep === WZ_TOTAL - 1;
+  $("wzNext").hidden = last;
+  $("wzGo").hidden = !last;
+}
+function wzOpen() {
+  wzSyncFromEditor();
+  const thumb = $("urlPreviewThumb");
+  if (thumb) $("wzThumb").src = thumb.src || "";
+  $("wzVideoTitle").textContent = $("urlPreviewTitle") ? $("urlPreviewTitle").textContent : "";
+  $("configWizard").hidden = false;
+  document.body.style.overflow = "hidden";
+  wzGoTo(0);
+}
+function wzClose() {
+  $("configWizard").hidden = true;
+  document.body.style.overflow = "";
+}
+function wzMaybeOpen(url) {
+  if (!url || url === _wzShownForUrl) return;
+  if ($("configWizard") && $("configWizard").hidden === false) return;
+  _wzShownForUrl = url;
+  wzOpen();
+}
+$("wzClose").onclick = wzClose;
+$("wzBack").onclick = () => wzGoTo(_wzStep - 1);
+$("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
+$("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
+document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
+["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzQuality"].forEach((id) => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener("input", wzSyncToEditor);
+  el.addEventListener("change", wzSyncToEditor);
 });
 $("rangeEnd").addEventListener("input", () => { state.rangeEndTouched = true; });
 $("btnUpload").onclick = () => $("uploadFile").click();

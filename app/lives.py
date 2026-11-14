@@ -13,10 +13,11 @@ is_live False). A session never deletes its clips.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import (Column, DateTime, Float, ForeignKey, Integer,
-                        String)
+from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey,
+                        Integer, String)
 
 from . import auth  # noqa: F401 — registers the users table for the FK below
+from .config import DEFAULT_FRAME_COLOR, DEFAULT_FRAME_WIDTH
 from .db import Base
 
 STATUS_ACTIVE = "active"
@@ -49,6 +50,25 @@ class LiveSession(Base):
     clips_per_round = Column(Integer, nullable=False, default=3)
     min_len = Column(Float, nullable=False, default=20.0)
     max_len = Column(Float, nullable=False, default=45.0)
+    # Render prefs elegidas en "Configurar live" (mismo asistente que un
+    # video normal: cámara, subtítulos, marca/marco, calidad). El monitor
+    # las pasa al RenderRequest de cada clip del live. None = default.
+    camera_mode = Column(String(32), nullable=False,
+                         default="follow_speaker")
+    facecam_corner = Column(String(32), nullable=False, default="top-left")
+    frame_enabled = Column(Boolean, nullable=False, default=True)
+    frame_color = Column(String(16), nullable=False,
+                         default=DEFAULT_FRAME_COLOR)
+    frame_width = Column(Integer, nullable=False,
+                         default=DEFAULT_FRAME_WIDTH)
+    brand_text = Column(String(255), nullable=True)
+    show_subtitles = Column(Boolean, nullable=False, default=True)
+    subtitle_style = Column(String(16), nullable=False, default="viral")
+    subtitle_size = Column(Integer, nullable=False, default=76)
+    subtitle_position = Column(String(16), nullable=False, default="bottom")
+    highlight_color = Column(String(16), nullable=True)
+    quality = Column(String(16), nullable=False, default="1080p")
+    template = Column(String(64), nullable=True)
     status = Column(String(20), nullable=False, default=STATUS_ACTIVE)
     # Stream-time seconds processed up to (end of the last window).
     # None = first round (starts from live edge - interval).
@@ -79,6 +99,19 @@ def live_session_out(session: LiveSession, clip_count: int = 0) -> dict:
         "clips_per_round": session.clips_per_round,
         "min_len": session.min_len,
         "max_len": session.max_len,
+        "camera_mode": session.camera_mode or "follow_speaker",
+        "facecam_corner": session.facecam_corner or "top-left",
+        "frame_enabled": session.frame_enabled is not False,
+        "frame_color": session.frame_color or DEFAULT_FRAME_COLOR,
+        "frame_width": session.frame_width or DEFAULT_FRAME_WIDTH,
+        "brand_text": session.brand_text or "",
+        "show_subtitles": session.show_subtitles is not False,
+        "subtitle_style": session.subtitle_style or "viral",
+        "subtitle_size": session.subtitle_size or 76,
+        "subtitle_position": session.subtitle_position or "bottom",
+        "highlight_color": session.highlight_color or "",
+        "quality": session.quality or "1080p",
+        "template": session.template or "",
         "status": session.status,
         "last_end": session.last_end,
         "last_run_at": (session.last_run_at.isoformat()

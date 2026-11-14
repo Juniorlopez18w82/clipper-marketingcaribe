@@ -676,7 +676,23 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
 .panel .bankbox b{color:var(--p-text)}
 /* --- Vista previa 9:16 (el clip en sí NO cambia: marco, marca y subtítulos son los del render) --- */
 .phone{width:270px;height:480px;margin:0 auto;position:relative;background:var(--p-black);overflow:hidden;border-radius:18px;border:1px solid var(--p-border2);box-shadow:0 20px 48px rgba(0,0,0,.55)}
-.phone video{width:100%;height:100%;object-fit:cover;display:block}
+.phone video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.phone video[hidden]{display:none}
+.phone #pvVideo{z-index:1}
+.phone #pvVideoBg{z-index:0}
+.phone #pvVideo2{z-index:1}
+.phone .frame,.phone .brand,.phone .subs,.phone .cover-title{z-index:2}
+/* Cámara en la vista previa (v107): el modo se ve ANTES de Renderizar. */
+.phone.cam-mirror #pvVideo{transform:scaleX(-1)}
+.phone.cam-mirror_black #pvVideo{transform:scaleX(-1);object-fit:contain}
+.phone.cam-blur #pvVideoBg{display:block;filter:blur(18px) brightness(.55);transform:scale(1.15)}
+.phone.cam-blur #pvVideo{object-fit:contain}
+.phone.cam-mirror_blur #pvVideoBg{display:block;filter:blur(18px) brightness(.55);transform:scale(-1.15,1.15)}
+.phone.cam-mirror_blur #pvVideo{transform:scaleX(-1);object-fit:contain}
+.phone.cam-dual #pvVideo{height:50%;bottom:auto}
+.phone.cam-dual #pvVideo2{display:block;top:50%;height:50%;bottom:auto}
+.phone.cam-split #pvVideo{height:42%;bottom:auto}
+.phone.cam-split #pvVideo2{display:block;top:42%;height:58%;bottom:auto}
 #result{width:270px;max-width:100%;aspect-ratio:9/16;object-fit:cover;display:block;margin:0 auto;border-radius:16px;background:var(--p-black);border:1px solid var(--p-border);box-shadow:0 16px 40px rgba(0,0,0,.45)}
 .phone .frame{position:absolute;inset:0;pointer-events:none;border:14px solid var(--yellow)}
 .phone .brand{position:absolute;top:22px;left:0;right:0;text-align:center;color:var(--yellow);font-weight:800;font-size:20px;background:rgba(0,0,0,.55);padding:6px 8px;margin:0 18px}
@@ -959,6 +975,8 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
         <p class="muted">Cambia el marco o el nombre y se refleja aquí antes de exportar.</p>
         <div class="phone" id="phone">
           <video id="pvVideo" playsinline preload="metadata"></video>
+          <video id="pvVideoBg" playsinline preload="metadata" muted hidden></video>
+          <video id="pvVideo2" playsinline preload="metadata" muted hidden></video>
           <div class="frame" id="pvFrame"></div>
           <div class="brand" id="pvBrand">@marketingcaribe</div>
           <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
@@ -1636,6 +1654,6 @@ sin esta regla el icono se renderiza gigante y el botón crece con él. */
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=106"></script>
+<script src="app.js?v=107"></script>
 </body>
 </html>

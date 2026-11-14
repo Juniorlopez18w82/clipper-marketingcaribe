@@ -485,6 +485,7 @@ function goTab(tab, { push = false } = {}) {
   document.querySelectorAll(".panel .tab[data-tab]").forEach((b) => b.classList.toggle("on", b === btn));
   document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
   $("pane-" + tab).hidden = false;
+  if (tab === "create") preloadCameraDemos();
   if (tab === "clips") loadMyClips();
   if (tab === "lives") loadLives();
   if (tab === "images") { loadImageModels(); loadMyImages(); }
@@ -2741,7 +2742,7 @@ function updateCameraPreview() {
 }
 // Precarga los 8 demos en segundo plano (solo 9.6 MB en total) para que
 // al cambiar de modo el video ya esté en caché y no se ponga negro 1-2 s.
-let _demosPreloaded = false;
+var _demosPreloaded = false; // var (no let): goTab puede llamarla antes de esta línea al recargar en Crear Clip.
 function preloadCameraDemos() {
   if (_demosPreloaded) return;
   _demosPreloaded = true;
@@ -2756,7 +2757,6 @@ function preloadCameraDemos() {
 (function initCameraDemo() {
   const v = $("cameraDemo"), wrap = $("cameraDemoWrap"), fb = $("cameraDemoFallback");
   if (!v || !wrap) return;
-  preloadCameraDemos();
   v.addEventListener("error", () => {
     // Sin demo (archivo ausente): diagrama SVG como antes.
     v.style.display = "none";

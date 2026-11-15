@@ -2462,14 +2462,9 @@ function wzSyncFromEditor() {
   set("wzMaxClip", $("cfgMaxClip") ? $("cfgMaxClip").value : 45);
   set("wzQuality", $("cfgQuality") ? $("cfgQuality").value : "1080p");
   set("wzModel", $("model") ? $("model").value : "base");
-  // Marca de agua (v146).
-  set("wzWmType", $("wmType") ? $("wmType").value : "text");
-  set("wzWmText", $("wmText") ? $("wmText").value : "@marketingcaribe");
-  set("wzWmX", $("wmX") ? $("wmX").value : 50);
-  set("wzWmY", $("wmY") ? $("wmY").value : 6);
-  set("wzWmSize", $("wmSize") ? $("wmSize").value : 48);
-  set("wzWmColor", $("wmColor") ? $("wmColor").value : "#FFFFFF");
-  set("wzWmOpacity", $("wmOpacity") ? $("wmOpacity").value : 85);
+  // Marca de agua (v152): en el asistente solo se activa o se quita; la
+  // configuración (texto/logo, color, tamaño, posición) vive en el perfil.
+  setChk("wzWmEnabled", $("wmEnabled") ? $("wmEnabled").checked : true);
 }
 function wzSyncToEditor() {
   const set = (id, v) => { const el = $(id); if (el != null) el.value = v; };
@@ -2480,14 +2475,8 @@ function wzSyncToEditor() {
   set("subPos", $("wzSubPos").value);
   setChk("frameEnabled", $("wzFrameEnabled").checked);
   set("brandText", $("wzBrandText").value);
-  // Marca de agua (v146).
-  set("wmType", $("wzWmType").value);
-  set("wmText", $("wzWmText").value);
-  set("wmX", $("wzWmX").value);
-  set("wmY", $("wzWmY").value);
-  set("wmSize", $("wzWmSize").value);
-  set("wmColor", $("wzWmColor").value);
-  set("wmOpacity", $("wzWmOpacity").value);
+  // Marca de agua (v152): solo activar/desactivar; el resto viene del perfil.
+  setChk("wmEnabled", $("wzWmEnabled") ? $("wzWmEnabled").checked : true);
   updateWmRows();
   updateWatermarkPreview();
   set("frameColor", $("wzFrameColor").value);
@@ -3495,6 +3484,8 @@ async function autoRenderCandidates(cands) {
   setJobProgress(100);
   loadPanel();
   loadMyClips();
+  // Ir a Mis Clips para que los clips se vean de inmediato (v152).
+  if (done > 0) goTab("clips");
 }
 
 $("btnRender").onclick = async () => {

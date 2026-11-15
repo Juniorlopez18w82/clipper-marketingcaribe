@@ -737,6 +737,12 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
 .phone .wm[hidden]{display:none}
 .phone #pvWmText{color:#fff;font-weight:700;font-size:18px;text-shadow:0 1px 6px rgba(0,0,0,.7);background:rgba(0,0,0,.45);padding:2px 10px;border-radius:8px}
 .phone #pvWmLogo{height:48px;width:auto;object-fit:contain}
+.wm-preview{position:relative;width:135px;height:240px;background:#030422;border:1px solid rgba(255,255,255,.18);border-radius:10px;overflow:hidden;margin:8px 0}
+.wm-preview-text,.wm-preview-logo{position:absolute;transform:translate(-50%,-50%);pointer-events:none;white-space:nowrap}
+.wm-preview-text{color:#fff;font-weight:700;font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.7);background:rgba(0,0,0,.45);padding:2px 8px;border-radius:6px}
+.wm-preview-logo{height:32px;width:auto;object-fit:contain}
+.wm-pos-grid{display:grid;grid-template-columns:repeat(3,36px);gap:6px;margin:8px 0}
+.wm-pos-grid button{width:36px;height:36px;padding:0;font-size:17px;line-height:1}
 .phone .pv-loading{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(3,4,34,.85);color:#fff;font-size:14px;font-weight:600;text-align:center;padding:0 24px}
 .phone .pv-loading[hidden]{display:none}
 .phone .pv-spinner{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#FADE4C;animation:pv-spin .8s linear infinite}
@@ -1090,6 +1096,23 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
               <div><label>Posición horizontal</label><input id="wmX" type="range" min="0" max="100" value="50"><span class="muted" id="wmXVal">50%</span></div>
               <div><label>Posición vertical</label><input id="wmY" type="range" min="0" max="100" value="6"><span class="muted" id="wmYVal">6%</span></div>
             </div>
+            <label>Vista previa (9:16) — toca una posición</label>
+            <div class="wm-preview" id="wmPreview">
+              <div class="wm-preview-text" id="wmPreviewText">@marketingcaribe</div>
+              <img class="wm-preview-logo" id="wmPreviewLogo" hidden alt="">
+            </div>
+            <div class="wm-pos-grid" id="wmPosGrid">
+              <button type="button" data-wmx="0.12" data-wmy="0.07" title="Arriba a la izquierda">↖</button>
+              <button type="button" data-wmx="0.5" data-wmy="0.07" title="Arriba en el centro">↑</button>
+              <button type="button" data-wmx="0.88" data-wmy="0.07" title="Arriba a la derecha">↗</button>
+              <button type="button" data-wmx="0.12" data-wmy="0.5" title="En el centro a la izquierda">←</button>
+              <button type="button" data-wmx="0.5" data-wmy="0.5" title="Centro">•</button>
+              <button type="button" data-wmx="0.88" data-wmy="0.5" title="En el centro a la derecha">→</button>
+              <button type="button" data-wmx="0.12" data-wmy="0.93" title="Abajo a la izquierda">↙</button>
+              <button type="button" data-wmx="0.5" data-wmy="0.93" title="Abajo en el centro">↓</button>
+              <button type="button" data-wmx="0.88" data-wmy="0.93" title="Abajo a la derecha">↘</button>
+            </div>
+            <p class="muted">Toca una posición o mueve los controles para colocarla donde quieras.</p>
             <div class="row">
               <div><label>Tamaño</label><input id="wmSize" type="number" value="48" min="16" max="200"></div>
               <div><label>Color del texto</label><input id="wmColor" type="color" value="#FFFFFF"></div>
@@ -1351,6 +1374,14 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
       <label>Nombre del marco</label>
       <input id="accBrand" type="text" placeholder="@marketingcaribe">
       <label><input type="checkbox" id="accFrame" style="width:18px;height:18px;vertical-align:-3px"> Con marco (amarillo + nombre)</label>
+      <hr>
+      <h4 style="margin:0 0 4px">Marca de agua (siempre la misma)</h4>
+      <p class="muted" style="margin:0 0 10px">El nombre y el logo que salen en todos tus clips. Se configuran una vez aquí.</p>
+      <label>Nombre de la marca de agua</label>
+      <input id="accWmText" type="text" placeholder="@marketingcaribe">
+      <label>Logo de la marca de agua (PNG, JPG o WebP, máx. 5 MB)</label>
+      <input id="accWmLogoFile" type="file" accept="image/png,image/jpeg,image/webp">
+      <p class="muted" id="accWmLogoName">Sin logo subido todavía.</p>
       <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
       <p id="accMsg" class="muted"></p>
       </div>
@@ -1792,6 +1823,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=147"></script>
+<script src="app.js?v=148"></script>
 </body>
 </html>

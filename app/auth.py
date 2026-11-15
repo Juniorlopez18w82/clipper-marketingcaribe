@@ -62,6 +62,18 @@ class User(Base):
     quality = Column(String(10), nullable=False, default="1080p")  # 720p | 1080p
     subtitles_enabled = Column(Boolean, nullable=False, default=True)
     template = Column(String(80), nullable=False, default="Gancho grande")
+    # Marca de agua persistente (v146, Juan: configurable como el título
+    # de la portada pero visible en TODO el video; texto o logo; se mueve
+    # de lugar). Se guarda con PATCH /api/auth/me.
+    watermark_enabled = Column(Boolean, nullable=False, default=True)
+    watermark_type = Column(String(10), nullable=False, default="text")  # text | logo
+    watermark_text = Column(String(120), nullable=True)
+    watermark_logo = Column(String(255), nullable=True)  # nombre de archivo en data/logos/
+    watermark_x = Column(Float, nullable=False, default=0.5)  # 0-1, centro horizontal
+    watermark_y = Column(Float, nullable=False, default=0.06)  # 0-1, centro/arriba
+    watermark_size = Column(Integer, nullable=False, default=48)
+    watermark_color = Column(String(10), nullable=False, default="#FFFFFF")
+    watermark_opacity = Column(Float, nullable=False, default=0.85)
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
     # Sesión única (2026-11-13, Juan: una sola sesión activa por cuenta,
@@ -131,6 +143,15 @@ def user_out(user: User) -> dict:
         "quality": user.quality or "1080p",
         "subtitles_enabled": bool(user.subtitles_enabled) if user.subtitles_enabled is not None else True,
         "template": user.template or "Gancho grande",
+        "watermark_enabled": bool(getattr(user, "watermark_enabled", True)) if getattr(user, "watermark_enabled", None) is not None else True,
+        "watermark_type": getattr(user, "watermark_type", None) or "text",
+        "watermark_text": getattr(user, "watermark_text", None) or "",
+        "watermark_logo": getattr(user, "watermark_logo", None) or "",
+        "watermark_x": float(getattr(user, "watermark_x", 0.5) or 0.5),
+        "watermark_y": float(getattr(user, "watermark_y", 0.06) or 0.06),
+        "watermark_size": int(getattr(user, "watermark_size", 48) or 48),
+        "watermark_color": getattr(user, "watermark_color", None) or "#FFFFFF",
+        "watermark_opacity": float(getattr(user, "watermark_opacity", 0.85) or 0.85),
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 

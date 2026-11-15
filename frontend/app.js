@@ -613,7 +613,84 @@ function fillConfig(u) {
   $("cfgMinClip").value = u.min_clip_secs ?? 20;
   $("cfgMaxClip").value = u.max_clip_secs ?? 45;
   $("cfgQuality").value = u.quality || "1080p";
+  // Marca de agua (v146).
+  if ($("wmEnabled")) $("wmEnabled").checked = u.watermark_enabled !== false;
+  if ($("wmType")) $("wmType").value = u.watermark_type || "text";
+  if ($("wmText")) $("wmText").value = u.watermark_text || u.brand_text || "@marketingcaribe";
+  if ($("wmX")) $("wmX").value = Math.round((u.watermark_x ?? 0.5) * 100);
+  if ($("wmY")) $("wmY").value = Math.round((u.watermark_y ?? 0.06) * 100);
+  if ($("wmSize")) $("wmSize").value = u.watermark_size ?? 48;
+  if ($("wmColor")) $("wmColor").value = u.watermark_color || "#FFFFFF";
+  if ($("wmOpacity")) $("wmOpacity").value = Math.round((u.watermark_opacity ?? 0.85) * 100);
+  state.wmLogo = u.watermark_logo || "";
+  // Si ya tiene un logo guardado, cargarlo para la vista previa.
+  if (state.wmLogo && $("pvWmLogo")) $("pvWmLogo").src = "/api/me/watermark-logo";
+  updateWmRows();
+  updateWatermarkPreview();
 }
+// ---------- Marca de agua persistente (v146) ----------
+// Texto o logo, visible en TODO el video y movible (posición X/Y).
+// Se configura aquí (editor) y en el asistente; se guarda en la cuenta.
+function wmVals() {
+  return {
+    enabled: $("wmEnabled") ? $("wmEnabled").checked : true,
+    type: $("wmType") ? $("wmType").value : "text",
+    text: $("wmText") ? $("wmText").value.trim() : "",
+    logo: state.wmLogo || "",
+    x: ($("wmX") ? parseFloat($("wmX").value || "50") : 50) / 100,
+    y: ($("wmY") ? parseFloat($("wmY").value || "6") : 6) / 100,
+    size: $("wmSize") ? parseInt($("wmSize").value || "48", 10) : 48,
+    color: $("wmColor") ? $("wmColor").value : "#FFFFFF",
+    opacity: ($("wmOpacity") ? parseFloat($("wmOpacity").value || "85") : 85) / 100,
+  };
+}
+function updateWmRows() {
+  const t = $("wmType") ? $("wmType").value : "text";
+  const on = $("wmEnabled") ? $("wmEnabled").checked : true;
+  if ($("wmFields")) $("wmFields").hidden = !on;
+  if ($("wmTextRow")) $("wmTextRow").hidden = t !== "text";
+  if ($("wmLogoRow")) $("wmLogoRow").hidden = t !== "logo";
+  if ($("wmLogoName")) $("wmLogoName").textContent = state.wmLogo ? ("Logo guardado: " + state.wmLogo) : "Sin logo subido todavía.";
+}
+function updateWatermarkPreview() {
+  const v = wmVals();
+  const tx = $("pvWmText"), lg = $("pvWmLogo");
+  if (!tx || !lg) return;
+  const show = v.enabled && state.selected;
+  tx.hidden = !(show && v.type === "text");
+  lg.hidden = !(show && v.type === "logo" && (lg.src || state.wmLogo));
+  if (show && v.type === "text") {
+    tx.textContent = v.text || ($("brandText") ? $("brandText").value : "@marketingcaribe") || "@marketingcaribe";
+    tx.style.left = (v.x * 100) + "%";
+    tx.style.top = (v.y * 100) + "%";
+    tx.style.fontSize = Math.max(10, Math.round(v.size * 0.38)) + "px";
+    tx.style.color = v.color;
+    tx.style.opacity = v.opacity;
+  }
+  if (show && v.type === "logo") {
+    lg.style.left = (v.x * 100) + "%";
+    lg.style.top = (v.y * 100) + "%";
+    lg.style.height = Math.max(16, Math.round(v.size * 0.55)) + "px";
+    lg.style.opacity = v.opacity;
+  }
+  if ($("wmXVal")) $("wmXVal").textContent = Math.round(v.x * 100) + "%";
+  if ($("wmYVal")) $("wmYVal").textContent = Math.round(v.y * 100) + "%";
+}
+// Subir el logo de la marca de agua.
+async function uploadWmLogo(file) {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const d = await apiFetch("/api/me/watermark-logo", { method: "POST", headers: authHeaders(), body: fd });
+    state.wmLogo = d.filename || "";
+    if ($("wmLogoName")) $("wmLogoName").textContent = "Logo guardado: " + state.wmLogo;
+    if ($("pvWmLogo")) $("pvWmLogo").src = URL.createObjectURL(file);
+    updateWatermarkPreview();
+    toast("Logo de marca de agua guardado.");
+  } catch (e) { toast("Error al subir el logo: " + e.message); }
+}
+
 // Cambiar la plantilla en Mi Cuenta aplica su preset al editor al
 // momento (el render que sigue ya la usa; "Guardar configuración" la
 // deja guardada en la cuenta).
@@ -2049,6 +2126,16 @@ $("frameEnabledVideo").addEventListener("change", () => {
   state.templateTouched = true;
   updatePreview();
 });
+// Marca de agua: los controles mueven la vista previa en vivo (v146).
+["wmEnabled", "wmType", "wmText", "wmX", "wmY", "wmSize", "wmColor", "wmOpacity"].forEach((id) => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener("input", () => { updateWmRows(); updateWatermarkPreview(); });
+  el.addEventListener("change", () => { updateWmRows(); updateWatermarkPreview(); });
+});
+const _wmFile = $("wmLogoFile");
+if (_wmFile) _wmFile.addEventListener("change", () => { uploadWmLogo(_wmFile.files && _wmFile.files[0]); _wmFile.value = ""; });
+
 $("frameEnabled").addEventListener("change", () => {
   $("frameEnabledVideo").checked = $("frameEnabled").checked;
 });
@@ -2223,6 +2310,14 @@ function wzSyncFromEditor() {
   set("wzMaxClip", $("cfgMaxClip") ? $("cfgMaxClip").value : 45);
   set("wzQuality", $("cfgQuality") ? $("cfgQuality").value : "1080p");
   set("wzModel", $("model") ? $("model").value : "base");
+  // Marca de agua (v146).
+  set("wzWmType", $("wmType") ? $("wmType").value : "text");
+  set("wzWmText", $("wmText") ? $("wmText").value : "@marketingcaribe");
+  set("wzWmX", $("wmX") ? $("wmX").value : 50);
+  set("wzWmY", $("wmY") ? $("wmY").value : 6);
+  set("wzWmSize", $("wmSize") ? $("wmSize").value : 48);
+  set("wzWmColor", $("wmColor") ? $("wmColor").value : "#FFFFFF");
+  set("wzWmOpacity", $("wmOpacity") ? $("wmOpacity").value : 85);
 }
 function wzSyncToEditor() {
   const set = (id, v) => { const el = $(id); if (el != null) el.value = v; };
@@ -2233,6 +2328,16 @@ function wzSyncToEditor() {
   set("subPos", $("wzSubPos").value);
   setChk("frameEnabled", $("wzFrameEnabled").checked);
   set("brandText", $("wzBrandText").value);
+  // Marca de agua (v146).
+  set("wmType", $("wzWmType").value);
+  set("wmText", $("wzWmText").value);
+  set("wmX", $("wzWmX").value);
+  set("wmY", $("wzWmY").value);
+  set("wmSize", $("wzWmSize").value);
+  set("wmColor", $("wzWmColor").value);
+  set("wmOpacity", $("wzWmOpacity").value);
+  updateWmRows();
+  updateWatermarkPreview();
   set("frameColor", $("wzFrameColor").value);
   set("frameWidth", $("wzFrameWidth").value);
   const cam = $("cameraMode");
@@ -2918,6 +3023,7 @@ function selectClip(c, el) {
   // Al abrir Editar se muestra la portada (fotograma + texto gancho,
   // sin subtítulos) para ver cómo queda antes de guardar.
   updateCoverTitle();
+  updateWatermarkPreview();
   setCoverMode(true);
   $("coverVal").textContent = startCover.toFixed(1) + " s";
   $("btnSaveMeta").hidden = !state.editingClipId;
@@ -2952,6 +3058,15 @@ $("btnSaveConfig").onclick = async () => {
     max_clip_secs: parseFloat($("cfgMaxClip").value || "45"),
     quality: $("cfgQuality").value,
     subtitles_enabled: $("showSubs").value === "1",
+    watermark_enabled: wmVals().enabled,
+    watermark_type: wmVals().type,
+    watermark_text: wmVals().text,
+    watermark_logo: wmVals().logo,
+    watermark_x: wmVals().x,
+    watermark_y: wmVals().y,
+    watermark_size: wmVals().size,
+    watermark_color: wmVals().color,
+    watermark_opacity: wmVals().opacity,
   };
   try {
     const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
@@ -3108,6 +3223,15 @@ function buildRenderBody(start, end, edited) {
     frame_width: parseInt($("frameWidth").value || "14", 10),
     brand_text: $("brandText").value,
     title_text: $("titleText").value,
+    watermark_enabled: wmVals().enabled,
+    watermark_type: wmVals().type,
+    watermark_text: wmVals().text,
+    watermark_logo: wmVals().logo,
+    watermark_x: wmVals().x,
+    watermark_y: wmVals().y,
+    watermark_size: wmVals().size,
+    watermark_color: wmVals().color,
+    watermark_opacity: wmVals().opacity,
     // Identidad del clip en la biblioteca: título gancho + viralidad
     // del candidato elegido (LLM) o su score (regla); el título del
     // video original como respaldo. El título se toma del campo

@@ -2450,10 +2450,8 @@ function wzSyncFromEditor() {
   set("wzSubStyle", $("subStyle") ? $("subStyle").value : "viral");
   set("wzSubSize", $("subSize") ? $("subSize").value : 76);
   set("wzSubPos", $("subPos") ? $("subPos").value : "bottom");
-  setChk("wzFrameEnabled", $("frameEnabled") ? $("frameEnabled").checked : true);
-  set("wzBrandText", $("brandText") ? $("brandText").value : "@marketingcaribe");
-  set("wzFrameColor", $("frameColor") ? $("frameColor").value : "#FADE4C");
-  set("wzFrameWidth", $("frameWidth") ? $("frameWidth").value : 14);
+  // v153: el marco (nombre/color/grosor) ya no está en el asistente; viene
+  // del perfil cargado en el editor.
   set("wzCameraMode", $("cameraMode") ? $("cameraMode").value : "follow_speaker");
   set("wzRangeStart", $("rangeStart") ? $("rangeStart").value : 0);
   set("wzRangeEnd", $("rangeEnd") ? $("rangeEnd").value : 120);
@@ -2473,14 +2471,11 @@ function wzSyncToEditor() {
   set("subStyle", $("wzSubStyle").value);
   set("subSize", $("wzSubSize").value);
   set("subPos", $("wzSubPos").value);
-  setChk("frameEnabled", $("wzFrameEnabled").checked);
-  set("brandText", $("wzBrandText").value);
-  // Marca de agua (v152): solo activar/desactivar; el resto viene del perfil.
+  // Marca de agua (v152/v153): solo activar/desactivar; el marco y el resto
+  // de la marca de agua vienen del perfil cargado en el editor.
   setChk("wmEnabled", $("wzWmEnabled") ? $("wzWmEnabled").checked : true);
   updateWmRows();
   updateWatermarkPreview();
-  set("frameColor", $("wzFrameColor").value);
-  set("frameWidth", $("wzFrameWidth").value);
   const cam = $("cameraMode");
   if (cam && cam.value !== $("wzCameraMode").value) {
     cam.value = $("wzCameraMode").value;
@@ -2535,7 +2530,7 @@ $("wzBack").onclick = () => wzGoTo(_wzStep - 1);
 $("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
 $("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
 document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
-["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzFrameEnabled", "wzBrandText", "wzFrameColor", "wzFrameWidth", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality", "wzModel"].forEach((id) => {
+["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzWmEnabled", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality", "wzModel"].forEach((id) => {
   const el = $(id);
   if (!el) return;
   // v138: si el usuario cambia el rango A MANO en el asistente, se

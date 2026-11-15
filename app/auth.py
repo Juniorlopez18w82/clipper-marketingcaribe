@@ -73,6 +73,8 @@ class User(Base):
     watermark_y = Column(Float, nullable=False, default=0.06)  # 0-1, centro/arriba
     watermark_size = Column(Integer, nullable=False, default=48)
     watermark_color = Column(String(10), nullable=False, default="#FFFFFF")
+    watermark_border_color = Column(String(10), nullable=False, default="#000000")
+    watermark_box_color = Column(String(10), nullable=False, default="#000000")
     watermark_opacity = Column(Float, nullable=False, default=0.85)
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
@@ -151,6 +153,8 @@ def user_out(user: User) -> dict:
         "watermark_y": float(getattr(user, "watermark_y", 0.06) or 0.06),
         "watermark_size": int(getattr(user, "watermark_size", 48) or 48),
         "watermark_color": getattr(user, "watermark_color", None) or "#FFFFFF",
+        "watermark_border_color": getattr(user, "watermark_border_color", None) or "#000000",
+        "watermark_box_color": getattr(user, "watermark_box_color", None) or "#000000",
         "watermark_opacity": float(getattr(user, "watermark_opacity", 0.85) or 0.85),
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }

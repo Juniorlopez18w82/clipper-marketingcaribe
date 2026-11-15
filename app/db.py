@@ -145,6 +145,7 @@ def _ensure_user_watermark_columns() -> None:
         "watermark_color": "VARCHAR(10) DEFAULT '#FFFFFF'",
         "watermark_border_color": "VARCHAR(10) DEFAULT '#000000'",
         "watermark_box_color": "VARCHAR(10) DEFAULT '#000000'",
+        "watermark_font": "VARCHAR(40) DEFAULT 'Poppins Negrita'",
         "watermark_opacity": "FLOAT DEFAULT 0.85",
     }
     try:

@@ -537,6 +537,8 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
                    watermark_y: float = 0.06,
                    watermark_size: int = 48,
                    watermark_color: str = "#FFFFFF",
+                   watermark_border_color: str = "#000000",
+                   watermark_box_color: str = "#000000",
                    watermark_opacity: float = 0.85) -> str:
     """Filter chain from [vid] to [out]: frame + brand + title + ASS.
 
@@ -593,13 +595,16 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
                 _wm_file = tmpdir / "watermark.txt"
                 _wm_file.write_text(_wt, encoding="utf-8")
                 _whex = hex_to_ffmpeg(watermark_color or "#FFFFFF")
+                _wborder = hex_to_ffmpeg(watermark_border_color or "#000000")
+                _wbox = hex_to_ffmpeg(watermark_box_color or "#000000")
                 _wfs = max(16, int(round(int(watermark_size or 48) * scale)))
                 chain += (
                     "drawtext=fontfile=" + FONT_BOLD +
                     f":textfile={_wm_file}:fontsize={_wfs}:"
                     f"fontcolor={_whex}@{_wop:.2f}:"
+                    f"borderw=2:bordercolor={_wborder}:"
                     f"x=w*{_wx:.3f}-text_w/2:y=h*{_wy:.3f}-text_h/2:"
-                    "box=1:boxcolor=black@0.45:boxborderw=12,"
+                    f"box=1:boxcolor={_wbox}@0.45:boxborderw=12,"
                 )
     if show_subtitles and words:
         box_styles, box_events = _keyword_box_events(
@@ -1033,6 +1038,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 watermark_y: float | None = None,
                 watermark_size: int | None = None,
                 watermark_color: str | None = None,
+                watermark_border_color: str | None = None,
+                watermark_box_color: str | None = None,
                 watermark_opacity: float | None = None,
                 quality: str = "1080p",
                 camera_mode: str = "center",
@@ -1154,6 +1161,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
             watermark_y=(0.06 if watermark_y is None else watermark_y),
             watermark_size=(48 if watermark_size is None else watermark_size),
             watermark_color=(watermark_color or "#FFFFFF"),
+            watermark_border_color=(watermark_border_color or "#000000"),
+            watermark_box_color=(watermark_box_color or "#000000"),
             watermark_opacity=(0.85 if watermark_opacity is None else watermark_opacity),
         )
         # El clip principal se renderiza a un temporal; la portada (si

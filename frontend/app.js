@@ -1437,7 +1437,7 @@ async function editClip(c) {
 }
 
 // ---------- Mis Clips (con paginación, 2026-11-11, Juan) ----------
-const CLIPS_PER_PAGE = 12;
+const CLIPS_PER_PAGE = 10;
 let _myClips = [], _myClipsPage = 0;
 function renderMyClipsPage() {
   const box = $("myClips");

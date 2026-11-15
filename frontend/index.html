@@ -743,6 +743,9 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
 .wm-preview-logo{height:32px;width:auto;object-fit:contain}
 .wm-pos-grid{display:grid;grid-template-columns:repeat(3,36px);gap:6px;margin:8px 0}
 .wm-pos-grid button{width:36px;height:36px;padding:0;font-size:17px;line-height:1}
+.wm-tab-preview{position:relative;width:162px;height:288px;background:#000;border:1px solid rgba(255,255,255,.18);border-radius:10px;overflow:hidden;margin:8px 0;display:flex;align-items:center;justify-content:center}
+.wm-tab-preview span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px}
+.wm-tab-preview img{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);object-fit:contain}
 .phone .pv-loading{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(3,4,34,.85);color:#fff;font-size:14px;font-weight:600;text-align:center;padding:0 24px}
 .phone .pv-loading[hidden]{display:none}
 .phone .pv-spinner{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#FADE4C;animation:pv-spin .8s linear infinite}
@@ -1363,6 +1366,7 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
       <div class="pane-body">
       <div class="mini-tabs" id="accTabs">
         <button class="mini-tab on" data-acc="profile">Perfil</button>
+        <button class="mini-tab" data-acc="watermark">Marca de agua</button>
         <button class="mini-tab" data-acc="config">Configuración</button>
       </div>
       <div id="accPane-profile">
@@ -1396,6 +1400,43 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
       <input id="pwConfirm" type="password" autocomplete="new-password" style="width:100%">
       <div style="margin-top:14px"><button id="btnChangePassword">Cambiar contraseña</button></div>
       <p id="pwMsg" class="muted"></p>
+      </div>
+      </div>
+      <div id="accPane-watermark" hidden>
+      <div class="card">
+      <h4 style="margin:0 0 4px">Marca de agua</h4>
+      <p class="muted" style="margin:0 0 12px">Se usa en todos tus clips. Personalízala a tu gusto: cada usuario tiene la suya.</p>
+      <label><input type="checkbox" id="accWmTabEnabled" style="width:18px;height:18px;vertical-align:-3px"> Mostrar marca de agua en mis clips</label>
+      <div class="row" style="margin-top:12px">
+        <div><label>Tipo</label><select id="accWmTabType"><option value="text">Texto</option><option value="logo">Logo</option></select></div>
+      </div>
+      <hr>
+      <h4 style="margin:0 0 4px">Texto</h4>
+      <label>Nombre</label>
+      <input id="accWmTabText" type="text" placeholder="@marketingcaribe">
+      <div class="row">
+        <div><label>Color del texto</label><input id="accWmTabColor" type="color" value="#FFFFFF" style="height:38px;padding:2px"></div>
+        <div><label>Color del borde</label><input id="accWmTabBorder" type="color" value="#000000" style="height:38px;padding:2px"></div>
+        <div><label>Color del fondo</label><input id="accWmTabBox" type="color" value="#000000" style="height:38px;padding:2px"></div>
+      </div>
+      <label>Vista previa del texto (9:16)</label>
+      <div class="wm-tab-preview" id="accWmTabTextPreview">
+        <span id="accWmTabTextPreviewSpan">@marketingcaribe</span>
+      </div>
+      <hr>
+      <h4 style="margin:0 0 4px">Logo</h4>
+      <label>Subir logo (PNG, JPG o WebP, máx. 5 MB)</label>
+      <input id="accWmTabLogoFile" type="file" accept="image/png,image/jpeg,image/webp">
+      <p class="muted" id="accWmTabLogoName">Sin logo subido todavía.</p>
+      <label>Tamaño del logo: <span id="accWmTabSizeVal">48</span></label>
+      <input id="accWmTabSize" type="range" min="16" max="200" value="48" style="width:100%">
+      <label>Vista previa del tamaño del logo (9:16)</label>
+      <div class="wm-tab-preview" id="accWmTabLogoPreview">
+        <img id="accWmTabLogoPreviewImg" hidden alt="">
+        <span class="muted" id="accWmTabLogoPreviewEmpty">Sube un logo para verlo aquí.</span>
+      </div>
+      <div style="margin-top:14px"><button id="btnSaveWmTab">Guardar marca de agua</button></div>
+      <p id="wmTabMsg" class="muted"></p>
       </div>
       </div>
       <div id="accPane-config" hidden>
@@ -1823,6 +1864,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=148"></script>
+<script src="app.js?v=149"></script>
 </body>
 </html>

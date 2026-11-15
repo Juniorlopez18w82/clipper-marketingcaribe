@@ -705,6 +705,16 @@ def _resolve_render_look(db, user_id: int | None, req: RenderRequest) -> dict:
     return look
 
 
+def _slugify(text: str, max_len: int = 60) -> str:
+    """Título → nombre de archivo seguro (minúsculas, sin acentos,
+    espacios → guiones, solo [a-z0-9-]). Vacío si no queda nada."""
+    import re
+    import unicodedata
+    text = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return text[:max_len].strip("-")
+
+
 def _run_render_job(job_id: str, req: RenderRequest):
     try:
         source, section_start, transcript, transcript_base = _resolve_source_for_render(req, job_id)
@@ -744,8 +754,10 @@ def _run_render_job(job_id: str, req: RenderRequest):
                     Clip.id == req.update_clip_id).first()
             finally:
                 db_u.close()
+        _t = req.clip_title or req.video_title or req.title_text or ""
+        _slug = _slugify(_t)
         out_name = (update_clip.file if update_clip and update_clip.file
-                    else f"clip_{job_id}.mp4")
+                    else (f"{_slug}-{job_id[:8]}.mp4" if _slug else f"clip_{job_id}.mp4"))
         out_path = OUTPUTS_DIR / out_name
         # Plantilla + color de palabra clave (2026-11-10): la plantilla
         # del request (o la guardada/default) manda sobre marco, color,

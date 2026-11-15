@@ -143,6 +143,8 @@ def _ensure_user_watermark_columns() -> None:
         "watermark_y": "FLOAT DEFAULT 0.06",
         "watermark_size": "INTEGER DEFAULT 48",
         "watermark_color": "VARCHAR(10) DEFAULT '#FFFFFF'",
+        "watermark_border_color": "VARCHAR(10) DEFAULT '#000000'",
+        "watermark_box_color": "VARCHAR(10) DEFAULT '#000000'",
         "watermark_opacity": "FLOAT DEFAULT 0.85",
     }
     try:

@@ -1439,18 +1439,20 @@ async function editClip(c) {
 // ---------- Mis Clips (con paginación, 2026-11-11, Juan) ----------
 const CLIPS_PER_PAGE = 10;
 let _myClips = [], _myClipsPage = 0;
+let _showAllClips = false; // v156: "Ver todos mis videos" (sin paginación)
 function renderMyClipsPage() {
   const box = $("myClips");
   const pages = Math.max(1, Math.ceil(_myClips.length / CLIPS_PER_PAGE));
   if (_myClipsPage >= pages) _myClipsPage = pages - 1;
   if (_myClipsPage < 0) _myClipsPage = 0;
   box.innerHTML = "";
-  const start = _myClipsPage * CLIPS_PER_PAGE;
-  _myClips.slice(start, start + CLIPS_PER_PAGE).forEach((c) => box.appendChild(clipRow(c, false)));
+  // v156: "Ver todos mis videos" muestra todos sin paginar.
+  const list = _showAllClips ? _myClips : _myClips.slice(_myClipsPage * CLIPS_PER_PAGE, _myClipsPage * CLIPS_PER_PAGE + CLIPS_PER_PAGE);
+  list.forEach((c) => box.appendChild(clipRow(c, false)));
   const pg = $("clipsPagination");
   if (pg) {
     pg.innerHTML = "";
-    if (_myClips.length > CLIPS_PER_PAGE) {
+    if (!_showAllClips && _myClips.length > CLIPS_PER_PAGE) {
       const prev = document.createElement("button");
       prev.className = "small ghost";
       prev.textContent = "← Anterior";
@@ -1468,7 +1470,13 @@ function renderMyClipsPage() {
       pg.append(prev, info, next);
     }
   }
+  const sab = $("btnShowAllClips");
+  if (sab) {
+    sab.hidden = _myClips.length <= CLIPS_PER_PAGE;
+    sab.textContent = _showAllClips ? "Ver por páginas" : "Ver todos mis videos";
+  }
 }
+$("btnShowAllClips").onclick = () => { _showAllClips = !_showAllClips; _myClipsPage = 0; renderMyClipsPage(); };
 async function loadMyClips() {
   const box = $("myClips");
   try {

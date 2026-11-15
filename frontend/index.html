@@ -1378,14 +1378,7 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
       <label>Nombre del marco</label>
       <input id="accBrand" type="text" placeholder="@marketingcaribe">
       <label><input type="checkbox" id="accFrame" style="width:18px;height:18px;vertical-align:-3px"> Con marco (amarillo + nombre)</label>
-      <hr>
-      <h4 style="margin:0 0 4px">Marca de agua (siempre la misma)</h4>
-      <p class="muted" style="margin:0 0 10px">El nombre y el logo que salen en todos tus clips. Se configuran una vez aquí.</p>
-      <label>Nombre de la marca de agua</label>
-      <input id="accWmText" type="text" placeholder="@marketingcaribe">
-      <label>Logo de la marca de agua (PNG, JPG o WebP, máx. 5 MB)</label>
-      <input id="accWmLogoFile" type="file" accept="image/png,image/jpeg,image/webp">
-      <p class="muted" id="accWmLogoName">Sin logo subido todavía.</p>
+      <p class="muted" style="margin-top:10px">La marca de agua se configura en la pestaña <b>Marca de agua</b>.</p>
       <div style="margin-top:14px"><button id="btnSaveAccount">Guardar cambios</button></div>
       <p id="accMsg" class="muted"></p>
       </div>
@@ -1414,6 +1407,29 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
       <h4 style="margin:0 0 4px">Texto</h4>
       <label>Nombre</label>
       <input id="accWmTabText" type="text" placeholder="@marketingcaribe">
+      <div class="row">
+        <div><label>Tipografía</label><select id="accWmTabFont">
+          <option>Poppins Negrita</option>
+          <option>Poppins</option>
+          <option>Montserrat Negrita</option>
+          <option>Bebas Neue</option>
+          <option>DejaVu Sans Negrita</option>
+          <option>DejaVu Serif Negrita</option>
+          <option>DejaVu Mono Negrita</option>
+        </select></div>
+      </div>
+      <label>Posición (texto y logo)</label>
+      <div class="wm-pos-grid" id="accWmTabPosGrid">
+        <button type="button" data-wmx="0.12" data-wmy="0.07" title="Arriba a la izquierda">↖</button>
+        <button type="button" data-wmx="0.5" data-wmy="0.07" title="Arriba en el centro">↑</button>
+        <button type="button" data-wmx="0.88" data-wmy="0.07" title="Arriba a la derecha">↗</button>
+        <button type="button" data-wmx="0.12" data-wmy="0.5" title="En el centro a la izquierda">←</button>
+        <button type="button" data-wmx="0.5" data-wmy="0.5" title="Centro">•</button>
+        <button type="button" data-wmx="0.88" data-wmy="0.5" title="En el centro a la derecha">→</button>
+        <button type="button" data-wmx="0.12" data-wmy="0.93" title="Abajo a la izquierda">↙</button>
+        <button type="button" data-wmx="0.5" data-wmy="0.93" title="Abajo en el centro">↓</button>
+        <button type="button" data-wmx="0.88" data-wmy="0.93" title="Abajo a la derecha">↘</button>
+      </div>
       <div class="row">
         <div><label>Color del texto</label><input id="accWmTabColor" type="color" value="#FFFFFF" style="height:38px;padding:2px"></div>
         <div><label>Color del borde</label><input id="accWmTabBorder" type="color" value="#000000" style="height:38px;padding:2px"></div>
@@ -1864,6 +1880,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=149"></script>
+<script src="app.js?v=150"></script>
 </body>
 </html>

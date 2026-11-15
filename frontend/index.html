@@ -1200,22 +1200,8 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
                 <div><label>Grosor (px)</label><input id="wzFrameWidth" type="number" value="14" min="0" max="40"></div>
               </div>
               <hr>
-              <label>Marca de agua en todo el video</label>
-              <select id="wzWmType"><option value="text" selected>Texto</option><option value="logo">Logo (imagen)</option></select>
-              <div id="wzWmTextRow">
-                <label>Texto de la marca de agua</label>
-                <input id="wzWmText" type="text" value="@marketingcaribe">
-              </div>
-              <p class="muted">El logo se sube en el editor (paso 3). La posición, el tamaño y el color se ajustan ahí también.</p>
-              <div class="row">
-                <div><label>Posición horizontal (%)</label><input id="wzWmX" type="number" value="50" min="0" max="100"></div>
-                <div><label>Posición vertical (%)</label><input id="wzWmY" type="number" value="6" min="0" max="100"></div>
-              </div>
-              <div class="row">
-                <div><label>Tamaño</label><input id="wzWmSize" type="number" value="48" min="16" max="200"></div>
-                <div><label>Color del texto</label><input id="wzWmColor" type="color" value="#FFFFFF"></div>
-                <div><label>Opacidad (%)</label><input id="wzWmOpacity" type="number" value="85" min="5" max="100"></div>
-              </div>
+              <label><input type="checkbox" id="wzWmEnabled" checked style="width:18px;height:18px;vertical-align:-3px"> Mostrar marca de agua en este clip</label>
+              <p class="muted">La marca de agua (texto o logo, color, tamaño y posición) se configura en <b>Mi Cuenta &gt; Marca de agua</b>. Aquí solo la activas o la quitas para este clip.</p>
             </div>
             <div class="wz-pane" data-wz-pane="2" hidden>
               <label>Cámara</label>
@@ -1883,6 +1869,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=151"></script>
+<script src="app.js?v=152"></script>
 </body>
 </html>

@@ -2539,7 +2539,7 @@ $("btnClips").onclick = async () => {
     setJobProgress(100);
     state.clipsJob = job;
     state.transcript = job.result.transcript;
-    renderSteps(3, -1, `La IA encontró ${job.result.candidates.length} clip${job.result.candidates.length === 1 ? "" : "s"}, elige uno para continuar.`);
+    renderSteps(3, -1, `La IA encontró ${job.result.candidates.length} clip${job.result.candidates.length === 1 ? "" : "s"} — se están generando listos.`);
     const box = $("candidates");
     box.innerHTML = "";
     if (!job.result.candidates.length) {
@@ -2547,7 +2547,8 @@ $("btnClips").onclick = async () => {
       box.innerHTML = "<p class='muted'>No se encontraron clips en ese rango. Prueba otro rango.</p>";
       return;
     }
-    $("candidatesTitle").textContent = `La IA encontró ${job.result.candidates.length} clips, elige uno para continuar`;
+    $("candidatesTitle").textContent = `La IA encontró ${job.result.candidates.length} clips — se están generando listos con tu configuración`;
+    // v147: sin paso manual de Renderizar; se generan solos.
     job.result.candidates.forEach((c, i) => {
       const div = document.createElement("div");
       div.className = "clip-card cand";
@@ -2567,6 +2568,7 @@ $("btnClips").onclick = async () => {
     });
     $("candidatesCard").hidden = false;
     $("candidatesCard").scrollIntoView({ behavior: "smooth" });
+    autoRenderCandidates(job.result.candidates);
   } catch (e) {
     console.error("Sacar clips falló:", e.raw || e.message);
     renderSteps(0, -1, "");
@@ -3266,6 +3268,80 @@ function buildRenderBody(start, end, edited) {
     title_pos_y: state.coverStyle.posY,
   };
 }
+// ---------- Generar los clips ya listos (v147) ----------
+// Juan: si el video ya se configuró como se quiere ANTES (asistente),
+// el paso manual de "Renderizar clip 9:16" es innecesario. Al terminar
+// el análisis, cada candidato se renderiza solo con la configuración
+// actual del editor (que el asistente ya sincronizó) y queda listo en
+// Mis Clips. El botón Renderizar se esconde (ver index.html).
+function buildAutoRenderBody(c) {
+  const v = wmVals();
+  return {
+    job_id: state.clipsJob.id, start: c.abs_start, end: c.abs_end,
+    model: $("model").value, quality: $("cfgQuality").value,
+    frame_enabled: $("frameEnabled").checked,
+    frame_color: $("frameColor").value,
+    frame_width: parseInt($("frameWidth").value || "14", 10),
+    brand_text: $("brandText").value,
+    title_text: $("titleText").value,
+    watermark_enabled: v.enabled, watermark_type: v.type,
+    watermark_text: v.text, watermark_logo: v.logo,
+    watermark_x: v.x, watermark_y: v.y, watermark_size: v.size,
+    watermark_color: v.color, watermark_opacity: v.opacity,
+    clip_title: c.title || "",
+    cover_at: 0,
+    camera_mode: $("cameraMode").value,
+    camera_person: ($("cameraPerson") && $("cameraPerson").value) || "center",
+    facecam_corner: $("facecamCorner").value,
+    clip_score: (typeof c.score === "number") ? c.score : null,
+    video_title: state.videoTitle || "",
+    show_subtitles: $("showSubs").value === "1",
+    subtitle_style: $("subStyle").value,
+    subtitle_size: parseInt($("subSize").value || "76", 10),
+    subtitle_position: $("subPos").value,
+    template: state.templateTouched ? null : (state.userTemplate || "Gancho grande"),
+    highlight_color: $("hlColor").value,
+    edited_words: null,
+    title_color: state.coverStyle.color,
+    title_border_color: state.coverStyle.borderColor,
+    title_border_w: state.coverStyle.borderW,
+    title_bg_color: state.coverStyle.bgColor,
+    title_bg: state.coverStyle.bg,
+    title_size: state.coverStyle.size,
+    title_pos_x: state.coverStyle.posX,
+    title_pos_y: state.coverStyle.posY,
+  };
+}
+async function autoRenderCandidates(cands) {
+  const total = cands.length;
+  let done = 0, failed = 0;
+  const setStatus = () => {
+    renderSteps(4, -1, `Generando tus clips con tu configuración… ${done} de ${total} listos${failed ? ` (${failed} fallaron)` : ""}.`);
+    setJobProgress(Math.round((done / total) * 100));
+  };
+  setStatus();
+  // Se lanzan todos los renders (el servidor los encola, 2 a la vez) y
+  // se espera a cada uno; si uno falla, los demás siguen.
+  const jobs = await Promise.all(cands.map(async (c) => {
+    try {
+      const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(buildAutoRenderBody(c)) });
+      return d.job_id;
+    } catch (e) { failed++; setStatus(); return null; }
+  }));
+  await Promise.all(jobs.filter(Boolean).map((jobId) => (async () => {
+    try {
+      await pollJob(jobId, () => {});
+      done++;
+    } catch (e) { failed++; }
+    setStatus();
+    loadMyClips();
+  })()));
+  renderSteps(5, -1, done === total ? `¡Listo! Tus ${total} clips están en Mis Clips, ya para descargar.` : `${done} de ${total} clips listos en Mis Clips${failed ? ` (${failed} fallaron)` : ""}.`);
+  setJobProgress(100);
+  loadPanel();
+  loadMyClips();
+}
+
 $("btnRender").onclick = async () => {
   if (!state.clipsJob) return toast("Primero genera los clips y elige uno");
   if (state.busy) return;

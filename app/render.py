@@ -64,6 +64,29 @@ def resolve_template(name: str | None) -> tuple[str, dict]:
     return DEFAULT_TEMPLATE, TEMPLATES[DEFAULT_TEMPLATE]
 
 
+# Tipografías de la marca de agua (v150). Las de app/fonts/ se copian a la
+# imagen con COPY app ./app; las DejaVu ya están en el sistema.
+FONTS_DIR = Path(__file__).resolve().parent / "fonts"
+WATERMARK_FONTS = {
+    "Poppins Negrita": str(FONTS_DIR / "Poppins-Bold.ttf"),
+    "Poppins": str(FONTS_DIR / "Poppins-Regular.ttf"),
+    "Montserrat Negrita": str(FONTS_DIR / "Montserrat-Bold.ttf"),
+    "Bebas Neue": str(FONTS_DIR / "BebasNeue-Regular.ttf"),
+    "DejaVu Sans Negrita": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "DejaVu Serif Negrita": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+    "DejaVu Mono Negrita": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+}
+DEFAULT_WATERMARK_FONT = "Poppins Negrita"
+
+
+def watermark_font_file(name: str | None) -> str:
+    """Archivo de fuente para la marca de agua; cae a Poppins Negrita."""
+    p = WATERMARK_FONTS.get((name or "").strip(), "")
+    if p and Path(p).exists():
+        return p
+    return WATERMARK_FONTS[DEFAULT_WATERMARK_FONT]
+
+
 def hex_to_ffmpeg(hex_color: str) -> str:
     h = hex_color.lstrip("#")
     if len(h) != 6:
@@ -539,6 +562,7 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
                    watermark_color: str = "#FFFFFF",
                    watermark_border_color: str = "#000000",
                    watermark_box_color: str = "#000000",
+                   watermark_font: str | None = None,
                    watermark_opacity: float = 0.85) -> str:
     """Filter chain from [vid] to [out]: frame + brand + title + ASS.
 
@@ -599,7 +623,7 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
                 _wbox = hex_to_ffmpeg(watermark_box_color or "#000000")
                 _wfs = max(16, int(round(int(watermark_size or 48) * scale)))
                 chain += (
-                    "drawtext=fontfile=" + FONT_BOLD +
+                    "drawtext=fontfile=" + watermark_font_file(watermark_font) +
                     f":textfile={_wm_file}:fontsize={_wfs}:"
                     f"fontcolor={_whex}@{_wop:.2f}:"
                     f"borderw=2:bordercolor={_wborder}:"
@@ -1040,6 +1064,7 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 watermark_color: str | None = None,
                 watermark_border_color: str | None = None,
                 watermark_box_color: str | None = None,
+                watermark_font: str | None = None,
                 watermark_opacity: float | None = None,
                 quality: str = "1080p",
                 camera_mode: str = "center",
@@ -1163,6 +1188,7 @@ def render_clip(source: Path, start_in_source: float, duration: float,
             watermark_color=(watermark_color or "#FFFFFF"),
             watermark_border_color=(watermark_border_color or "#000000"),
             watermark_box_color=(watermark_box_color or "#000000"),
+            watermark_font=watermark_font,
             watermark_opacity=(0.85 if watermark_opacity is None else watermark_opacity),
         )
         # El clip principal se renderiza a un temporal; la portada (si

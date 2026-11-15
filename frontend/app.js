@@ -644,6 +644,7 @@ function wmVals() {
     color: $("wmColor") ? $("wmColor").value : "#FFFFFF",
     border_color: (state.user && state.user.watermark_border_color) || "#000000",
     box_color: (state.user && state.user.watermark_box_color) || "#000000",
+    font: (state.user && state.user.watermark_font) || "Poppins Negrita",
     opacity: ($("wmOpacity") ? parseFloat($("wmOpacity").value || "85") : 85) / 100,
   };
 }
@@ -714,6 +715,10 @@ async function uploadWmLogo(file) {
     if ($("wmLogoName")) $("wmLogoName").textContent = "Logo guardado: " + state.wmLogo;
     if ($("pvWmLogo")) $("pvWmLogo").src = URL.createObjectURL(file);
     if ($("wmPreviewLogo")) $("wmPreviewLogo").src = URL.createObjectURL(file);
+    // Vista previa de la pestaña "Marca de agua" (v150): antes no se actualizaba.
+    if ($("accWmTabLogoPreviewImg")) $("accWmTabLogoPreviewImg").src = URL.createObjectURL(file);
+    if ($("accWmTabLogoName")) $("accWmTabLogoName").textContent = "Logo guardado: " + state.wmLogo;
+    updateWmTabPreview();
     updateWatermarkPreview();
     toast("Logo de marca de agua guardado.");
   } catch (e) { toast("Error al subir el logo: " + e.message); }
@@ -806,9 +811,7 @@ async function loadPanel() {
   $("accEmail").value = state.user.email || "";
   $("accBrand").value = state.user.brand_text || "@marketingcaribe";
   $("accFrame").checked = state.user.frame_enabled !== false;
-  // Marca de agua del perfil (v148): nombre y logo, siempre los mismos.
-  if ($("accWmText")) $("accWmText").value = state.user.watermark_text || state.user.brand_text || "@marketingcaribe";
-  if ($("accWmLogoName")) $("accWmLogoName").textContent = state.user.watermark_logo ? ("Logo guardado: " + state.user.watermark_logo) : "Sin logo subido todavía.";
+  // La marca de agua vive en su propia pestaña (v150), no en Perfil.
   renderPlans(activePlanId);
   loadMyClips();
   if (state.user.is_admin) loadAdmin();
@@ -2026,15 +2029,11 @@ function loadAdmin() {
 $("btnSaveAccount").onclick = async () => {
   try {
     const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ name: $("accName").value.trim(), brand_text: $("accBrand").value.trim(), frame_enabled: $("accFrame").checked, watermark_text: $("accWmText") ? $("accWmText").value.trim() : undefined }) });
+      body: JSON.stringify({ name: $("accName").value.trim(), brand_text: $("accBrand").value.trim(), frame_enabled: $("accFrame").checked }) });
     $("accMsg").textContent = "Guardado.";
     showUser(d);
   } catch (e) { $("accMsg").textContent = "Error: " + e.message; }
 };
-
-// Logo de marca de agua desde Mi Cuenta (v148).
-const _accWmFile = $("accWmLogoFile");
-if (_accWmFile) _accWmFile.addEventListener("change", () => { uploadWmLogo(_accWmFile.files && _accWmFile.files[0]); _accWmFile.value = ""; });
 
 // Pestaña "Marca de agua" en Mi Cuenta (v149): nombre, colores del
 // texto/borde/fondo y tamaño del logo, cada uno con su vista previa 9:16.
@@ -2046,7 +2045,10 @@ function wmTabVals() {
     color: $("accWmTabColor") ? $("accWmTabColor").value : "#FFFFFF",
     border_color: $("accWmTabBorder") ? $("accWmTabBorder").value : "#000000",
     box_color: $("accWmTabBox") ? $("accWmTabBox").value : "#000000",
+    font: $("accWmTabFont") ? $("accWmTabFont").value : "Poppins Negrita",
     size: $("accWmTabSize") ? parseInt($("accWmTabSize").value || "48", 10) : 48,
+    x: (state.wmTabX != null ? state.wmTabX : (state.user && state.user.watermark_x != null ? state.user.watermark_x : 0.5)),
+    y: (state.wmTabY != null ? state.wmTabY : (state.user && state.user.watermark_y != null ? state.user.watermark_y : 0.06)),
   };
 }
 function fillWmTab() {
@@ -2058,6 +2060,9 @@ function fillWmTab() {
   if ($("accWmTabBorder")) $("accWmTabBorder").value = u.watermark_border_color || "#000000";
   if ($("accWmTabBox")) $("accWmTabBox").value = u.watermark_box_color || "#000000";
   if ($("accWmTabSize")) $("accWmTabSize").value = u.watermark_size || 48;
+  if ($("accWmTabFont")) $("accWmTabFont").value = u.watermark_font || "Poppins Negrita";
+  state.wmTabX = (u.watermark_x != null ? u.watermark_x : 0.5);
+  state.wmTabY = (u.watermark_y != null ? u.watermark_y : 0.06);
   if ($("accWmTabLogoName")) $("accWmTabLogoName").textContent = u.watermark_logo ? ("Logo guardado: " + u.watermark_logo) : "Sin logo subido todavía.";
   if ($("accWmTabLogoPreviewImg") && u.watermark_logo) $("accWmTabLogoPreviewImg").src = "/api/me/watermark-logo";
   updateWmTabPreview();
@@ -2071,18 +2076,39 @@ function updateWmTabPreview() {
     sp.style.background = v.box_color + "73";
     sp.style.webkitTextStroke = "1.5px " + v.border_color;
     sp.style.fontSize = Math.max(10, Math.round(v.size * 0.32)) + "px";
+    // Tipografía (v150): aproximación visual; el render usa el archivo real.
+    const fam = { "Poppins Negrita": "'Poppins',sans-serif", "Poppins": "'Poppins',sans-serif", "Montserrat Negrita": "'Montserrat',sans-serif", "Bebas Neue": "'Bebas Neue',sans-serif", "DejaVu Sans Negrita": "'DejaVu Sans',sans-serif", "DejaVu Serif Negrita": "'DejaVu Serif',serif", "DejaVu Mono Negrita": "'DejaVu Sans Mono',monospace" }[v.font] || "'Poppins',sans-serif";
+    sp.style.fontFamily = fam;
+    sp.style.fontWeight = /Negrita|Bebas/.test(v.font) ? "700" : "400";
+    sp.style.left = (v.x * 100) + "%";
+    sp.style.top = (v.y * 100) + "%";
     sp.hidden = v.type !== "text";
   }
   const img = $("accWmTabLogoPreviewImg"), emp = $("accWmTabLogoPreviewEmpty");
   if (img) {
-    const has = !!(img.src || state.wmLogo);
+    // Si hay logo guardado pero la imagen no tiene src, cargarlo (arreglo v150).
+    if (state.wmLogo && !img.getAttribute("src")) img.src = "/api/me/watermark-logo";
+    if (state.user && state.user.watermark_logo && !img.getAttribute("src")) img.src = "/api/me/watermark-logo";
+    const has = !!(img.getAttribute("src") || state.wmLogo);
     img.hidden = !(v.type === "logo" && has);
-    if (v.type === "logo" && has) img.style.height = Math.max(12, Math.round(v.size * 0.55)) + "px";
+    if (v.type === "logo" && has) {
+      img.style.height = Math.max(12, Math.round(v.size * 0.55)) + "px";
+      img.style.left = (v.x * 100) + "%";
+      img.style.top = (v.y * 100) + "%";
+    }
     if (emp) emp.hidden = v.type !== "logo" || has;
   }
   if ($("accWmTabSizeVal")) $("accWmTabSizeVal").textContent = String(v.size);
 }
-["accWmTabEnabled", "accWmTabType", "accWmTabText", "accWmTabColor", "accWmTabBorder", "accWmTabBox", "accWmTabSize"].forEach((id) => {
+// Posición de la marca de agua en la pestaña (v150): rejilla 3x3.
+document.querySelectorAll("#accWmTabPosGrid button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.wmTabX = parseFloat(btn.dataset.wmx || "0.5");
+    state.wmTabY = parseFloat(btn.dataset.wmy || "0.5");
+    updateWmTabPreview();
+  });
+});
+["accWmTabEnabled", "accWmTabType", "accWmTabText", "accWmTabColor", "accWmTabBorder", "accWmTabBox", "accWmTabSize", "accWmTabFont"].forEach((id) => {
   const el = $(id);
   if (el) el.addEventListener("input", updateWmTabPreview);
 });
@@ -2097,7 +2123,7 @@ if (_btnWmTab) _btnWmTab.onclick = async () => {
   const v = wmTabVals();
   try {
     const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ watermark_enabled: v.enabled, watermark_type: v.type, watermark_text: v.text, watermark_color: v.color, watermark_border_color: v.border_color, watermark_box_color: v.box_color, watermark_size: v.size }) });
+      body: JSON.stringify({ watermark_enabled: v.enabled, watermark_type: v.type, watermark_text: v.text, watermark_color: v.color, watermark_border_color: v.border_color, watermark_box_color: v.box_color, watermark_font: v.font, watermark_size: v.size, watermark_x: v.x, watermark_y: v.y }) });
     $("wmTabMsg").textContent = "Marca de agua guardada.";
     showUser(d);
     updateWmTabPreview();
@@ -3186,6 +3212,7 @@ $("btnSaveConfig").onclick = async () => {
     watermark_color: wmVals().color,
     watermark_border_color: wmVals().border_color,
     watermark_box_color: wmVals().box_color,
+    watermark_font: wmVals().font,
     watermark_opacity: wmVals().opacity,
   };
   try {

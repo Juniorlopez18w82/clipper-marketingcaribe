@@ -2402,7 +2402,7 @@ $("url").addEventListener("input", hidePreview);
 // "Hasta" lo escribe el usuario a mano: si lo toca, no lo pisamos al
 // cargar un video; si pega otro link o sube otro archivo, se resetea
 // para que el nuevo video ponga su duración completa.
-$("url").addEventListener("input", () => { state.rangeEndTouched = false; });
+$("url").addEventListener("input", () => { state.rangeEndTouched = false; _wzConfiguredFor = ""; });
 // Miniatura + título al pegar el link (2026-11-11, Juan: que se vea el
 // video de una vez). Espera 800 ms tras dejar de escribir para no
 // llamar al servidor por cada letra; si el link no es válido o
@@ -2442,6 +2442,13 @@ $("url").addEventListener("input", () => {
 // campos del editor (paso 3), que es la única fuente de verdad.
 let _wzStep = 0;
 let _wzShownForUrl = "";
+// v154: la fuente (link o archivo) para la que YA se completó el asistente
+// (se le dio a "Sacar clips" dentro de él). Si cambia la fuente, el
+// asistente vuelve a abrirse al darle a Sacar clips.
+let _wzConfiguredFor = "";
+function _wzSrcKey() {
+  return state.uploadedFile ? "file:" + state.uploadedFile : $("url").value.trim();
+}
 const WZ_TOTAL = 4;
 function wzSyncFromEditor() {
   const set = (id, v) => { const el = $(id); if (el != null) el.value = v; };
@@ -2528,7 +2535,7 @@ function wzMaybeOpen(url) {
 $("wzClose").onclick = wzClose;
 $("wzBack").onclick = () => wzGoTo(_wzStep - 1);
 $("wzNext").onclick = () => { wzSyncToEditor(); wzGoTo(_wzStep + 1); };
-$("wzGo").onclick = () => { wzSyncToEditor(); wzClose(); $("btnClips").click(); };
+$("wzGo").onclick = () => { wzSyncToEditor(); _wzConfiguredFor = _wzSrcKey(); wzClose(); $("btnClips").click(); };
 document.querySelectorAll(".wz-step").forEach((b) => { b.onclick = () => { wzSyncToEditor(); wzGoTo(+b.dataset.wz); }; });
 ["wzShowSubs", "wzSubStyle", "wzSubSize", "wzSubPos", "wzWmEnabled", "wzCameraMode", "wzRangeStart", "wzRangeEnd", "wzMaxClips", "wzMinClip", "wzMaxClip", "wzQuality", "wzModel"].forEach((id) => {
   const el = $(id);
@@ -2553,6 +2560,7 @@ $("uploadFile").onchange = async () => {
   // ponga la duración real de este archivo (antes quedaba en 120 s
   // porque la rama de subida nunca tocaba el campo).
   state.rangeEndTouched = false;
+  _wzConfiguredFor = "";
   state.uploadedFile = null;
   // Duración real del archivo, leída en el navegador sin subir nada
   // extra: un <video> temporal con el archivo como fuente.
@@ -2612,6 +2620,14 @@ $("btnClips").onclick = async () => {
   if (state.busy) return;
   const url = $("url").value.trim();
   if (!state.uploadedFile && !url) return toast("Pega un link de YouTube o sube un video");
+  // v154: si el asistente aún no se completó para este video, abrirlo
+  // primero (igual que al pegar el link). Al darle a "Sacar clips"
+  // dentro del asistente, vuelve aquí y ya genera.
+  if (_wzSrcKey() !== _wzConfiguredFor) {
+    if (state.uploadedFile) wzOpen({ title: state.uploadedFile, thumb: "" });
+    else wzMaybeOpen(url);
+    if ($("configWizard") && $("configWizard").hidden === false) return;
+  }
   state.busy = true;
   $("btnClips").disabled = true;
   $("btnUpload").disabled = true;

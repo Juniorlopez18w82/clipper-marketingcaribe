@@ -1404,6 +1404,19 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
         <div><label>Tipo</label><select id="accWmTabType"><option value="text">Texto</option><option value="logo">Logo</option></select></div>
       </div>
       <hr>
+      <label>Posición (vale para el texto y para el logo)</label>
+      <div class="wm-pos-grid" id="accWmTabPosGrid">
+        <button type="button" data-wmx="0.12" data-wmy="0.07" title="Arriba a la izquierda">↖</button>
+        <button type="button" data-wmx="0.5" data-wmy="0.07" title="Arriba en el centro">↑</button>
+        <button type="button" data-wmx="0.88" data-wmy="0.07" title="Arriba a la derecha">↗</button>
+        <button type="button" data-wmx="0.12" data-wmy="0.5" title="En el centro a la izquierda">←</button>
+        <button type="button" data-wmx="0.5" data-wmy="0.5" title="Centro">•</button>
+        <button type="button" data-wmx="0.88" data-wmy="0.5" title="En el centro a la derecha">→</button>
+        <button type="button" data-wmx="0.12" data-wmy="0.93" title="Abajo a la izquierda">↙</button>
+        <button type="button" data-wmx="0.5" data-wmy="0.93" title="Abajo en el centro">↓</button>
+        <button type="button" data-wmx="0.88" data-wmy="0.93" title="Abajo a la derecha">↘</button>
+      </div>
+      <div id="accWmTabTextSec">
       <h4 style="margin:0 0 4px">Texto</h4>
       <label>Nombre</label>
       <input id="accWmTabText" type="text" placeholder="@marketingcaribe">
@@ -1418,18 +1431,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
           <option>DejaVu Mono Negrita</option>
         </select></div>
       </div>
-      <label>Posición (texto y logo)</label>
-      <div class="wm-pos-grid" id="accWmTabPosGrid">
-        <button type="button" data-wmx="0.12" data-wmy="0.07" title="Arriba a la izquierda">↖</button>
-        <button type="button" data-wmx="0.5" data-wmy="0.07" title="Arriba en el centro">↑</button>
-        <button type="button" data-wmx="0.88" data-wmy="0.07" title="Arriba a la derecha">↗</button>
-        <button type="button" data-wmx="0.12" data-wmy="0.5" title="En el centro a la izquierda">←</button>
-        <button type="button" data-wmx="0.5" data-wmy="0.5" title="Centro">•</button>
-        <button type="button" data-wmx="0.88" data-wmy="0.5" title="En el centro a la derecha">→</button>
-        <button type="button" data-wmx="0.12" data-wmy="0.93" title="Abajo a la izquierda">↙</button>
-        <button type="button" data-wmx="0.5" data-wmy="0.93" title="Abajo en el centro">↓</button>
-        <button type="button" data-wmx="0.88" data-wmy="0.93" title="Abajo a la derecha">↘</button>
-      </div>
       <div class="row">
         <div><label>Color del texto</label><input id="accWmTabColor" type="color" value="#FFFFFF" style="height:38px;padding:2px"></div>
         <div><label>Color del borde</label><input id="accWmTabBorder" type="color" value="#000000" style="height:38px;padding:2px"></div>
@@ -1439,7 +1440,8 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
       <div class="wm-tab-preview" id="accWmTabTextPreview">
         <span id="accWmTabTextPreviewSpan">@marketingcaribe</span>
       </div>
-      <hr>
+      </div>
+      <div id="accWmTabLogoSec" hidden>
       <h4 style="margin:0 0 4px">Logo</h4>
       <label>Subir logo (PNG, JPG o WebP, máx. 5 MB)</label>
       <input id="accWmTabLogoFile" type="file" accept="image/png,image/jpeg,image/webp">
@@ -1450,6 +1452,7 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
       <div class="wm-tab-preview" id="accWmTabLogoPreview">
         <img id="accWmTabLogoPreviewImg" hidden alt="">
         <span class="muted" id="accWmTabLogoPreviewEmpty">Sube un logo para verlo aquí.</span>
+      </div>
       </div>
       <div style="margin-top:14px"><button id="btnSaveWmTab">Guardar marca de agua</button></div>
       <p id="wmTabMsg" class="muted"></p>
@@ -1880,6 +1883,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=150"></script>
+<script src="app.js?v=151"></script>
 </body>
 </html>

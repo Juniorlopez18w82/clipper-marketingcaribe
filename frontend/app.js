@@ -1491,6 +1491,7 @@ async function loadMyClips() {
     }
     _myClipsPage = 0;
     renderMyClipsPage();
+    updatePvDownload();
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
 }
 
@@ -3166,10 +3167,38 @@ $("pvSoundBtn").onclick = () => {
   $("pvSoundBtn").innerHTML = pv.muted ? SPK_OFF_SVG + " Sonido silenciado" : SPK_ON_SVG + " Sonido activado";
 };
 
+// v158: botón "Descargar clip" en la vista previa. Busca el clip ya
+// renderizado que corresponde al candidato seleccionado (mismo inicio/fin)
+// y apunta el botón a su descarga. Si aún no está renderizado, queda
+// desactivado con "Generando…".
+function updatePvDownload() {
+  const btn = $("pvDownloadBtn");
+  if (!btn) return;
+  const sel = state.selected;
+  let url = "";
+  if (sel && _myClips.length) {
+    const m = _myClips.find((c) => c.download_url
+      && Math.abs((c.start || 0) - (sel.abs_start || 0)) < 1.5
+      && Math.abs((c.end || 0) - (sel.abs_end || 0)) < 1.5);
+    if (m) url = m.download_url;
+  }
+  if (url) {
+    btn.href = url;
+    btn.style.opacity = "";
+    btn.style.pointerEvents = "";
+    btn.innerHTML = DL_SVG + " Descargar clip";
+  } else {
+    btn.removeAttribute("href");
+    btn.style.opacity = ".55";
+    btn.style.pointerEvents = "none";
+    btn.innerHTML = DL_SVG + " Generando…";
+  }
+}
 function selectClip(c, el) {
   document.querySelectorAll(".clip-card.cand").forEach((x) => x.classList.remove("sel"));
   if (el) el.classList.add("sel");
   state.selected = c;
+  updatePvDownload();
   state.words = clipWords(c.abs_start, c.abs_end);
   $("clipStart").value = c.abs_start;
   $("clipEnd").value = c.abs_end;

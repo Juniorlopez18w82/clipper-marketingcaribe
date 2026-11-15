@@ -642,6 +642,8 @@ function wmVals() {
     y: ($("wmY") ? parseFloat($("wmY").value || "6") : 6) / 100,
     size: $("wmSize") ? parseInt($("wmSize").value || "48", 10) : 48,
     color: $("wmColor") ? $("wmColor").value : "#FFFFFF",
+    border_color: (state.user && state.user.watermark_border_color) || "#000000",
+    box_color: (state.user && state.user.watermark_box_color) || "#000000",
     opacity: ($("wmOpacity") ? parseFloat($("wmOpacity").value || "85") : 85) / 100,
   };
 }
@@ -663,6 +665,9 @@ function updateWatermarkPreview() {
   if (show && v.type === "text") {
     tx.textContent = v.text || ($("brandText") ? $("brandText").value : "@marketingcaribe") || "@marketingcaribe";
     tx.style.left = (v.x * 100) + "%";
+    tx.style.color = v.color;
+    tx.style.background = v.box_color + "73";
+    tx.style.webkitTextStroke = "1px " + v.border_color;
     tx.style.top = (v.y * 100) + "%";
     tx.style.fontSize = Math.max(10, Math.round(v.size * 0.38)) + "px";
     tx.style.color = v.color;
@@ -687,6 +692,8 @@ function updateWatermarkPreview() {
       bx.style.left = (v.x * 100) + "%";
       bx.style.top = (v.y * 100) + "%";
       bx.style.color = v.color;
+      bx.style.background = v.box_color + "73";
+      bx.style.webkitTextStroke = "1px " + v.border_color;
       bx.style.opacity = v.opacity;
     }
     if (showBox && v.type === "logo") {
@@ -2029,6 +2036,74 @@ $("btnSaveAccount").onclick = async () => {
 const _accWmFile = $("accWmLogoFile");
 if (_accWmFile) _accWmFile.addEventListener("change", () => { uploadWmLogo(_accWmFile.files && _accWmFile.files[0]); _accWmFile.value = ""; });
 
+// Pestaña "Marca de agua" en Mi Cuenta (v149): nombre, colores del
+// texto/borde/fondo y tamaño del logo, cada uno con su vista previa 9:16.
+function wmTabVals() {
+  return {
+    enabled: $("accWmTabEnabled") ? $("accWmTabEnabled").checked : true,
+    type: $("accWmTabType") ? $("accWmTabType").value : "text",
+    text: $("accWmTabText") ? $("accWmTabText").value.trim() : "",
+    color: $("accWmTabColor") ? $("accWmTabColor").value : "#FFFFFF",
+    border_color: $("accWmTabBorder") ? $("accWmTabBorder").value : "#000000",
+    box_color: $("accWmTabBox") ? $("accWmTabBox").value : "#000000",
+    size: $("accWmTabSize") ? parseInt($("accWmTabSize").value || "48", 10) : 48,
+  };
+}
+function fillWmTab() {
+  const u = state.user || {};
+  if ($("accWmTabEnabled")) $("accWmTabEnabled").checked = u.watermark_enabled !== false;
+  if ($("accWmTabType")) $("accWmTabType").value = u.watermark_type || "text";
+  if ($("accWmTabText")) $("accWmTabText").value = u.watermark_text || u.brand_text || "@marketingcaribe";
+  if ($("accWmTabColor")) $("accWmTabColor").value = u.watermark_color || "#FFFFFF";
+  if ($("accWmTabBorder")) $("accWmTabBorder").value = u.watermark_border_color || "#000000";
+  if ($("accWmTabBox")) $("accWmTabBox").value = u.watermark_box_color || "#000000";
+  if ($("accWmTabSize")) $("accWmTabSize").value = u.watermark_size || 48;
+  if ($("accWmTabLogoName")) $("accWmTabLogoName").textContent = u.watermark_logo ? ("Logo guardado: " + u.watermark_logo) : "Sin logo subido todavía.";
+  if ($("accWmTabLogoPreviewImg") && u.watermark_logo) $("accWmTabLogoPreviewImg").src = "/api/me/watermark-logo";
+  updateWmTabPreview();
+}
+function updateWmTabPreview() {
+  const v = wmTabVals();
+  const sp = $("accWmTabTextPreviewSpan");
+  if (sp) {
+    sp.textContent = v.text || "@marketingcaribe";
+    sp.style.color = v.color;
+    sp.style.background = v.box_color + "73";
+    sp.style.webkitTextStroke = "1.5px " + v.border_color;
+    sp.style.fontSize = Math.max(10, Math.round(v.size * 0.32)) + "px";
+    sp.hidden = v.type !== "text";
+  }
+  const img = $("accWmTabLogoPreviewImg"), emp = $("accWmTabLogoPreviewEmpty");
+  if (img) {
+    const has = !!(img.src || state.wmLogo);
+    img.hidden = !(v.type === "logo" && has);
+    if (v.type === "logo" && has) img.style.height = Math.max(12, Math.round(v.size * 0.55)) + "px";
+    if (emp) emp.hidden = v.type !== "logo" || has;
+  }
+  if ($("accWmTabSizeVal")) $("accWmTabSizeVal").textContent = String(v.size);
+}
+["accWmTabEnabled", "accWmTabType", "accWmTabText", "accWmTabColor", "accWmTabBorder", "accWmTabBox", "accWmTabSize"].forEach((id) => {
+  const el = $(id);
+  if (el) el.addEventListener("input", updateWmTabPreview);
+});
+const _wmTabLogo = $("accWmTabLogoFile");
+if (_wmTabLogo) _wmTabLogo.addEventListener("change", () => {
+  uploadWmLogo(_wmTabLogo.files && _wmTabLogo.files[0]);
+  _wmTabLogo.value = "";
+  setTimeout(updateWmTabPreview, 600);
+});
+const _btnWmTab = $("btnSaveWmTab");
+if (_btnWmTab) _btnWmTab.onclick = async () => {
+  const v = wmTabVals();
+  try {
+    const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ watermark_enabled: v.enabled, watermark_type: v.type, watermark_text: v.text, watermark_color: v.color, watermark_border_color: v.border_color, watermark_box_color: v.box_color, watermark_size: v.size }) });
+    $("wmTabMsg").textContent = "Marca de agua guardada.";
+    showUser(d);
+    updateWmTabPreview();
+  } catch (e) { $("wmTabMsg").textContent = "Error: " + e.message; }
+};
+
 // Pestañas de Mi Cuenta: Perfil / Configuración (2026-11-11, Juan).
 // En Configuración sale la membresía que tiene, cuándo se vence y el
 // botón para actualizarla ahora mismo.
@@ -2036,7 +2111,9 @@ document.querySelectorAll("#accTabs .mini-tab").forEach((btn) => {
   btn.onclick = () => {
     document.querySelectorAll("#accTabs .mini-tab").forEach((b) => b.classList.toggle("on", b === btn));
     $("accPane-profile").hidden = btn.dataset.acc !== "profile";
+    $("accPane-watermark").hidden = btn.dataset.acc !== "watermark";
     $("accPane-config").hidden = btn.dataset.acc !== "config";
+    if (btn.dataset.acc === "watermark") fillWmTab();
     if (btn.dataset.acc === "config") renderAccPlan();
   };
 });
@@ -3107,6 +3184,8 @@ $("btnSaveConfig").onclick = async () => {
     watermark_y: wmVals().y,
     watermark_size: wmVals().size,
     watermark_color: wmVals().color,
+    watermark_border_color: wmVals().border_color,
+    watermark_box_color: wmVals().box_color,
     watermark_opacity: wmVals().opacity,
   };
   try {

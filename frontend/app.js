@@ -1477,6 +1477,8 @@ function renderMyClipsPage() {
   }
 }
 $("btnShowAllClips").onclick = () => { _showAllClips = !_showAllClips; _myClipsPage = 0; renderMyClipsPage(); };
+// v157: el botón de Inicio va a Mis Clips mostrando TODOS los videos.
+$("btnShowAllClipsHome").onclick = () => { _showAllClips = true; _myClipsPage = 0; renderMyClipsPage(); goTab("clips"); };
 async function loadMyClips() {
   const box = $("myClips");
   try {

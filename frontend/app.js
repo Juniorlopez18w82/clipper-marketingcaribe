@@ -2628,6 +2628,9 @@ function syncPreviewDupes() {
   });
 }
 $("pvVideo").addEventListener("play", () => { ["pvVideoBg", "pvVideo2"].forEach((id) => { const d = $(id); if (d) d.play().catch(() => {}); }); });
+$("pvVideo").addEventListener("playing", () => { const ld = $("pvLoading"); if (ld) ld.hidden = true; });
+$("pvVideo").addEventListener("waiting", () => { const ld = $("pvLoading"); if (ld && $("pvVideo").dataset.src) ld.hidden = false; });
+$("pvVideo").addEventListener("error", () => { const ld = $("pvLoading"); if (ld) ld.hidden = true; });
 $("pvVideo").addEventListener("pause", () => { ["pvVideoBg", "pvVideo2"].forEach((id) => { const d = $(id); if (d) d.pause(); }); });
 
 // Reproduce el trozo del clip elegido en la vista previa 9:16 (sin sonido).
@@ -2658,6 +2661,8 @@ function playPreviewClip(c) {
   if (pv.dataset.src !== src) {
     pv.dataset.src = src;
     pv.src = src;
+    const ld = $("pvLoading");
+    if (ld) ld.hidden = false;
     pv.addEventListener("loadedmetadata", startAt, { once: true });
     pv.load();
   } else {

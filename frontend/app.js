@@ -380,6 +380,7 @@ $("btnLogin").onclick = async () => {
     localStorage.setItem("clipper_token", d.access_token);
     $("authMsg").textContent = "";
     showUser(d.user);
+    toast("Cuenta creada. ¡Bienvenido a Clipzio Pro!");
   } catch (e) { $("authMsg").textContent = "Error: " + e.message; }
 };
 $("btnRegister").onclick = async () => {

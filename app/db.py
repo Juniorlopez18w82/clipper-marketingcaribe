@@ -130,6 +130,35 @@ def init_db() -> None:
     at boot (e.g. wrong DATABASE_URL), log a warning and let the app
     start — auth endpoints will surface the real error.
     """
+def _ensure_user_watermark_columns() -> None:
+    """Add the watermark columns to an existing users table (v146)."""
+    from sqlalchemy import inspect
+
+    cols = {
+        "watermark_enabled": "BOOLEAN DEFAULT TRUE" if IS_POSTGRES else "BOOLEAN DEFAULT 1",
+        "watermark_type": "VARCHAR(10) DEFAULT 'text'",
+        "watermark_text": "VARCHAR(120)",
+        "watermark_logo": "VARCHAR(255)",
+        "watermark_x": "FLOAT DEFAULT 0.5",
+        "watermark_y": "FLOAT DEFAULT 0.06",
+        "watermark_size": "INTEGER DEFAULT 48",
+        "watermark_color": "VARCHAR(10) DEFAULT '#FFFFFF'",
+        "watermark_opacity": "FLOAT DEFAULT 0.85",
+    }
+    try:
+        existing = {c["name"] for c in inspect(engine).get_columns("users")}
+        missing = [k for k in cols if k not in existing]
+        if not missing:
+            return
+        with engine.begin() as conn:
+            for name in missing:
+                conn.exec_driver_sql(
+                    f'ALTER TABLE users ADD COLUMN "{name}" {cols[name]}')
+        logger.info("Migrated users table (watermark): added %s", ", ".join(missing))
+    except Exception:
+        logger.exception("Watermark migration failed")
+
+
 def _ensure_user_pref_columns() -> None:
     """Add the clip-preference columns to an existing users table.
 
@@ -240,6 +269,7 @@ def init_db() -> None:
         logger.warning("DB init failed (%s): %s", db_backend(), e)
         return
     _ensure_user_pref_columns()
+    _ensure_user_watermark_columns()
     _ensure_user_session_columns()
     _ensure_clip_columns()
     _ensure_live_columns()

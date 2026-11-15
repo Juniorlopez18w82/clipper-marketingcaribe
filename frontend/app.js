@@ -625,6 +625,7 @@ function fillConfig(u) {
   state.wmLogo = u.watermark_logo || "";
   // Si ya tiene un logo guardado, cargarlo para la vista previa.
   if (state.wmLogo && $("pvWmLogo")) $("pvWmLogo").src = "/api/me/watermark-logo";
+  if (state.wmLogo && $("wmPreviewLogo")) $("wmPreviewLogo").src = "/api/me/watermark-logo";
   updateWmRows();
   updateWatermarkPreview();
 }
@@ -675,6 +676,25 @@ function updateWatermarkPreview() {
   }
   if ($("wmXVal")) $("wmXVal").textContent = Math.round(v.x * 100) + "%";
   if ($("wmYVal")) $("wmYVal").textContent = Math.round(v.y * 100) + "%";
+  // Cuadro 9:16 de la marca de agua (v148): siempre visible en el editor.
+  const bx = $("wmPreviewText"), bl = $("wmPreviewLogo");
+  if (bx && bl) {
+    const showBox = v.enabled;
+    bx.hidden = !(showBox && v.type === "text");
+    bl.hidden = !(showBox && v.type === "logo" && (bl.src || state.wmLogo));
+    if (showBox && v.type === "text") {
+      bx.textContent = v.text || ($("brandText") ? $("brandText").value : "@marketingcaribe") || "@marketingcaribe";
+      bx.style.left = (v.x * 100) + "%";
+      bx.style.top = (v.y * 100) + "%";
+      bx.style.color = v.color;
+      bx.style.opacity = v.opacity;
+    }
+    if (showBox && v.type === "logo") {
+      bl.style.left = (v.x * 100) + "%";
+      bl.style.top = (v.y * 100) + "%";
+      bl.style.opacity = v.opacity;
+    }
+  }
 }
 // Subir el logo de la marca de agua.
 async function uploadWmLogo(file) {
@@ -686,6 +706,7 @@ async function uploadWmLogo(file) {
     state.wmLogo = d.filename || "";
     if ($("wmLogoName")) $("wmLogoName").textContent = "Logo guardado: " + state.wmLogo;
     if ($("pvWmLogo")) $("pvWmLogo").src = URL.createObjectURL(file);
+    if ($("wmPreviewLogo")) $("wmPreviewLogo").src = URL.createObjectURL(file);
     updateWatermarkPreview();
     toast("Logo de marca de agua guardado.");
   } catch (e) { toast("Error al subir el logo: " + e.message); }
@@ -778,6 +799,9 @@ async function loadPanel() {
   $("accEmail").value = state.user.email || "";
   $("accBrand").value = state.user.brand_text || "@marketingcaribe";
   $("accFrame").checked = state.user.frame_enabled !== false;
+  // Marca de agua del perfil (v148): nombre y logo, siempre los mismos.
+  if ($("accWmText")) $("accWmText").value = state.user.watermark_text || state.user.brand_text || "@marketingcaribe";
+  if ($("accWmLogoName")) $("accWmLogoName").textContent = state.user.watermark_logo ? ("Logo guardado: " + state.user.watermark_logo) : "Sin logo subido todavía.";
   renderPlans(activePlanId);
   loadMyClips();
   if (state.user.is_admin) loadAdmin();
@@ -1995,11 +2019,15 @@ function loadAdmin() {
 $("btnSaveAccount").onclick = async () => {
   try {
     const d = await apiFetch("/api/auth/me", { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ name: $("accName").value.trim(), brand_text: $("accBrand").value.trim(), frame_enabled: $("accFrame").checked }) });
+      body: JSON.stringify({ name: $("accName").value.trim(), brand_text: $("accBrand").value.trim(), frame_enabled: $("accFrame").checked, watermark_text: $("accWmText") ? $("accWmText").value.trim() : undefined }) });
     $("accMsg").textContent = "Guardado.";
     showUser(d);
   } catch (e) { $("accMsg").textContent = "Error: " + e.message; }
 };
+
+// Logo de marca de agua desde Mi Cuenta (v148).
+const _accWmFile = $("accWmLogoFile");
+if (_accWmFile) _accWmFile.addEventListener("change", () => { uploadWmLogo(_accWmFile.files && _accWmFile.files[0]); _accWmFile.value = ""; });
 
 // Pestañas de Mi Cuenta: Perfil / Configuración (2026-11-11, Juan).
 // En Configuración sale la membresía que tiene, cuándo se vence y el
@@ -2126,6 +2154,17 @@ $("frameEnabledVideo").addEventListener("change", () => {
   state.templateTouched = true;
   updatePreview();
 });
+// Posiciones predefinidas de la marca de agua (v148): 3x3.
+document.querySelectorAll("#wmPosGrid button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const x = parseFloat(btn.dataset.wmx || "0.5"), y = parseFloat(btn.dataset.wmy || "0.5");
+    if ($("wmX")) $("wmX").value = Math.round(x * 100);
+    if ($("wmY")) $("wmY").value = Math.round(y * 100);
+    updateWmRows();
+    updateWatermarkPreview();
+  });
+});
+
 // Marca de agua: los controles mueven la vista previa en vivo (v146).
 ["wmEnabled", "wmType", "wmText", "wmX", "wmY", "wmSize", "wmColor", "wmOpacity"].forEach((id) => {
   const el = $(id);

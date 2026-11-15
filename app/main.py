@@ -181,6 +181,7 @@ class RenderRequest(BaseModel):
     watermark_color: str = "#FFFFFF"
     watermark_border_color: str = "#000000"
     watermark_box_color: str = "#000000"
+    watermark_font: str = "Poppins Negrita"
     watermark_opacity: float = 0.85
     # --- Clip identity for the library: the selected candidate's hook
     # title + virality score (LLM) or score (heuristic). The frontend
@@ -291,6 +292,7 @@ class UserResponse(BaseModel):
     watermark_color: str = "#FFFFFF"
     watermark_border_color: str = "#000000"
     watermark_box_color: str = "#000000"
+    watermark_font: str = "Poppins Negrita"
     watermark_opacity: float = 0.85
     created_at: str | None = None
     # Fin del plan (ISO) para la cuenta atrás del encabezado: ends_at de
@@ -313,6 +315,7 @@ class UpdateMeRequest(BaseModel):
     watermark_color: str | None = None
     watermark_border_color: str | None = None
     watermark_box_color: str | None = None
+    watermark_font: str | None = None
     watermark_opacity: float | None = None
     max_clips: int | None = None
     min_clip_secs: float | None = None
@@ -839,6 +842,7 @@ def _run_render_job(job_id: str, req: RenderRequest):
             watermark_color=req.watermark_color,
             watermark_border_color=req.watermark_border_color,
             watermark_box_color=req.watermark_box_color,
+            watermark_font=req.watermark_font,
             watermark_opacity=req.watermark_opacity,
             subtitle_style=req.subtitle_style, subtitle_size=req.subtitle_size,
             subtitle_position=look["subtitle_position"],
@@ -1043,6 +1047,7 @@ def _live_round(session_id: int) -> None:
                     watermark_color=(getattr(user, "watermark_color", None) or "#FFFFFF"),
                     watermark_border_color=(getattr(user, "watermark_border_color", None) or "#000000"),
                     watermark_box_color=(getattr(user, "watermark_box_color", None) or "#000000"),
+                    watermark_font=(getattr(user, "watermark_font", None) or "Poppins Negrita"),
                     watermark_opacity=float(getattr(user, "watermark_opacity", 0.85) or 0.85),
                     camera_mode=(session.camera_mode or "follow_speaker"),
                     facecam_corner=(session.facecam_corner or "top-left"),
@@ -1252,6 +1257,8 @@ def api_update_me(req: UpdateMeRequest, db: Session = Depends(get_db),
         user.watermark_border_color = req.watermark_border_color.strip()[:10]
     if req.watermark_box_color is not None and req.watermark_box_color.strip():
         user.watermark_box_color = req.watermark_box_color.strip()[:10]
+    if req.watermark_font is not None and req.watermark_font.strip():
+        user.watermark_font = req.watermark_font.strip()[:40]
     if req.watermark_opacity is not None:
         user.watermark_opacity = max(0.05, min(1.0, float(req.watermark_opacity)))
     db.add(user)

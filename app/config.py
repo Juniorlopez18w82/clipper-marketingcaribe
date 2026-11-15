@@ -8,6 +8,7 @@ SOURCES_DIR = DATA_DIR / "sources"
 OUTPUTS_DIR = DATA_DIR / "outputs"
 JOBS_DIR = DATA_DIR / "jobs"
 TRANSCRIPTS_DIR = DATA_DIR / "transcripts"
+LOGOS_DIR = DATA_DIR / "logos"  # logos de marca de agua (v146)
 RECEIPTS_DIR = DATA_DIR / "receipts"  # comprobantes de pago subidos
 UPLOADS_DIR = DATA_DIR / "uploads"  # videos subidos por el usuario
 IMAGES_DIR = DATA_DIR / "images"  # imágenes generadas con IA (fal.ai)

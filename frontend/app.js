@@ -2063,9 +2063,17 @@ function fillWmTab() {
   if ($("accWmTabFont")) $("accWmTabFont").value = u.watermark_font || "Poppins Negrita";
   state.wmTabX = (u.watermark_x != null ? u.watermark_x : 0.5);
   state.wmTabY = (u.watermark_y != null ? u.watermark_y : 0.06);
+  updateWmTabSections();
   if ($("accWmTabLogoName")) $("accWmTabLogoName").textContent = u.watermark_logo ? ("Logo guardado: " + u.watermark_logo) : "Sin logo subido todavía.";
   if ($("accWmTabLogoPreviewImg") && u.watermark_logo) $("accWmTabLogoPreviewImg").src = "/api/me/watermark-logo";
   updateWmTabPreview();
+}
+// Solo se muestra la sección del tipo seleccionado (v151): si es Texto se
+// edita el texto, si es Logo se edita el logo; la posición vale para ambos.
+function updateWmTabSections() {
+  const t = $("accWmTabType") ? $("accWmTabType").value : "text";
+  if ($("accWmTabTextSec")) $("accWmTabTextSec").hidden = t !== "text";
+  if ($("accWmTabLogoSec")) $("accWmTabLogoSec").hidden = t !== "logo";
 }
 function updateWmTabPreview() {
   const v = wmTabVals();
@@ -2112,6 +2120,8 @@ document.querySelectorAll("#accWmTabPosGrid button").forEach((btn) => {
   const el = $(id);
   if (el) el.addEventListener("input", updateWmTabPreview);
 });
+const _wmTabType = $("accWmTabType");
+if (_wmTabType) _wmTabType.addEventListener("change", () => { updateWmTabSections(); updateWmTabPreview(); });
 const _wmTabLogo = $("accWmTabLogoFile");
 if (_wmTabLogo) _wmTabLogo.addEventListener("change", () => {
   uploadWmLogo(_wmTabLogo.files && _wmTabLogo.files[0]);

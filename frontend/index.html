@@ -733,6 +733,10 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
 .phone #pvVideoBg{z-index:0}
 .phone #pvVideo2{z-index:1}
 .phone .frame,.phone .brand,.phone .subs,.phone .cover-title{z-index:2}
+.phone .pv-loading{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(3,4,34,.85);color:#fff;font-size:14px;font-weight:600;text-align:center;padding:0 24px}
+.phone .pv-loading[hidden]{display:none}
+.phone .pv-spinner{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#FADE4C;animation:pv-spin .8s linear infinite}
+@keyframes pv-spin{to{transform:rotate(360deg)}}
 /* Cámara en la vista previa (v107): el modo se ve ANTES de Renderizar. */
 .phone.cam-mirror #pvVideo{transform:scaleX(-1)}
 .phone.cam-mirror_black #pvVideo{transform:scaleX(-1);object-fit:contain}
@@ -1033,6 +1037,7 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
           <div class="brand" id="pvBrand">@marketingcaribe</div>
           <div class="subs" id="pvSubs">LOCO, ES <span>LOCO</span></div>
           <div class="cover-title" id="pvCoverTitle" hidden></div>
+          <div class="pv-loading" id="pvLoading" hidden><div class="pv-spinner"></div><span>Descargando video…</span></div>
         </div>
         <p style="text-align:center;margin:10px 0 0"><button class="small ghost" id="pvSoundBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg> Sonido activado</button> <button class="small ghost" id="pvCoverBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 17l5-4 4 3 4-3 5 4"/></svg> Ver portada</button></p>
         <p class="muted" style="text-align:center" id="pvNote">9:16 · 1080×1920 · Reels / TikTok / Shorts</p>
@@ -1738,6 +1743,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=142"></script>
+<script src="app.js?v=143"></script>
 </body>
 </html>

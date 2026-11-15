@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 
 def build_candidates(segments: list[dict], min_len: float = 20.0,
-                     max_len: float = 45.0) -> list[dict]:
+                     max_len: float = 45.0,
+                     max_gap: float = 4.0) -> list[dict]:
     if not segments:
         return []
     # Flatten words with segment text for scoring.
@@ -99,9 +100,11 @@ def build_candidates(segments: list[dict], min_len: float = 20.0,
         duration = clip_end - start
         wpm = len(win_words) / max(duration / 60.0, 0.01)
         # Largest internal gap — a long silence makes a bad clip.
+        # (v159: el límite se puede relajar como último recurso para
+        # videos con pausas largas — música, reacciones — y no devolver 0.)
         gaps = [b["s"] - a["e"] for a, b in zip(win_words, win_words[1:])]
-        max_gap = max(gaps) if gaps else 0.0
-        if max_gap > 4.0:
+        max_gap_found = max(gaps) if gaps else 0.0
+        if max_gap_found > max_gap:
             continue
         score = round(
             min(wpm / 150.0, 1.0) * 70

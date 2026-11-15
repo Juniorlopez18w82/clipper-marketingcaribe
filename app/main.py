@@ -170,6 +170,16 @@ class RenderRequest(BaseModel):
     frame_width: int = DEFAULT_FRAME_WIDTH
     brand_text: str = DEFAULT_BRAND_TEXT
     title_text: str = ""
+    # Marca de agua persistente (v146): en TODO el video.
+    watermark_enabled: bool = True
+    watermark_type: str = "text"  # text | logo
+    watermark_text: str = ""
+    watermark_logo: str = ""  # nombre de archivo en data/logos/
+    watermark_x: float = 0.5
+    watermark_y: float = 0.06
+    watermark_size: int = 48
+    watermark_color: str = "#FFFFFF"
+    watermark_opacity: float = 0.85
     # --- Clip identity for the library: the selected candidate's hook
     # title + virality score (LLM) or score (heuristic). The frontend
     # sends these from the chosen candidate; video_title is the source
@@ -269,6 +279,15 @@ class UserResponse(BaseModel):
     quality: str = "1080p"
     subtitles_enabled: bool = True
     template: str = "Gancho grande"
+    watermark_enabled: bool = True
+    watermark_type: str = "text"
+    watermark_text: str = ""
+    watermark_logo: str = ""
+    watermark_x: float = 0.5
+    watermark_y: float = 0.06
+    watermark_size: int = 48
+    watermark_color: str = "#FFFFFF"
+    watermark_opacity: float = 0.85
     created_at: str | None = None
     # Fin del plan (ISO) para la cuenta atrás del encabezado: ends_at de
     # la suscripción activa, o created_at + 30 días para el admin sin
@@ -280,6 +299,15 @@ class UpdateMeRequest(BaseModel):
     name: str | None = None
     brand_text: str | None = None
     frame_enabled: bool | None = None
+    watermark_enabled: bool | None = None
+    watermark_type: str | None = None
+    watermark_text: str | None = None
+    watermark_logo: str | None = None
+    watermark_x: float | None = None
+    watermark_y: float | None = None
+    watermark_size: int | None = None
+    watermark_color: str | None = None
+    watermark_opacity: float | None = None
     max_clips: int | None = None
     min_clip_secs: float | None = None
     max_clip_secs: float | None = None
@@ -796,6 +824,14 @@ def _run_render_job(job_id: str, req: RenderRequest):
             frame_enabled=look["frame_enabled"],
             frame_color=look["frame_color"], frame_width=look["frame_width"],
             brand_text=req.brand_text, title_text=req.title_text,
+            watermark_enabled=req.watermark_enabled,
+            watermark_type=req.watermark_type,
+            watermark_text=(req.watermark_text or req.brand_text or ""),
+            watermark_logo=_resolve_watermark_logo(req.watermark_logo),
+            watermark_x=req.watermark_x, watermark_y=req.watermark_y,
+            watermark_size=req.watermark_size,
+            watermark_color=req.watermark_color,
+            watermark_opacity=req.watermark_opacity,
             subtitle_style=req.subtitle_style, subtitle_size=req.subtitle_size,
             subtitle_position=look["subtitle_position"],
             show_subtitles=req.show_subtitles,
@@ -988,6 +1024,16 @@ def _live_round(session_id: int) -> None:
                     video_title=st.get("title") or session.title,
                     brand_text=(session.brand_text or brand),
                     live_session_id=session.id,
+                    # Marca de agua persistente (v146): la guardada del usuario.
+                    watermark_enabled=(getattr(user, "watermark_enabled", True) is not False),
+                    watermark_type=(getattr(user, "watermark_type", None) or "text"),
+                    watermark_text=(getattr(user, "watermark_text", None) or ""),
+                    watermark_logo=(getattr(user, "watermark_logo", None) or ""),
+                    watermark_x=float(getattr(user, "watermark_x", 0.5) or 0.5),
+                    watermark_y=float(getattr(user, "watermark_y", 0.06) or 0.06),
+                    watermark_size=int(getattr(user, "watermark_size", 48) or 48),
+                    watermark_color=(getattr(user, "watermark_color", None) or "#FFFFFF"),
+                    watermark_opacity=float(getattr(user, "watermark_opacity", 0.85) or 0.85),
                     camera_mode=(session.camera_mode or "follow_speaker"),
                     facecam_corner=(session.facecam_corner or "top-left"),
                     frame_enabled=(session.frame_enabled is not False),
@@ -1176,6 +1222,24 @@ def api_update_me(req: UpdateMeRequest, db: Session = Depends(get_db),
         user.subtitles_enabled = bool(req.subtitles_enabled)
     if req.template is not None and req.template.strip():
         user.template = req.template.strip()[:80]
+    if req.watermark_enabled is not None:
+        user.watermark_enabled = bool(req.watermark_enabled)
+    if req.watermark_type is not None and req.watermark_type in ("text", "logo"):
+        user.watermark_type = req.watermark_type
+    if req.watermark_text is not None:
+        user.watermark_text = req.watermark_text.strip()[:120]
+    if req.watermark_logo is not None:
+        user.watermark_logo = req.watermark_logo.strip()[:255] or None
+    if req.watermark_x is not None:
+        user.watermark_x = max(0.0, min(1.0, float(req.watermark_x)))
+    if req.watermark_y is not None:
+        user.watermark_y = max(0.0, min(1.0, float(req.watermark_y)))
+    if req.watermark_size is not None:
+        user.watermark_size = max(16, min(200, int(req.watermark_size)))
+    if req.watermark_color is not None and req.watermark_color.strip():
+        user.watermark_color = req.watermark_color.strip()[:10]
+    if req.watermark_opacity is not None:
+        user.watermark_opacity = max(0.05, min(1.0, float(req.watermark_opacity)))
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -1643,6 +1707,17 @@ def api_admin_clips(db: Session = Depends(get_db),
 UPLOAD_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
 
 
+def _resolve_watermark_logo(name: str | None) -> str | None:
+    """Nombre de archivo del logo → ruta absoluta en LOGOS_DIR, o None
+    si no viene o no existe (el render entonces no pone logo)."""
+    from .config import LOGOS_DIR
+
+    if not name:
+        return None
+    path = LOGOS_DIR / Path(str(name)).name
+    return str(path) if path.exists() else None
+
+
 @app.post("/api/upload")
 async def api_upload(file: UploadFile = File(...),
                      db: Session = Depends(get_db),
@@ -1672,6 +1747,63 @@ async def api_upload(file: UploadFile = File(...),
         raise
     return {"file_id": filename, "filename": file.filename or filename,
             "size": total}
+
+
+@app.post("/api/me/watermark-logo")
+async def api_upload_watermark_logo(file: UploadFile = File(...),
+                                    db: Session = Depends(get_db),
+                                    user: User = Depends(get_current_user)):
+    """Sube el logo de la marca de agua (PNG/JPG/WebP, máx. 5 MB). Se
+    guarda en data/logos/ y se registra en el usuario (watermark_logo),
+    así persiste entre sesiones. Devuelve el nombre para la vista previa."""
+    from .config import LOGOS_DIR
+
+    ext = (Path(file.filename or "").suffix or "").lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+        raise HTTPException(
+            400, "El logo debe ser una imagen (PNG, JPG o WebP)")
+    LOGOS_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"logo_{user.id}_{uuid.uuid4().hex[:12]}{ext}"
+    dest = LOGOS_DIR / filename
+    total = 0
+    try:
+        with dest.open("wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > 5 * 1024 * 1024:
+                    raise HTTPException(400, "El logo no puede pasar de 5 MB")
+                out.write(chunk)
+    except HTTPException:
+        if dest.exists():
+            dest.unlink()
+        raise
+    user.watermark_logo = filename
+    user.watermark_type = "logo"
+    db.add(user)
+    db.commit()
+    return {"ok": True, "filename": filename, "size": total}
+
+
+@app.get("/api/me/watermark-logo")
+def api_get_watermark_logo(db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    """El logo de marca de agua del usuario actual (para la vista previa
+    al recargar). 404 si no tiene logo guardado."""
+    from .config import LOGOS_DIR
+
+    name = (getattr(user, "watermark_logo", None) or "").strip()
+    if not name:
+        raise HTTPException(404, "Sin logo guardado")
+    path = LOGOS_DIR / Path(name).name
+    if not path.exists():
+        raise HTTPException(404, "Logo no encontrado")
+    media = {".png": "image/png", ".jpg": "image/jpeg",
+             ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(
+                 path.suffix.lower(), "image/png")
+    return FileResponse(path, media_type=media, filename=path.name)
 
 
 # ---------------------------------------------------------------- impersonar (admin entra a la cuenta de un usuario)

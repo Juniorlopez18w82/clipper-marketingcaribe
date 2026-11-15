@@ -523,7 +523,21 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
                    words: list[dict] | None, subtitle_style: str,
                    subtitle_size: int, subtitle_position: str,
                    highlight_color: str = "#FADE4C",
-                   brand_size: int = 68, brand_y: int = 90) -> str:
+                   brand_size: int = 68, brand_y: int = 90,
+                   # Marca de agua persistente (v146): visible en TODO el
+                   # video (no solo la portada de 2 s). Tipo "text" (texto)
+                   # o "logo" (imagen). x/y son el CENTRO de la marca en
+                   # fracción del video (0-1). El logo se carga con el
+                   # filtro movie (sin entrada extra en el comando ffmpeg).
+                   watermark_enabled: bool = True,
+                   watermark_type: str = "text",
+                   watermark_text: str = "",
+                   watermark_logo: str | None = None,
+                   watermark_x: float = 0.5,
+                   watermark_y: float = 0.06,
+                   watermark_size: int = 48,
+                   watermark_color: str = "#FFFFFF",
+                   watermark_opacity: float = 0.85) -> str:
     """Filter chain from [vid] to [out]: frame + brand + title + ASS.
 
     Identical for every camera mode — the overlays always apply on top
@@ -532,6 +546,7 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
     preset supplies both.
     """
     chain = "[vid]"
+    _segs: list[str] = []
     # --- Frame + brand name: ONLY when frame_enabled is True. ---
     if frame_enabled:
         chain += (f"drawbox=x=0:y=0:w={out_w}:h={out_h}:color={frame_hex}:"
@@ -552,6 +567,40 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
                 f":textfile={title_file}:fontsize={int(round(30 * scale))}:fontcolor=white:"
                 f"x=(w-text_w)/2:y={int(round((brand_y + 90) * scale))}:box=1:boxcolor=black@0.55:boxborderw=14,"
             )
+    # --- Marca de agua persistente (v146): en TODO el video. ---
+    if watermark_enabled:
+        _wx = max(0.0, min(1.0, float(watermark_x or 0.5)))
+        _wy = max(0.0, min(1.0, float(watermark_y or 0.06)))
+        _wop = max(0.05, min(1.0, float(watermark_opacity or 0.85)))
+        if (watermark_type or "text").strip().lower() == "logo" and watermark_logo:
+            # Logo: termina la parte lineal, carga la imagen con movie
+            # y la superpone centrada en (x, y). eof_action=repeat
+            # mantiene el logo en todos los fotogramas (la imagen es un
+            # solo fotograma). La opacidad va en el canal alfa.
+            _lh = max(16, int(round(int(watermark_size or 48) * scale)))
+            _logo = str(watermark_logo).replace("'", "'\\''")
+            _segs.append(chain.rstrip(",") + "[prewm]")
+            _segs.append(
+                f"movie='{_logo}',scale=-1:{_lh},"
+                f"format=rgba,colorchannelmixer=aa={_wop:.2f}[logo]")
+            _segs.append(
+                f"[prewm][logo]overlay=x=W*{_wx:.3f}-w/2:"
+                f"y=H*{_wy:.3f}-h/2:eof_action=repeat[wm]")
+            chain = "[wm]"
+        else:
+            _wt = (watermark_text or "").strip() or (brand_text or "").strip()
+            if _wt:
+                _wm_file = tmpdir / "watermark.txt"
+                _wm_file.write_text(_wt, encoding="utf-8")
+                _whex = hex_to_ffmpeg(watermark_color or "#FFFFFF")
+                _wfs = max(16, int(round(int(watermark_size or 48) * scale)))
+                chain += (
+                    "drawtext=fontfile=" + FONT_BOLD +
+                    f":textfile={_wm_file}:fontsize={_wfs}:"
+                    f"fontcolor={_whex}@{_wop:.2f}:"
+                    f"x=w*{_wx:.3f}-text_w/2:y=h*{_wy:.3f}-text_h/2:"
+                    "box=1:boxcolor=black@0.45:boxborderw=12,"
+                )
     if show_subtitles and words:
         box_styles, box_events = _keyword_box_events(
             words, size=subtitle_size, position=subtitle_position,
@@ -568,6 +617,10 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
         chain += f"ass={ass_file}[out]"
     else:
         chain = chain.rstrip(",") + "[out]"
+    if _segs:
+        _segs.append(chain)
+        return ";".join(_segs)
+    return chain
     return chain
 
 
@@ -964,6 +1017,16 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 template: str | None = None,
                 brand_size: int | None = None,
                 brand_y: int | None = None,
+                # Marca de agua persistente (v146).
+                watermark_enabled: bool | None = None,
+                watermark_type: str | None = None,
+                watermark_text: str | None = None,
+                watermark_logo: str | None = None,
+                watermark_x: float | None = None,
+                watermark_y: float | None = None,
+                watermark_size: int | None = None,
+                watermark_color: str | None = None,
+                watermark_opacity: float | None = None,
                 quality: str = "1080p",
                 camera_mode: str = "center",
                 camera_person: str = "center",
@@ -1076,6 +1139,15 @@ def render_clip(source: Path, start_in_source: float, duration: float,
             subtitle_size=subtitle_size, subtitle_position=subtitle_position,
             highlight_color=highlight_color,
             brand_size=brand_size, brand_y=brand_y,
+            watermark_enabled=(True if watermark_enabled is None else watermark_enabled),
+            watermark_type=(watermark_type or "text"),
+            watermark_text=(watermark_text if watermark_text is not None else ""),
+            watermark_logo=watermark_logo,
+            watermark_x=(0.5 if watermark_x is None else watermark_x),
+            watermark_y=(0.06 if watermark_y is None else watermark_y),
+            watermark_size=(48 if watermark_size is None else watermark_size),
+            watermark_color=(watermark_color or "#FFFFFF"),
+            watermark_opacity=(0.85 if watermark_opacity is None else watermark_opacity),
         )
         # El clip principal se renderiza a un temporal; la portada (si
         # hay título de enganche) se antepone después.

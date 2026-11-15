@@ -616,7 +616,14 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
         )
         chain += f"ass={ass_file}[out]"
     else:
-        chain = chain.rstrip(",") + "[out]"
+        # Sin subtítulos la cadena debe terminar en [out]. Si es una
+        # cadena lineal se le pega la etiqueta; si es solo una etiqueta
+        # (overlay del logo, [wm]) se renombra con un filtro null.
+        if (chain.startswith("[") and chain.endswith("]")
+                and "=" not in chain and "," not in chain):
+            chain = chain + "null[out]"
+        else:
+            chain = chain.rstrip(",") + "[out]"
     if _segs:
         _segs.append(chain)
         return ";".join(_segs)

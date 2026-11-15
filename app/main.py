@@ -511,6 +511,14 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                                               max_clips=max_clips,
                                               min_len=min_len, max_len=max_len,
                                               abs_start=section_start_real)
+            # v159: la IA a veces devuelve algo inválido sin razón clara
+            # (visto en el video del Coreano Loco: 0 clips con 245 palabras);
+            # un segundo intento suele salir bien, y es gratis.
+            if candidates is None:
+                candidates = build_candidates_llm(sel_segments,
+                                                  max_clips=max_clips,
+                                                  min_len=min_len, max_len=max_len,
+                                                  abs_start=section_start_real)
         finally:
             _llm_stop.set()
             _llm_watcher.join(timeout=3)
@@ -519,6 +527,14 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             selector = "heuristic"
             candidates = build_candidates(sel_segments,
                                           min_len=min_len, max_len=max_len)
+            # v159: último recurso — si el heurístico tampoco encontró
+            # nada (pausas largas, música, reacciones), relajar el límite
+            # de silencio para devolver al menos el mejor trozo con habla,
+            # en vez de dejar al usuario con 0 clips.
+            if not candidates:
+                candidates = build_candidates(sel_segments,
+                                              min_len=min_len, max_len=max_len,
+                                              max_gap=15.0)
         candidates = candidates[:max(1, max_clips)]
         # 95% solo cuando los candidatos existen de verdad; el 100 lo
         # pone el update de "done" de abajo.

@@ -724,7 +724,13 @@ def _audio_fade_filter(duration: float) -> str:
     volume right up to the cut), so the fade makes the ending sound
     intentional instead of chopped."""
     out_start = max(0.0, duration - 0.4)
-    return (f"[0:a]afade=t=in:st=0:d=0.15,"
+    # v161: asetpts=PTS-STARTPTS — el video ya lo lleva (setpts) pero el
+    # audio no. Con descargas de lives (lead-in por keyframe, timestamps
+    # negativos o audio que no empieza en 0 tras el -ss), el audio salía
+    # desalineado y los primeros segundos se repetían en bucle ("Eso
+    # duele. Sí, es verdad." en el clip de Jenny Blanco). Al resetear los
+    # timestamps del audio a 0, audio y video quedan alineados.
+    return (f"[0:a]asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.15,"
             f"afade=t=out:st={out_start:.2f}:d=0.4[aout]")
 
 

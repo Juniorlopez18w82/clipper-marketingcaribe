@@ -832,7 +832,7 @@ def _concat_title_card(card: Path, clip: Path, output: Path) -> None:
     _run([
         "ffmpeg", "-y", "-v", "error",
         "-f", "concat", "-safe", "0", "-i", str(concat_list),
-        "-c", "copy", str(output),
+        "-c", "copy", "-movflags", "+faststart", str(output),
     ], "title card concat")
 
 
@@ -894,7 +894,7 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
         "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
         "-map", "[out]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
-        "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
+        "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", str(output),
     ], "follow final pass", progress_cb=_final_frac, total_seconds=duration)
     return output
 
@@ -1033,7 +1033,7 @@ def _render_auto(source: Path, start_in_source: float, duration: float,
         "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
         "-map", "[out]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
-        "-c:a", "aac", "-b:a", "128k", "-shortest", str(output),
+        "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", str(output),
     ], "auto final pass", progress_cb=_final_frac, total_seconds=duration)
     return output
 
@@ -1343,7 +1343,7 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 "-filter_complex", base + ";" + chain + ";" + _audio_fade_filter(duration),
                 "-map", "[out]", "-map", "[aout]",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
-                "-c:a", "aac", "-b:a", "128k", "-shortest", str(main_path),
+                "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", str(main_path),
             ], "render", progress_cb=progress_cb, total_seconds=duration)
         # --- Portada / título de enganche (2026-11-11) ---
         # Si hay título gancho, el clip empieza con la portada (fotograma

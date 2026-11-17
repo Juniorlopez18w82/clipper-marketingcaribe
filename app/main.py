@@ -572,6 +572,47 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
 _actual_section_start = actual_section_start
 
 
+def _remux_with_parent_audio(section_path: Path, parent_audio: Path,
+                             transcript_base: float, section_start: float,
+                             req_start: float, req_end: float,
+                             job_id: str) -> Path | None:
+    """Reemplazar el audio de la sección de video por el del análisis.
+
+    v163 (2026-11-16, Juan: la VOZ se repite/sale mal en los lives): el
+    render bajaba la sección de VIDEO por separado y su audio no caía en
+    el rango pedido — en un live, cada descarga por timestamp trae una
+    parte distinta (clip 277: el original traía un cántico "Vamos a
+    salir" x3, un re-render traía otro comentario, otro re-render otro
+    distinto; ninguno era el audio de 5590-5600). En cambio el AUDIO del
+    análisis (del que sale la transcripción) sí es fiable: ya está en
+    disco y su base es transcript_base. Así que el audio del clip se
+    corta de ahí y se mezcla con el video de la sección, ambos buscados
+    a req.start. El archivo resultante cubre exactamente
+    [req_start, req_end] (t=0 = req_start). Devuelve None si algo falla
+    (el llamador usa la sección original).
+    """
+    try:
+        dur = max(1.0, float(req_end - req.start))
+        audio_off = max(0.0, float(req_start - transcript_base))
+        video_off = max(0.0, float(req_start - section_start))
+        out_path = SOURCES_DIR / f"{job_id}_av.mp4"
+        cmd = ["ffmpeg", "-y", "-v", "error",
+               "-ss", str(audio_off), "-i", str(parent_audio),
+               "-ss", str(video_off), "-i", str(section_path),
+               "-map", "1:v:0", "-map", "0:a:0",
+               "-t", str(dur),
+               "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+               "-shortest", str(out_path)]
+        subprocess.run(cmd, check=True, timeout=180)
+        if not out_path.exists() or out_path.stat().st_size < 10000:
+            return None
+        return out_path
+    except Exception:
+        logger.warning("remux con audio del padre falló; se usa la "
+                       "sección original", exc_info=True)
+        return None
+
+
 def _resolve_source_for_render(req: RenderRequest, job_id: str):
     """Return (source_path, section_start, transcript_dict, transcript_base).
 
@@ -641,6 +682,17 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
             transcript_base = _actual_section_start(
                 parent_audio, float(res["section_start"]),
                 float(res["section_end"]))
+            # v163: el audio de la sección de video NO es fiable en lives
+            # (cada descarga trae una parte distinta); el del padre sí.
+            # Se remezcla video de la sección + audio del padre, y el
+            # archivo resultante cubre exactamente [req.start, req.end].
+            if parent_audio.exists():
+                fixed = _remux_with_parent_audio(
+                    source, parent_audio, transcript_base, section_start,
+                    req.start, req.end, job_id)
+                if fixed is not None:
+                    source = fixed
+                    section_start = req.start
         else:
             source = SOURCES_DIR / res["source_file"]
             # El archivo del padre también pudo bajar con lead-in: su

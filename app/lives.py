@@ -62,6 +62,11 @@ class LiveSession(Base):
     frame_width = Column(Integer, nullable=False,
                          default=DEFAULT_FRAME_WIDTH)
     brand_text = Column(String(255), nullable=True)
+    # Marca de agua persistente por live (v162): solo activar/desactivar.
+    # El contenido (texto/logo, color, tamaño, posición) es el ya
+    # configurado en Mi Cuenta > Marca de agua; aquí solo se enciende o
+    # se apaga para este live. NULL = usar la preferencia del usuario.
+    watermark_enabled = Column(Boolean, nullable=True)
     show_subtitles = Column(Boolean, nullable=False, default=True)
     subtitle_style = Column(String(16), nullable=False, default="viral")
     subtitle_size = Column(Integer, nullable=False, default=76)
@@ -118,6 +123,7 @@ def live_session_out(session: LiveSession, clip_count: int = 0) -> dict:
         "frame_color": session.frame_color or DEFAULT_FRAME_COLOR,
         "frame_width": session.frame_width or DEFAULT_FRAME_WIDTH,
         "brand_text": session.brand_text or "",
+        "watermark_enabled": session.watermark_enabled is not False,
         "show_subtitles": session.show_subtitles is not False,
         "subtitle_style": session.subtitle_style or "viral",
         "subtitle_size": session.subtitle_size or 76,

@@ -592,7 +592,7 @@ def _remux_with_parent_audio(section_path: Path, parent_audio: Path,
     (el llamador usa la sección original).
     """
     try:
-        dur = max(1.0, float(req_end - req.start))
+        dur = max(1.0, float(req_end - req_start))
         audio_off = max(0.0, float(req_start - transcript_base))
         video_off = max(0.0, float(req_start - section_start))
         out_path = SOURCES_DIR / f"{job_id}_av.mp4"

@@ -77,7 +77,7 @@ def _ensure_live_columns() -> None:
             "show_subtitles": "BOOLEAN", "subtitle_style": "VARCHAR(16)",
             "subtitle_size": "INTEGER", "subtitle_position": "VARCHAR(16)",
             "highlight_color": "VARCHAR(16)", "quality": "VARCHAR(16)",
-            "template": "VARCHAR(64)"}
+            "template": "VARCHAR(64)", "watermark_enabled": "BOOLEAN"}
     try:
         existing = {c["name"]
                     for c in inspect(engine).get_columns("live_sessions")}

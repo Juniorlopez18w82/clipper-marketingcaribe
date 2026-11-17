@@ -596,14 +596,20 @@ def _remux_with_parent_audio(section_path: Path, parent_audio: Path,
         audio_off = max(0.0, float(req_start - transcript_base))
         video_off = max(0.0, float(req_start - section_start))
         out_path = SOURCES_DIR / f"{job_id}_av.mp4"
+        # v163.1: el video se RE-CODIFICA (no -c:v copy): con copy, el
+        # -ss cae en el keyframe anterior y el video empieza ~1 s
+        # DESPUÉS que el audio en el archivo resultante (video
+        # start_time=1.0, audio start_time=0.0), y el render ya no usa
+        # el audio correcto. Re-codificar deja ambos en t=0 exactos.
         cmd = ["ffmpeg", "-y", "-v", "error",
                "-ss", str(audio_off), "-i", str(parent_audio),
                "-ss", str(video_off), "-i", str(section_path),
                "-map", "1:v:0", "-map", "0:a:0",
                "-t", str(dur),
-               "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+               "-c:a", "aac", "-b:a", "128k",
                "-shortest", str(out_path)]
-        subprocess.run(cmd, check=True, timeout=180)
+        subprocess.run(cmd, check=True, timeout=300)
         if not out_path.exists() or out_path.stat().st_size < 10000:
             return None
         return out_path

@@ -1053,7 +1053,13 @@ def _live_round(session_id: int) -> None:
                     brand_text=(session.brand_text or brand),
                     live_session_id=session.id,
                     # Marca de agua persistente (v146): la guardada del usuario.
-                    watermark_enabled=(getattr(user, "watermark_enabled", True) is not False),
+                    # v162: el interruptor por live manda si está puesto;
+                    # si no (NULL, lives viejos), usa la preferencia del usuario.
+                    watermark_enabled=(
+                        session.watermark_enabled
+                        if getattr(session, "watermark_enabled", None) is not None
+                        else (getattr(user, "watermark_enabled", True) is not False)
+                    ),
                     watermark_type=(getattr(user, "watermark_type", None) or "text"),
                     watermark_text=(getattr(user, "watermark_text", None) or ""),
                     watermark_logo=(getattr(user, "watermark_logo", None) or ""),
@@ -2247,6 +2253,8 @@ class LiveUpdateRequest(BaseModel):
     highlight_color: str | None = None
     quality: str | None = None
     template: str | None = None
+    # v162: solo activar/desactivar la marca de agua de este live.
+    watermark_enabled: bool | None = None
 
 
 def _require_live_plan(db: Session, user: User | None) -> None:
@@ -2458,6 +2466,8 @@ def api_lives_update(session_id: int, req: LiveUpdateRequest,
         session.subtitle_position = req.subtitle_position or "bottom"
     if req.highlight_color is not None:
         session.highlight_color = req.highlight_color or None
+    if req.watermark_enabled is not None:
+        session.watermark_enabled = bool(req.watermark_enabled)
     if req.quality is not None:
         session.quality = req.quality or "1080p"
     if req.template is not None:

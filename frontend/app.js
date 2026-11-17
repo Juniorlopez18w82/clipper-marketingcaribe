@@ -1648,7 +1648,7 @@ function openLiveConfig(id, list) {
   set($("lcSubStyle"), s.subtitle_style || "viral");
   set($("lcSubSize"), s.subtitle_size != null ? s.subtitle_size : 76);
   set($("lcSubPos"), s.subtitle_position || "bottom");
-  set($("lcBrandText"), s.brand_text || "");
+  set($("lcWmEnabled"), s.watermark_enabled === false ? "0" : "1");
   set($("lcHlColor"), s.highlight_color || "#FADE4C");
   set($("lcFrameEnabled"), s.frame_enabled === false ? "0" : "1");
   set($("lcFrameColor"), s.frame_color || "#FADE4C");
@@ -1681,7 +1681,7 @@ $("liveConfigSave").onclick = async () => {
         subtitle_style: $("lcSubStyle").value,
         subtitle_size: parseInt($("lcSubSize").value || "76", 10),
         subtitle_position: $("lcSubPos").value,
-        brand_text: $("lcBrandText").value.trim(),
+        watermark_enabled: $("lcWmEnabled").value === "1",
         highlight_color: $("lcHlColor").value,
         frame_enabled: $("lcFrameEnabled").value === "1",
         frame_color: $("lcFrameColor").value,

@@ -574,7 +574,7 @@ gigantes, con los botones como bloques morados enormes. --- */
 .panel .clip-card .clip-meta{font-size:12px;color:var(--p-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .panel .clip-card .clip-actions{display:flex;gap:8px;margin-top:10px;justify-content:flex-end;opacity:1}
 .panel .icon-btn{position:relative}
-.panel .icon-btn::after,.panel .clip-play::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(4px);background:#1c1c2e;border:1px solid var(--p-border);color:var(--p-text);font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:5;box-shadow:0 8px 20px rgba(0,0,0,.45)}
+.panel .icon-btn::after,.panel .clip-play::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(4px);background:#1c1c2e;border:1px solid var(--p-border);color:#f4f4f5;font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:5;box-shadow:0 8px 20px rgba(0,0,0,.45)}
 .panel .icon-btn:hover::after,.panel .icon-btn:focus-visible::after,.panel .clip-play:hover::after,.panel .clip-play:focus-visible::after{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
 .panel .icon-btn{width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;text-decoration:none;transition:transform .15s ease,background .2s ease}
 .panel .icon-btn svg{width:20px;height:20px}
@@ -1669,11 +1669,12 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
         <div><label>Estilo de subtítulo</label><select id="lcSubStyle"><option value="viral">Viral</option><option value="plain">Sencillo</option><option value="yellow">Amarillo</option></select></div>
         <div><label>Tamaño de subtítulo</label><input id="lcSubSize" type="number" min="30" max="120" step="1"></div>
         <div><label>Posición de subtítulo</label><select id="lcSubPos"><option value="bottom">Abajo</option><option value="middle">Centro</option><option value="top">Arriba</option></select></div>
-        <div><label>Marca de agua</label><input id="lcBrandText" type="text" placeholder="@marketingcaribe"></div>
+        <div><label>Marca de agua</label><select id="lcWmEnabled"><option value="1">Sí</option><option value="0">No</option></select></div>
         <div><label>Color de palabra clave</label><input id="lcHlColor" type="color"></div>
         <div><label>Marco</label><select id="lcFrameEnabled"><option value="1">Sí</option><option value="0">No</option></select></div>
         <div><label>Color del marco</label><input id="lcFrameColor" type="color"></div>
       </div>
+      <p class="muted" style="margin:12px 0 0">La marca de agua (texto o logo, color, tamaño y posición) se configura en <b>Mi Cuenta &gt; Marca de agua</b>. Aquí solo la activas o la quitas para este live.</p>
       <div class="modal-actions"><button class="ghost" id="liveConfigCancel" type="button">Cancelar</button><button class="btn-brand" id="liveConfigSave" type="button">Guardar configuración</button></div>
       <p id="liveConfigMsg" class="muted" style="margin:10px 0 0"></p>
     </div>
@@ -1862,6 +1863,6 @@ html.light .panel .live-countdown{color:#6d0bb8;background:rgba(146,2,233,.10)}
   </footer>
 </main>
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastClose" type="button" aria-label="Cerrar">×</button></div>
-<script src="app.js?v=161"></script>
+<script src="app.js?v=162"></script>
 </body>
 </html>

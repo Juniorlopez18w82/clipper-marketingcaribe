@@ -321,7 +321,14 @@ def _keyword_box_events(words: list[dict], *, size: int, position: str,
             if len(runs) < len(g):
                 continue
             if len(g) == 1:
-                word_boxes = runs
+                # Una sola palabra: la caja es TODO el tramo de tinta.
+                # `runs` son las letras sueltas (los huecos entre letras
+                # parten los runs); pasar la lista tal cual hace que
+                # zip() empareje la palabra solo con la PRIMERA letra y
+                # la caja salga centrada en ella, dejando la cola de la
+                # palabra blanca fuera a la derecha ("DELETEAN?EAN?",
+                # visto 2026-11-17 en el clip 409 a los ~2 s).
+                word_boxes = [(runs[0][0], runs[-1][1])]
             else:
                 # The N-1 widest gaps between runs are the word spaces.
                 gaps = [(runs[j + 1][0] - runs[j][1], j)
@@ -406,9 +413,14 @@ def _split_crop(w: int, h: int, corner: str = "top-left") -> tuple[tuple[int, in
     (RDjavi: arriba a la izquierda). El juego se recorta del lado
     opuesto (ancho completo en alto) para no mostrar la facecam dos
     veces. Devuelve ((fcw, fch, fcx, fcy), (gw, gh, gx, gy)).
+
+    (v187: además 'left-center' y 'right-center' — la cámara pegada a
+    un borde, en el medio vertical, como Speed —; el juego se recorta
+    del lado opuesto, igual que en las esquinas.)
     """
     corner = (corner or "top-left").strip().lower()
-    if corner not in ("top-left", "top-right", "bottom-left", "bottom-right"):
+    if corner not in ("top-left", "top-right", "bottom-left", "bottom-right",
+                      "left-center", "right-center"):
         corner = "top-left"
     panel_aspect = 9 / 8
     fw, fh = w * 0.32, h * 0.38
@@ -421,12 +433,127 @@ def _split_crop(w: int, h: int, corner: str = "top-left") -> tuple[tuple[int, in
     elif corner == "bottom-left":
         fzone = (0.0, h - fh, fw, fh)
         gzone = (fw, 0.0, w - fw, float(h))
+    elif corner == "left-center":
+        fzone = (0.0, (float(h) - fh) / 2, fw, fh)
+        gzone = (fw, 0.0, w - fw, float(h))
+    elif corner == "right-center":
+        fzone = (w - fw, (float(h) - fh) / 2, fw, fh)
+        gzone = (0.0, 0.0, w - fw, float(h))
     else:  # bottom-right
         fzone = (w - fw, h - fh, fw, fh)
         gzone = (0.0, 0.0, w - fw, float(h))
     fc = _cover_in_zone(*fzone, panel_aspect)
     gm = _cover_in_zone(*gzone, panel_aspect)
     return fc, gm
+
+
+# --- Detectores de caras (v190) ---
+# Orden de preferencia: YuNet > DNN (res10 SSD) > Haar.
+# Haar no ve caras en movimiento ni de perfil (Speed: 0 caras en
+# left-center, solo una cara del juego arriba) y la auto-detección
+# elegía esa cara del juego. El DNN res10 TAMPOCO es fiable con Speed
+# (0-1 caras según los fotogramas muestreados, y falsos positivos del
+# juego). YuNet sí lo ve: en la ventana de Speed lo detecta en 12/12
+# fotogramas (centro ~204,590) con umbral 0.7, mientras las caras del
+# juego casi desaparecen. Los modelos viven en face_models/ (copiados
+# a la imagen por el Dockerfile); si faltan, se baja al siguiente
+# detector. Cada detector se carga una sola vez y se reutiliza.
+_FACE_NET = None
+_FACE_NET_TRIED = False
+_YUNET = None
+_YUNET_TRIED = False
+
+
+def _load_yunet():
+    """Carga el detector YuNet (o None si no está disponible)."""
+    global _YUNET, _YUNET_TRIED
+    if _YUNET_TRIED:
+        return _YUNET
+    _YUNET_TRIED = True
+    try:
+        import cv2
+        base = Path(__file__).resolve().parent.parent / "face_models"
+        model = base / "face_detection_yunet_2023mar.onnx"
+        if not model.exists():
+            logger.warning("facecam: modelo YuNet no encontrado en %s", base)
+            return None
+        # El detector se crea por tamaño de imagen; aquí solo se
+        # guarda la ruta y se crea en _yunet_faces().
+        _YUNET = str(model)
+        logger.info("facecam: detector YuNet disponible (%s)", base)
+        return _YUNET
+    except Exception as e:  # noqa: BLE001 — sin YuNet no se tumba el render
+        logger.warning("facecam: no se pudo cargar YuNet (%s)", e)
+        return None
+
+
+def _yunet_faces(img, model_path, conf_thresh: float = 0.7):
+    """Caras detectadas por YuNet en una imagen (BGR, numpy).
+
+    Devuelve una lista de (x, y, w, h) en píxeles de la imagen.
+    """
+    import cv2
+    h_img, w_img = img.shape[:2]
+    detector = cv2.FaceDetectorYN.create(
+        model_path, "", (w_img, h_img),
+        score_threshold=conf_thresh)
+    _, faces = detector.detect(img)
+    out = []
+    if faces is None:
+        return out
+    for f in faces:
+        x, y, w, h = (float(v) for v in f[:4])
+        if w > 0 and h > 0:
+            out.append((int(x), int(y), int(w), int(h)))
+    return out
+
+
+def _load_face_net():
+    """Carga el detector DNN de caras (o None si no está disponible)."""
+    global _FACE_NET, _FACE_NET_TRIED
+    if _FACE_NET_TRIED:
+        return _FACE_NET
+    _FACE_NET_TRIED = True
+    try:
+        import cv2
+        base = Path(__file__).resolve().parent.parent / "face_models"
+        proto = base / "deploy.prototxt"
+        model = base / "res10_300x300_ssd_iter_140000.caffemodel"
+        if not proto.exists() or not model.exists():
+            logger.warning("facecam: modelos DNN no encontrados en %s; uso Haar", base)
+            return None
+        _FACE_NET = cv2.dnn.readNetFromCaffe(str(proto), str(model))
+        logger.info("facecam: detector DNN cargado (%s)", base)
+        return _FACE_NET
+    except Exception as e:  # noqa: BLE001 — sin DNN no se puede tumbar el render
+        logger.warning("facecam: no se pudo cargar el detector DNN (%s); uso Haar", e)
+        return None
+
+
+def _dnn_faces(img, net, conf_thresh: float = 0.3):
+    """Caras detectadas por DNN en una imagen (BGR, numpy).
+
+    Devuelve una lista de (x, y, w, h) en píxeles de la imagen.
+    """
+    import cv2
+    h_img, w_img = img.shape[:2]
+    blob = cv2.dnn.blobFromImage(img, 1.0, (300, 300),
+                                 (104.0, 177.0, 123.0))
+    net.setInput(blob)
+    detections = net.forward()
+    out = []
+    for i in range(detections.shape[2]):
+        conf = float(detections[0, 0, i, 2])
+        if conf < conf_thresh:
+            continue
+        x1 = int(detections[0, 0, i, 3] * w_img)
+        y1 = int(detections[0, 0, i, 4] * h_img)
+        x2 = int(detections[0, 0, i, 5] * w_img)
+        y2 = int(detections[0, 0, i, 6] * h_img)
+        if x2 <= x1 or y2 <= y1:
+            continue
+        out.append((x1, y1, x2 - x1, y2 - y1))
+    return out
 
 
 def _detect_facecam_box(source: Path, start: float, duration: float,
@@ -438,35 +565,75 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
     18% x 32%): en el video de Luinny la facecam es mucho más grande
     (~35% x ~42%) y el cuadro fijo la recortaba por la mitad — solo se
     veía medio Luinny arriba. Ahora el cuadro se MIDE en el propio
-    video: se detecta la cara del que habla en la esquina de la facecam
-    (Haar, varios fotogramas), se toma la posición MEDIANA (así el
-    cuadro queda FIJO aunque la persona se mueva) y se dimensiona a
-    partir de la cara (ancho = cara x 2.8, alto = cara x 2.0) para que
-    entre la cabeza + los hombros completos. Si no se encuentra cara,
-    se usa el cuadro fijo de RDjavi. Devuelve (w, h, x, y).
+    video: se detecta la cara del que habla (Haar, varios fotogramas),
+    se toma la posición MEDIANA (así el cuadro queda FIJO aunque la
+    persona se mueva) y se dimensiona a partir de la cara (ancho =
+    cara x 2.8, alto = cara x 2.0) para que entre la cabeza + los
+    hombros completos. Si no se encuentra cara, se usa el cuadro fijo
+    de RDjavi. Devuelve (w, h, x, y).
+
+    Detección de la ESQUINA (v185, 2026-11-19, pedido de Juan: 'debes
+    detectar la camara'): la cámara puede estar en CUALQUIER esquina
+    (Kesto la tiene abajo a la derecha, pequeña) y antes solo se
+    buscaba en la esquina indicada (por defecto arriba a la izquierda),
+    así que si la cámara estaba en otra esquina el detector agarraba
+    una cara del juego o el cuadro fijo. Ahora se buscan caras en las
+    CUATRO esquinas y se elige la que tiene la cara más CONSTANTE (en
+    más fotogramas y con la posición más estable): una webcam real está
+    fija en su esquina en casi todos los fotogramas, mientras que las
+    caras del juego aparecen y desaparecen. El parámetro `corner` queda
+    como preferencia en caso de empate y para el cuadro fijo de
+    respaldo. (v187: además se buscan los MEDIOS de los lados
+    —izquierda-centro y derecha-centro— porque hay creadores como Speed
+    que ponen la cámara pegada a un borde, en el medio vertical, fuera
+    de las 4 esquinas.)
     """
     vw, vh = probe_size(source)
-    corner = (corner or "top-left").strip().lower()
-    # Cuadro fijo de respaldo (RDjavi, v31).
+    corner = (corner or "auto").strip().lower()
+    # (v188, 2026-11-19: la validación acepta también "left-center" y
+    # "right-center" — v187 añadió esas zonas a `regions` y a
+    # `_split_crop`, pero NO a esta validación ni al cuadro fijo, así
+    # que forzar facecam_corner="left-center" se reseteaba en silencio
+    # a "top-left" y el render salía byte-idéntico al v187.)
+    # (v189, 2026-11-19: "auto" = buscar en las 6 zonas (comportamiento
+    # histórico); una esquina EXPLÍCITA restringe la búsqueda a ESA zona
+    # — el v188 no bastó porque Haar encontraba una cara del JUEGO en
+    # otra zona y esa cara siempre ganaba la auto-detección, así que el
+    # parámetro no tenía ningún efecto en Speed aunque el cuadro fijo
+    # estuviera bien. Un valor no reconocido se trata como "auto".)
+    if corner not in ("top-left", "top-right", "bottom-left",
+                      "bottom-right", "left-center", "right-center",
+                      "auto"):
+        corner = "auto"
+    # Cuadro fijo de respaldo (RDjavi, v31). En modo "auto" el fijo es el
+    # de arriba a la izquierda (comportamiento histórico).
+    fixed_corner = corner if corner != "auto" else "top-left"
     bw0, bh0 = vw * 0.18, vh * 0.32
-    if corner == "top-left":
+    if fixed_corner == "top-left":
         fx0, fy0 = 0.0, vh * 0.02
-    elif corner == "top-right":
+    elif fixed_corner == "top-right":
         fx0, fy0 = vw - bw0, vh * 0.02
-    elif corner == "bottom-left":
+    elif fixed_corner == "bottom-left":
         fx0, fy0 = 0.0, vh - bh0 - vh * 0.02
+    elif fixed_corner == "left-center":
+        fx0, fy0 = 0.0, (vh - bh0) / 2
+    elif fixed_corner == "right-center":
+        fx0, fy0 = vw - bw0, (vh - bh0) / 2
     else:
         fx0, fy0 = vw - bw0, vh - bh0 - vh * 0.02
     fixed = (int(round(bw0 / 2) * 2), int(round(bh0 / 2) * 2),
              int(round(fx0 / 2) * 2), int(round(fy0 / 2) * 2))
-    # --- Detección adaptativa: mide la cara en la esquina. ---
+    # --- Detección adaptativa: mide la cara en cada esquina. ---
     try:
         import statistics
         import cv2
     except Exception:
         return fixed
     try:
-        n = max(3, min(8, int(duration // 3) + 1))
+        # (v190) Se muestrean MÁS fotogramas (mín. 8, máx. 12): una cara
+        # en movimiento como la de Speed solo se ve de frente en 1 de
+        # cada ~8 fotogramas; con 4 no se pillaba nunca.
+        n = max(8, min(12, int(duration // 2) + 1))
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             pattern = tmpdir / "fc_%04d.jpg"
@@ -482,44 +649,110 @@ def _detect_facecam_box(source: Path, start: float, duration: float,
             frames = sorted(tmpdir.glob("fc_*.jpg"))
             if not frames:
                 return fixed
-            cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades
-                + "haarcascade_frontalface_default.xml")
-            # Región de la esquina (cuadrante, con un margen del 5% para
-            # no contar una cara centrada a pantalla completa).
+            # (v190) Detector por orden: YuNet > DNN > Haar. YuNet es el
+            # único fiable con caras pequeñas en movimiento (Speed).
+            yunet = _load_yunet()
+            net = None if yunet is not None else _load_face_net()
+            cascade = None
+            if yunet is None and net is None:
+                cascade = cv2.CascadeClassifier(
+                    cv2.data.haarcascades
+                    + "haarcascade_frontalface_default.xml")
+            # Zonas donde puede estar la cámara (v187, 2026-11-19): las 4
+            # esquinas (margen del 5% para no contar una cara centrada a
+            # pantalla completa) MÁS los medios de los lados
+            # (izquierda-centro y derecha-centro): hay creadores (Speed)
+            # que ponen la cámara pegada a un borde, en el MEDIO vertical
+            # (su cara cae en y ~52%, en el hueco entre los dos cuadrantes
+            # izquierdos, en NINGUNO). Las 6 zonas son disjuntas y cubren
+            # los dos bordes laterales completos; el centro (x 45–55%) no
+            # es zona de cámara (ahí estaría una cara a pantalla completa).
             m = 0.05
-            if corner == "top-left":
-                rx0, ry0, rx1, ry1 = 0, 0, vw * (0.5 - m), vh * (0.5 - m)
-            elif corner == "top-right":
-                rx0, ry0, rx1, ry1 = vw * (0.5 + m), 0, vw, vh * (0.5 - m)
-            elif corner == "bottom-left":
-                rx0, ry0, rx1, ry1 = 0, vh * (0.5 + m), vw * (0.5 - m), vh
-            else:
-                rx0, ry0, rx1, ry1 = vw * (0.5 + m), vh * (0.5 + m), vw, vh
-            faces: list[tuple[float, float, float, float]] = []
+            all_regions = {
+                "top-left": (0, 0, vw * (0.5 - m), vh * (0.5 - m)),
+                "top-right": (vw * (0.5 + m), 0, vw, vh * (0.5 - m)),
+                "bottom-left": (0, vh * (0.5 + m), vw * (0.5 - m), vh),
+                "bottom-right": (vw * (0.5 + m), vh * (0.5 + m), vw, vh),
+                "left-center": (0, vh * (0.5 - m), vw * (0.5 - m),
+                                vh * (0.5 + m)),
+                "right-center": (vw * (0.5 + m), vh * (0.5 - m), vw,
+                                 vh * (0.5 + m)),
+            }
+            # (v189) Esquina explícita = SOLO esa zona: una cara del juego
+            # en otra zona ya no puede ganar. "auto" = las 6 zonas.
+            regions = (all_regions if corner == "auto"
+                       else {corner: all_regions[corner]})
             s = 640 / vw  # escala: fotograma 640 px -> video original
-            for fp in frames:
+            # Por esquina: caras encontradas y en cuántos fotogramas hay
+            # al menos una cara (una webcam real está en casi todos).
+            per_corner: dict[str, list[tuple[float, float, float, float]]] = {
+                c: [] for c in regions
+            }
+            frames_with: dict[str, set[int]] = {c: set() for c in regions}
+            for fi, fp in enumerate(frames):
                 img = cv2.imread(str(fp))
                 if img is None:
                     continue
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                found = cascade.detectMultiScale(
-                    gray, scaleFactor=1.1, minNeighbors=5,
-                    minSize=(30, 30))
+                if yunet is not None:
+                    found = _yunet_faces(img, yunet)
+                elif net is not None:
+                    found = _dnn_faces(img, net)
+                else:
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    found = cascade.detectMultiScale(
+                        gray, scaleFactor=1.1, minNeighbors=5,
+                        minSize=(30, 30))
                 for (x, y, w, h) in found:
                     cx = (x + w / 2) / s
                     cy = (y + h / 2) / s
-                    if rx0 <= cx <= rx1 and ry0 <= cy <= ry1:
-                        faces.append((cx, cy, w / s, h / s))
-            if not faces:
+                    for cname, (rx0, ry0, rx1, ry1) in regions.items():
+                        if rx0 <= cx <= rx1 and ry0 <= cy <= ry1:
+                            per_corner[cname].append((cx, cy, w / s, h / s))
+                            frames_with[cname].add(fi)
+                            break
+            # Elegir la esquina con la cara más constante: primero la
+            # que aparece en más fotogramas; en empate, la de posición
+            # más estable (menor dispersión); luego la preferencia del
+            # llamador (`corner`).
+            def _spread(faces):
+                if len(faces) < 2:
+                    return 0.0
+                xs = [f[0] for f in faces]
+                ys = [f[1] for f in faces]
+                return (statistics.pstdev(xs) + statistics.pstdev(ys)) / 2.0
+
+            best = None
+            best_key = None
+            # (v189) Se itera solo sobre las zonas buscadas: con esquina
+            # explícita `regions` tiene una sola entrada.
+            for cname in regions:
+                faces = per_corner[cname]
+                if not faces:
+                    continue
+                key = (len(frames_with[cname]), -_spread(faces),
+                       1 if cname == corner else 0)
+                if best_key is None or key > best_key:
+                    best_key = key
+                    best = cname
+            if best is None:
                 return fixed
+            faces = per_corner[best]
+            logger.info("facecam: esquina detectada %s (%d/%d fotogramas con cara)",
+                        best, len(frames_with[best]), len(frames))
             mcx = statistics.median(f[0] for f in faces)
             mcy = statistics.median(f[1] for f in faces)
             mfw = statistics.median(f[2] for f in faces)
             mfh = statistics.median(f[3] for f in faces)
-            # Cuadro = cabeza + hombros completos.
-            bw = min(mfw * 2.8, vw * 0.5)
-            bh = min(mfh * 2.0, vh * 0.6)
+            # Cuadro = cabeza + hombros completos. (v191) YuNet devuelve
+            # un cuadro de cara MUY ajustado (solo la cara interior):
+            # para Speed da ~63x80 cuando la cabeza real mide ~140x140.
+            # Con los multiplicadores viejos (2.8/2.0, afinados para Haar)
+            # el cuadro salía de 176x160 y el recorte cuadrado de 128 px,
+            # que al ampliarse 4x hasta 518 px se veía borroso. Con 4.0/3.0
+            # el cuadro es 252x240, el recorte 192 px y la ampliación
+            # baja a 2.7x: la cara se ve nítida y sigue siendo grande.
+            bw = min(mfw * 4.0, vw * 0.5)
+            bh = min(mfh * 3.0, vh * 0.6)
             x = max(0.0, min(mcx - bw / 2, vw - bw))
             y = max(0.0, min(mcy - bh / 2, vh - bh))
             return (int(round(bw / 2) * 2), int(round(bh / 2) * 2),
@@ -605,7 +838,15 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
             # solo fotograma). La opacidad va en el canal alfa.
             _lh = max(16, int(round(int(watermark_size or 48) * scale)))
             _logo = str(watermark_logo).replace("'", "'\\''")
-            _segs.append(chain.rstrip(",") + "[prewm]")
+            # v202: si no hay marco, la cadena es solo "[vid]" y el
+            # segmento quedaba "[vid][prewm]" sin filtro -> ffmpeg
+            # "No such filter: ''". Igual que el caso [out] de abajo,
+            # se mete un null para que el segmento sea válido.
+            _base = chain.rstrip(",")
+            if (_base.startswith("[") and _base.endswith("]")
+                    and "=" not in _base and "," not in _base):
+                _base = _base + "null"
+            _segs.append(_base + "[prewm]")
             _segs.append(
                 f"movie='{_logo}',scale=-1:{_lh},"
                 f"format=rgba,colorchannelmixer=aa={_wop:.2f}[logo]")
@@ -764,7 +1005,12 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
                 title_pos_y: float | None = None,
                 # Espejo (2026-11-12): el fotograma de portada también
                 # se voltea para que coincida con el clip en espejo.
-                mirror: bool = False) -> Path:
+                mirror: bool = False,
+                # Doble cara (2026-11-19, Juan: los primeros 2 s salían
+                # en un solo cuadro y luego cambiaba a doble cara): la
+                # portada también va en doble cara, con el mismo
+                # recorte que el clip, para que no haya salto visual.
+                dual: bool = False) -> Path:
     """Portada del clip (2026-11-11, petición de Juan): un fotograma fijo
     del video (el elegido con el control Portada) a pantalla completa
     9:16, con el título de enganche GRANDE y centrado encima, SIN marco
@@ -777,14 +1023,33 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
         raise ValueError("title is empty")
     cover = tmpdir / "cover.png"
     # Fotograma de portada, recorte 9:16 centrado (como el clip).
+    # En doble cara se usa el mismo recorte doble del clip (mitad
+    # izquierda arriba, mitad derecha abajo) en vez del recorte único.
     flip = "hflip," if mirror else ""
-    _run([
-        "ffmpeg", "-y", "-v", "error",
-        "-ss", str(max(0.0, cover_abs)), "-i", str(source),
-        "-frames:v", "1",
-        "-vf", f"{flip}crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h}",
-        str(cover),
-    ], "title card frame")
+    if dual:
+        vw, vh = probe_size(source)
+        cw, ch, cy, xl, xr = _dual_crop(vw, vh)
+        cover_vf = (
+            f"{flip}split=2[l][r];"
+            f"[l]crop={cw}:{ch}:{xl}:{cy},scale={out_w}:{out_h // 2}[top];"
+            f"[r]crop={cw}:{ch}:{xr}:{cy},scale={out_w}:{out_h // 2}[bot];"
+            f"[top][bot]vstack=inputs=2"
+        )
+        _run([
+            "ffmpeg", "-y", "-v", "error",
+            "-ss", str(max(0.0, cover_abs)), "-i", str(source),
+            "-frames:v", "1",
+            "-filter_complex", cover_vf,
+            str(cover),
+        ], "title card frame")
+    else:
+        _run([
+            "ffmpeg", "-y", "-v", "error",
+            "-ss", str(max(0.0, cover_abs)), "-i", str(source),
+            "-frames:v", "1",
+            "-vf", f"{flip}crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h}",
+            str(cover),
+        ], "title card frame")
     # Título envuelto en líneas cortas para que se lea grande.
     wrapped = "\n".join(textwrap.wrap(title, width=18))
     title_file = tmpdir / "hook_title.txt"
@@ -1076,9 +1341,12 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                 camera_mode: str = "center",
                 camera_person: str = "center",
                 # Pantalla dividida (2026-11-11): esquina donde está la
-                # facecam ("top-left" | "top-right" | "bottom-left" |
-                # "bottom-right"). Solo se usa con camera_mode="split".
-                facecam_corner: str = "top-left",
+                # facecam ("auto" | "top-left" | "top-right" |
+                # "bottom-left" | "bottom-right" | "left-center" |
+                # "right-center"). Solo se usa con camera_mode="split".
+                # (v189) "auto" busca en las 6 zonas; una esquina
+                # explícita restringe la detección a esa zona.
+                facecam_corner: str = "auto",
                 # Portada / título de enganche (2026-11-11): el título gancho
                 # (clip_title) se quema GRANDE sobre la portada al inicio
                 # del clip, sin marco ni marca. cover_at es el offset (s)
@@ -1113,8 +1381,10 @@ def render_clip(source: Path, start_in_source: float, duration: float,
 
     ``camera_mode``: "center" (default, the approved center crop),
     "dual" (left half on top, right half below, for two-person
-    interviews), "split" (facecam on top, game below — pantalla
-    dividida para videos de gaming), "follow_speaker" (9:16 crop
+    interviews), "split" (pantalla dividida estilo TikTok: facecam
+    centrada arriba, cuadrada, ~72% del ancho, sobre el mismo recorte
+    borroso de fondo (nunca se ve el juego atrás); juego a todo lo ancho
+    abajo; banda superior ~44%, inferior ~56%), "follow_speaker" (9:16 crop
     follows whoever is speaking, face detection + mouth-movement score),
     "follow_person" (follows the face in the requested zone:
     ``camera_person`` left / center / right), "auto" (encuadre
@@ -1260,25 +1530,97 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                     f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
                 )
             elif mode == "split":
-                # Pantalla dividida: facecam arriba, juego abajo.
-                # La cara se localiza por detección (fija y precisa);
-                # si no hay cara en la esquina, se usa el recorte fijo.
-                # El panel superior muestra el cuadro COMPLETO (contain
-                # + pad): nada del cuadro se recorta, queda fijo.
+                # Pantalla dividida estilo TikTok (2026-11-18, Juan: como
+                # el video de RDjavi): facecam CENTRADA arriba, cuadrada
+                # (~72% del ancho, banda superior ~44% — más grande que
+                # el 60%/38% de v181 porque Juan 2026-11-18 lo vio igual:
+                # 'debe hacer el video de arriba mas grande para que
+                # ocupe mas'), SIEMPRE centrada arriba (pedido de Juan
+                # 2026-11-19: 'siempre debe quedar arriba centrada y el
+                # video abajo'; se quitó el desplazamiento de v183/v184),
+                # sobre el MISMO recorte cuadrado ampliado y borroso de
+                # fondo (relleno, no borde de color) — el fondo usa el
+                # mismo cuadrado que el recuadro, nunca el cuadro ancho
+                # de detección, para que atrás NUNCA se vea el juego;
+                # el juego a todo lo ancho abajo. Nada se estira.
+                # El juego se recorta del lado OPUESTO a la esquina
+                # DETECTADA de la cámara (v186): así la camarita quemada
+                # en el video original no sale dos veces y el juego se ve
+                # abajo completo y limpio.
+                # El recorte cuadrado es 0.8× el cuadro detectado (más
+                # cerrado sobre la cara) para que la persona llene más el
+                # recuadro y se vea más grande, como en el TikTok.
                 vw, vh = probe_size(source)
                 fc = _detect_facecam_box(source, start_in_source,
                                          duration, facecam_corner)
                 if fc is None:
-                    fc, _ = _split_crop(vw, vh, facecam_corner)
-                _, (gw, gh, gx, gy) = _split_crop(vw, vh, facecam_corner)
+                    # Sin detección: cuadro fijo + juego del lado opuesto
+                    # a la esquina indicada (comportamiento histórico).
+                    fc, (gw, gh, gx, gy) = _split_crop(vw, vh, facecam_corner)
+                else:
+                    # Esquina DETECTADA (v186, 2026-11-19, pedido de Juan:
+                    # 'recortalo... el juego que se vea abajo completo'):
+                    # la cámara puede estar en cualquier esquina (Kesto
+                    # abajo a la derecha, Speed al otro lado) y el juego
+                    # debe recortarse del lado OPUESTO para que la
+                    # camarita quemada en el video original NO salga dos
+                    # veces (arriba grande y abajo pequeña). Antes el juego
+                    # se recortaba con la esquina del parámetro (por
+                    # defecto arriba a la izquierda), así que con Kesto el
+                    # juego incluía la esquina inferior derecha y su PiP
+                    # se veía abajo. Ahora la esquina se deriva del centro
+                    # del cuadro detectado. (v187: 6 zonas — las 4 esquinas
+                    # más los medios de los lados, porque Speed pone la
+                    # cámara pegada al borde izquierdo, en el medio
+                    # vertical; si el centro cae en la franja central
+                    # horizontal, se usa la esquina del parámetro.)
+                    _fcw, _fch, _fcx, _fcy = fc
+                    _cx = _fcx + _fcw / 2
+                    _cy = _fcy + _fch / 2
+                    _lx = _cx < vw * 0.45
+                    _rx = _cx >= vw * 0.55
+                    _ty = _cy < vh * 0.45
+                    _by = _cy >= vh * 0.55
+                    if _lx and _ty:
+                        det_corner = "top-left"
+                    elif _rx and _ty:
+                        det_corner = "top-right"
+                    elif _lx and _by:
+                        det_corner = "bottom-left"
+                    elif _rx and _by:
+                        det_corner = "bottom-right"
+                    elif _lx:
+                        det_corner = "left-center"
+                    elif _rx:
+                        det_corner = "right-center"
+                    else:
+                        det_corner = facecam_corner
+                    _, (gw, gh, gx, gy) = _split_crop(vw, vh, det_corner)
                 fcw, fch, fcx, fcy = fc
-                half_h = out_h // 2
+                # Recorte cuadrado centrado en el cuadro de la facecam,
+                # 0.8× para cerrar más sobre la cara (la persona llena
+                # más el recuadro).
+                side = int(round(min(fcw, fch) * 0.8 / 2) * 2)
+                sqx = int(round((fcx + (fcw - side) / 2) / 2) * 2)
+                sqy = int(round((fcy + (fch - side) / 2) / 2) * 2)
+                top_h = int(round(out_h * 0.44 / 2) * 2)
+                bot_h = out_h - top_h
+                ins_w = int(round(out_w * 0.72 / 2) * 2)
+                # La cámara va CENTRADA arriba (v185, pedido de Juan
+                # 2026-11-19: 'siempre debe quedar arriba centrada y el
+                # video abajo'); se quitó el desplazamiento de v183/v184
+                # (50 px izq / 40 px abajo). Sin desplazamiento.
                 base = (
-                    f"[0:v]split=2[fc][gm];"
-                    f"[fc]crop={fcw}:{fch}:{fcx}:{fcy},"
-                    f"scale={out_w}:{half_h}:force_original_aspect_ratio=decrease,"
-                    f"pad={out_w}:{half_h}:(ow-iw)/2:(oh-ih)/2:black[top];"
-                    f"[gm]crop={gw}:{gh}:{gx}:{gy},scale={out_w}:{half_h}[bot];"
+                    f"[0:v]split=3[fc][bg][gm];"
+                    f"[fc]crop={side}:{side}:{sqx}:{sqy},"
+                    f"scale={ins_w}:{ins_w},setsar=1[ins];"
+                    f"[bg]crop={side}:{side}:{sqx}:{sqy},"
+                    f"scale={out_w}:{top_h}:force_original_aspect_ratio=increase,"
+                    f"crop={out_w}:{top_h},gblur=sigma=30,eq=brightness=-0.20[bg2];"
+                    f"[bg2][ins]overlay=(W-w)/2:(H-h)/2[top];"
+                    f"[gm]crop={gw}:{gh}:{gx}:{gy},"
+                    f"scale={out_w}:{bot_h}:force_original_aspect_ratio=increase,"
+                    f"crop={out_w}:{bot_h}[bot];"
                     f"[top][bot]vstack=inputs=2,setpts=PTS-STARTPTS[vid]"
                 )
             elif mode in ("blur", "mirror_blur", "mirror_black"):
@@ -1327,7 +1669,7 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                         "setpts=PTS-STARTPTS[vid]"
                     )
                 else:
-                    base = comp + ",setpts=PTS-STARTPTS[vid]"
+                    base = comp + ";[comp]setpts=PTS-STARTPTS[vid]"
             elif mode == "mirror":
                 # Espejo completo (2026-11-12, Juan): todo el video
                 # volteado horizontalmente, como en un espejo, con el
@@ -1358,22 +1700,11 @@ def render_clip(source: Path, start_in_source: float, duration: float,
         # el título ya queda arriba de forma persistente durante todo
         # el clip (ver la rama blur). En modo mirror la portada
         # también se voltea.
-        hook = (hook_title or "").strip()
-        if hook and mode not in ("blur", "mirror_blur", "mirror_black"):
-            cover_rel = 0.0 if cover_at is None else max(
-                0.0, min(float(cover_at), duration))
-            card = _title_card(source, start_in_source + cover_rel, hook,
-                               out_w, out_h, scale, tmpdir,
-                               title_color=title_color,
-                               title_border_color=title_border_color,
-                               title_border_w=title_border_w,
-                               title_bg_color=title_bg_color,
-                               title_bg=title_bg,
-                               title_size=title_size,
-                               title_pos_x=title_pos_x,
-                               title_pos_y=title_pos_y,
-                               mirror=(mode == "mirror"))
-            _concat_title_card(card, main_path, output)
-        else:
-            shutil.copyfile(main_path, output)
+        # v199 (2026-11-19, Juan): la tarjeta de 2 s hace perder tiempo;
+        # el video debe empezar de inmediato con el contenido, sin tarjeta.
+        # Antes: si había hook_title se anteponía una portada de 2 s
+        # (fotograma + título grande). Ahora el clip es solo el contenido;
+        # el título gancho sigue usándose para el nombre del archivo y la
+        # biblioteca, y en los modos blur ya iba persistente arriba.
+        shutil.copyfile(main_path, output)
     return output

@@ -65,9 +65,9 @@ from .billing import (PaymentMethod, PaymentRequest, Plan, REQ_APPROVED,
 from .clips import build_candidates, build_candidates_llm
 from .clips_db import Clip, clip_out, create_clip
 from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
-                     DEFAULT_FRAME_WIDTH, IMAGES_DIR, MAX_UPLOAD_BYTES,
-                     MAX_WORKERS, OUTPUTS_DIR, RECEIPTS_DIR, SOURCES_DIR,
-                     TRANSCRIPTS_DIR, UPLOADS_DIR, VIDEOS_DIR)
+                     DEFAULT_FRAME_WIDTH, IMAGES_DIR, MAX_CONCURRENT_RENDERS,
+                     MAX_UPLOAD_BYTES, MAX_WORKERS, OUTPUTS_DIR, RECEIPTS_DIR,
+                     SOURCES_DIR, TRANSCRIPTS_DIR, UPLOADS_DIR, VIDEOS_DIR)
 from .db import SessionLocal, db_backend, get_db, init_db
 from .lives import (EDGE_SAFETY_SECONDS, STATUS_ACTIVE, STATUS_ENDED,
                     STATUS_PAUSED, STATUS_STOPPED, LiveSession,
@@ -89,8 +89,29 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
+def _init_llm_config():
+    """Lee el proveedor de IA y las claves de la configuración del admin
+    y se las pasa al selector de clips (si una clave está vacía, el
+    selector usa el .env). Se llama al arrancar y cada vez que el admin
+    guarda la configuración."""
+    try:
+        from .clips import configure_llm
+        from .settings import get_setting
+        db = SessionLocal()
+        try:
+            configure_llm(
+                provider=get_setting(db, "llm_provider", "gemini") or "gemini",
+                groq_key=get_setting(db, "groq_api_key", ""),
+                gemini_key=get_setting(db, "gemini_api_key", ""))
+        finally:
+            db.close()
+    except Exception as e:  # noqa: BLE001 — sin config, el selector usa el .env
+        logger.warning("No se pudo cargar la config de IA (%s); se usa el .env", e)
+
+
 async def lifespan(_app: FastAPI):
     init_db()  # crea la tabla users si no existe (Postgres o SQLite)
+    _init_llm_config()  # IA que elige los clips: proveedor + claves del admin
     _start_lives_monitor()  # hilo del monitor de Lives (sesiones activas)
     yield
 
@@ -120,6 +141,10 @@ app.add_middleware(
 # carga mucho más rápido en conexiones lentas.
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 _executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+# Cola de renders (v195, 2026-11-19, Juan: 16 vCPU es caro): solo
+# MAX_CONCURRENT_RENDERS ffmpeg a la vez; los demás esperan. Sin esto
+# 10 renders a la vez saturaban el CPU y todos iban lentos.
+_RENDER_SEMAPHORE = threading.Semaphore(MAX_CONCURRENT_RENDERS)
 
 
 @app.exception_handler(Exception)
@@ -163,7 +188,7 @@ class RenderRequest(BaseModel):
     start: float = Field(..., description="Absolute start (s) in original video")
     end: float = Field(..., description="Absolute end (s) in original video")
     model: str = "base"
-    quality: str = "1080p"  # 720p | 1080p
+    quality: str = "720p"  # 720p | 1080p
     # --- Configuración: marco ---
     frame_enabled: bool = True
     frame_color: str = DEFAULT_FRAME_COLOR
@@ -229,8 +254,11 @@ class RenderRequest(BaseModel):
     # left | center | right — solo para follow_person.
     camera_person: str = "center"
     # Esquina de la facecam — solo para camera_mode="split" (pantalla
-    # dividida): "top-left" | "top-right" | "bottom-left" | "bottom-right".
-    facecam_corner: str = "top-left"
+    # dividida): "auto" | "top-left" | "top-right" | "bottom-left" |
+    # "bottom-right" | "left-center" | "right-center". (v189) "auto" =
+    # detectar en las 6 zonas; una esquina explícita restringe la
+    # detección a esa zona.
+    facecam_corner: str = "auto"
     # --- Configuración: subtítulos ---
     show_subtitles: bool = True
     subtitle_style: str = "viral"  # viral | plain | yellow
@@ -279,7 +307,7 @@ class UserResponse(BaseModel):
     max_clips: int = 5
     min_clip_secs: float = 20.0
     max_clip_secs: float = 45.0
-    quality: str = "1080p"
+    quality: str = "720p"
     subtitles_enabled: bool = True
     template: str = "Gancho grande"
     watermark_enabled: bool = True
@@ -400,7 +428,8 @@ def _upload_path(file_id: str) -> Path:
 def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                    model: str, source_file: str | None = None,
                    max_clips: int = 5, min_len: float = 20.0,
-                   max_len: float = 45.0):
+                   max_len: float = 45.0, is_live: bool = False,
+                   prefer_android: bool = False):
     try:
         if source_file:
             jobs.update(job_id, status="running", progress=10,
@@ -414,7 +443,8 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             # se baja después, solo para el trozo del clip, en el render
             # y en la vista previa (clip-video).
             jobs.update(job_id, status="running", progress=10,
-                        message="Descargando el audio…")
+                        message=("Descargando el video…" if is_live
+                                 else "Descargando el audio…"))
             # Progreso REAL de la descarga (2026-11-11, Juan: la carga
             # debe verse en vivo). La descarga es la fase 10→40: cada
             # trozo que termina mueve la barra y el mensaje lleva
@@ -436,10 +466,28 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                 mb = nbytes / 1048576
                 kbps = int(nbytes / max(1.0, elapsed) / 1024)
                 jobs.update(job_id, progress=pct,
-                            message=f"Descargando el audio… {done} de {total} partes · {mb:.1f} MB · {kbps} KB/s")
+                            message=f"Descargando {'el video' if is_live else 'el audio'}… {done} de {total} partes · {mb:.1f} MB · {kbps} KB/s")
+            # v170 (2026-11-18, Juan: el audio es de una mujer pero el video
+            # muestra al hombre hablando — REVISA DEFINITIVAMENTE): en un
+            # LIVE, la descarga fresca de la sección de VIDEO por timestamp
+            # NO es fiable — puede caer MINUTOS lejos del rango pedido
+            # (medido clip 434: pedía padre 24.3s 'Yo no me resigno' y la
+            # sección traía 'pero quizás elaborar un poco más...', un
+            # hombre preguntando, que ni siquiera está en la ventana del
+            # transcript). La v168 (alinear la sección por su audio) no
+            # puede corregir eso porque no hay nada que alinear. La única
+            # fuente fiable es UN SOLO archivo continuo del que salgan
+            # audio Y video. Por eso en un live el ANÁLISIS baja el VIDEO
+            # completo de la ventana (no solo audio): el render corta los
+            # clips de ese mismo archivo y audio y video quedan del mismo
+            # momento, siempre. En un VOD se sigue bajando solo audio
+            # (la descarga por timestamp sí es fiable ahí).
+            _dl_audio_only = not is_live
             source = download_section(url, start, end, job_id,
-                                      audio_only=True,
-                                      progress_cb=_dl_progress)
+                                      audio_only=_dl_audio_only,
+                                      progress_cb=_dl_progress,
+                                      is_live=is_live,
+                                      prefer_android=prefer_android)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         # Progreso REAL de la transcripción (2026-11-11, Juan: no debe
         # quedarse quieta minutos). La transcripción es la fase 40→70:
@@ -496,7 +544,8 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
 
         _llm_watcher = threading.Thread(target=_llm_tick, daemon=True)
         _llm_watcher.start()
-        # Real LLM first (Groq llama, free tier) when a key is set; ANY
+        # Real LLM first (proveedor configurado por el admin: Gemini
+        # Flash por defecto, Groq de respaldo) when a key is set; ANY
         # LLM failure returns None and we fall back to the heuristic, so
         # a bad LLM day can never fail a clips job. No key = heuristic.
         # La selección solo ve el rango PEDIDO [start, end]: la
@@ -559,8 +608,13 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                         # Para el render y la vista previa: el análisis
                         # baja solo audio (rápido); el video del clip se
                         # baja después, solo para ese trozo, con esta URL.
+                        # v170: en un LIVE el análisis baja el VIDEO
+                        # completo, así que audio_only es FALSO ahí — el
+                        # render corta del mismo archivo (si quedara True,
+                        # el render bajaría una sección fresca, que en un
+                        # live no es fiable y rompe la sincronía).
                         "url": url,
-                        "audio_only": (source_file is None),
+                        "audio_only": _dl_audio_only,
                     })
     except Exception as e:  # noqa: BLE001 — surfaced to the client as job error
         jobs.update(job_id, status="error", error=str(e), message="Falló.")
@@ -570,6 +624,108 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
 # (una sola definición, compartida por el trabajo de clips, el render y la
 # vista previa). Se mantiene este alias para no tocar cada llamada.
 _actual_section_start = actual_section_start
+
+
+def _norm_word(w: str) -> str:
+    """Normalizar una palabra para comparar transcripciones: minúsculas,
+    sin acentos ni puntuación."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", (w or "").strip().lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return "".join(c for c in s if c.isalnum())
+
+
+def _measure_section_true_start(section_path: Path, transcript: dict,
+                                transcript_base: float,
+                                req_start: float, req_end: float) -> float | None:
+    """Medir el inicio REAL de la sección de video descargada.
+
+    v165 (2026-11-18, Juan: 'el audio y el video no van acorde, no están
+    sincronizando — esto solo pasa con los live'): en un LIVE, la descarga
+    de la sección por timestamp absoluto NO cae en el rango pedido — el
+    manifiesto HLS/DASH se desliza y cada descarga trae una parte
+    distinta (medido en el clip 432: la sección pedida [12332.3, 12374.84]
+    traía audio de otro momento, '¿Qué tiene? Ella va al pie por cierre',
+    mientras el transcript del padre dice 'yo le voy a decir un secreto').
+    El remux de v163/v164 alineaba video y audio por timestamps absolutos
+    (section_start medido por duración), así que el video quedaba corrido
+    segundos respecto al audio: las palabras correctas sobre imágenes de
+    otro momento. La solución: transcribir los primeros ~15 s del audio
+    de LA SECCIÓN y buscar esas palabras en el transcript del padre —
+    donde aparecen, ahí empieza realmente la sección. Devuelve el tiempo
+    absoluto (en el video original) del t=0 de la sección, o None si no
+    hay coincidencia fiable (el llamador conserva el section_start por
+    duración). Solo se usa para corregir, nunca para empeorar: si la
+    medida difiere menos de 0.5 s del estimado por duración, se ignora.
+    """
+    try:
+        import tempfile
+        import unicodedata  # noqa: F401  (usado por _norm_word)
+        from app.transcribe import _get_model
+        # Muestra corta (15 s) del audio de la sección, 16 kHz mono.
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "probe.wav"
+            proc = subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-i", str(section_path),
+                 "-t", "15", "-vn", "-ac", "1", "-ar", "16000", str(wav)],
+                capture_output=True, text=True, timeout=120)
+            if proc.returncode != 0 or not wav.exists():
+                return None
+            # Modelo local ya cargado (base): rápido para 15 s y sin
+            # gastar tokens de Groq en una simple alineación.
+            model = _get_model()
+            segments, _info = model.transcribe(
+                str(wav), language=None, word_timestamps=True)
+            probe_words = []
+            for seg in segments:
+                for w in (seg.words or []):
+                    nw = _norm_word(w.word)
+                    if nw:
+                        probe_words.append((nw, float(w.start)))
+            if len(probe_words) < 4:
+                return None
+        # Palabras del transcript del padre, con tiempo absoluto.
+        parent_words = []
+        for seg in (transcript.get("segments") or []):
+            for w in (seg.get("words") or []):
+                nw = _norm_word(w.get("w", ""))
+                if nw:
+                    parent_words.append(
+                        (nw, float(w.get("s", 0.0)) + transcript_base))
+        if len(parent_words) < 4:
+            return None
+        # Buscar la mejor ventana: la secuencia de la muestra que más
+        # palabras consecutivas comparte con el padre.
+        probe_seq = [w for w, _ in probe_words]
+        parent_seq = [w for w, _ in parent_words]
+        best_len, best_p, best_s = 0, -1, -1
+        n = len(probe_seq)
+        for p in range(len(parent_seq)):
+            # Solo anclar donde la primera palabra coincide.
+            if parent_seq[p] != probe_seq[0]:
+                continue
+            k = 0
+            while (k < n and p + k < len(parent_seq)
+                   and parent_seq[p + k] == probe_seq[k]):
+                k += 1
+            if k > best_len:
+                best_len, best_p, best_s = k, p, 0
+        if best_len < 4 or best_p < 0:
+            return None
+        # El t=0 de la sección corresponde al tiempo absoluto de la
+        # primera palabra coincidente del padre menos su tiempo en la
+        # muestra.
+        true_start = parent_words[best_p][1] - probe_words[0][1]
+        # Cordura: debe caer cerca del rango pedido (±90 s); si no, es
+        # una coincidencia espuria y se descarta.
+        if not (req_start - 90.0 <= true_start <= req_end + 90.0):
+            return None
+        return float(true_start)
+    except Exception:
+        logger.warning("medición del inicio real de la sección falló; "
+                       "se conserva el estimado por duración",
+                       exc_info=True)
+        return None
 
 
 def _remux_with_parent_audio(section_path: Path, parent_audio: Path,
@@ -656,6 +812,7 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         # El análisis baja solo AUDIO (rápido); el render necesita el
         # VIDEO, pero solo para el trozo del clip (30-60 s), así que se
         # baja ahora a 1080p. Si el padre ya tenía video, se reutiliza.
+        _early_transcript = None
         if res.get("audio_only") and res.get("url"):
             jobs.update(job_id, status="running", progress=10,
                         message="Descargando el video del clip…")
@@ -676,8 +833,11 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
                 kbps = int(nbytes / max(1.0, elapsed) / 1024)
                 jobs.update(job_id, progress=pct,
                             message=f"Descargando el video del clip… {mb:.1f} MB · {kbps} KB/s")
+            # v196: calidad 720p -> android primero (rápido, 360p);
+            # 1080p -> tv_embedded primero (mejor calidad).
             source = download_section(res["url"], req.start, req.end, job_id,
-                                      progress_cb=_rd_progress)
+                                      progress_cb=_rd_progress,
+                                      prefer_android=(req.quality == "720p"))
             # La descarga por secciones puede empezar antes del inicio
             # pedido (keyframe): medir el inicio real para que el render
             # caiga exactamente en req.start (ver _actual_section_start).
@@ -688,11 +848,42 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
             transcript_base = _actual_section_start(
                 parent_audio, float(res["section_start"]),
                 float(res["section_end"]))
+            # v165: en un LIVE la sección descargada NO empieza donde dice
+            # la duración — su contenido real está corrido segundos (el
+            # manifiesto se desliza). Se mide el inicio REAL buscando el
+            # audio de la sección dentro del transcript del padre; si la
+            # medida difiere >0.5 s del estimado por duración, manda la
+            # medida: así el video y el audio del remux caen en el mismo
+            # momento y no se desincronizan.
+            _early_transcript = None
+            try:
+                _early_transcript = json.loads(
+                    (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(
+                        encoding="utf-8"))
+                _true = _measure_section_true_start(
+                    source, _early_transcript, transcript_base,
+                    req.start, req.end)
+                if (_true is not None
+                        and abs(_true - section_start) > 0.5):
+                    logger.warning(
+                        "sección de live corrida: estimado %.1f, real %.1f "
+                        "(desfase %.1fs); se usa el real",
+                        section_start, _true, _true - section_start)
+                    section_start = _true
+            except Exception:
+                logger.warning("alineación de sección por transcript falló; "
+                               "se conserva el estimado por duración",
+                               exc_info=True)
             # v163: el audio de la sección de video NO es fiable en lives
             # (cada descarga trae una parte distinta); el del padre sí.
             # Se remezcla video de la sección + audio del padre, y el
             # archivo resultante cubre exactamente [req.start, req.end].
-            if parent_audio.exists():
+            # v198: SOLO en lives. En videos normales (VOD) la sección
+            # trae video+audio juntos y en sincronía; remezclar con el
+            # audio del padre (bajado por otro método/cliente) metía
+            # ~0.6 s de desfase (audio adelantado). Medido 2026-11-19
+            # por cross-correlación en el clip 643 (Tolentino).
+            if req.live_session_id is not None and parent_audio.exists():
                 fixed = _remux_with_parent_audio(
                     source, parent_audio, transcript_base, section_start,
                     req.start, req.end, job_id)
@@ -708,8 +899,10 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
                 float(res["section_end"]))
             # Mismo archivo para video y transcripción.
             transcript_base = section_start
-        transcript = json.loads(
-            (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(encoding="utf-8"))
+        transcript = (_early_transcript if _early_transcript is not None
+                      else json.loads(
+                          (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(
+                              encoding="utf-8")))
         return source, section_start, transcript, transcript_base
     if req.source_file:
         jobs.update(job_id, status="running", progress=10,
@@ -722,7 +915,8 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
     if req.url:
         jobs.update(job_id, status="running", progress=10,
                     message="Descargando el video…")
-        source = download_section(req.url, req.start, req.end, job_id)
+        source = download_section(req.url, req.start, req.end, job_id,
+                                  prefer_android=(req.quality == "720p"))
         # La descarga por secciones puede empezar antes del inicio
         # pedido (keyframe): medir el inicio real para que el render
         # caiga exactamente en req.start (ver _actual_section_start).
@@ -746,6 +940,29 @@ def _plan_expires_for(db, user: User) -> str | None:
     if getattr(user, "is_admin", False) and user.created_at is not None:
         return (user.created_at + timedelta(days=30)).isoformat()
     return None
+
+
+def _trial_expired(db, user) -> bool:
+    """True si la prueba gratis (plan Free, 1 día) del usuario ya venció
+    y no tiene otro plan activo (2026-11-18, Juan: a las 24 h la cuenta
+    se cierra y no puede entrar; lo mandan a WhatsApp). El admin nunca
+    vence. Un usuario que nunca tuvo trial no está vencido: puede usar
+    el botón de prueba gratis."""
+    if getattr(user, "is_admin", False):
+        return False
+    if get_active_subscription(db, user.id) is not None:
+        return False
+    free = (db.query(UserSubscription)
+            .join(Plan, Plan.id == UserSubscription.plan_id)
+            .filter(UserSubscription.user_id == user.id,
+                    Plan.name == "Free").first())
+    if free is None or free.ends_at is None:
+        return False
+    # SQLite guarda los datetimes sin zona (naive); se leen como UTC.
+    ends = free.ends_at
+    if ends.tzinfo is None:
+        ends = ends.replace(tzinfo=timezone.utc)
+    return ends <= datetime.now(timezone.utc)
 
 
 def _valid_hex(color: str | None) -> str | None:
@@ -827,6 +1044,15 @@ def _slugify(text: str, max_len: int = 60) -> str:
 
 
 def _run_render_job(job_id: str, req: RenderRequest):
+    # Cola de renders (v195): el trabajo espera su turno en el
+    # semáforo; mientras espera el usuario ve "En cola…", no un
+    # progreso quieto. El semáforo se libera aunque el render falle.
+    jobs.update(job_id, message="En cola, esperando turno…")
+    with _RENDER_SEMAPHORE:
+        _run_render_job_inner(job_id, req)
+
+
+def _run_render_job_inner(job_id: str, req: RenderRequest):
     try:
         source, section_start, transcript, transcript_base = _resolve_source_for_render(req, job_id)
         # Clip window relative to the downloaded VIDEO section.
@@ -1065,7 +1291,7 @@ def _live_round(session_id: int) -> None:
         jobs.update(clips_job["id"], user_id=session.user_id)
         _run_clips_job(clips_job["id"], session.url, start, end, "base",
                        None, session.clips_per_round, session.min_len,
-                       session.max_len)
+                       session.max_len, is_live=True)
         done = jobs.get(clips_job["id"]) or {}
         result = done.get("result") or {}
         candidates = result.get("candidates") or []
@@ -1130,7 +1356,7 @@ def _live_round(session_id: int) -> None:
                     watermark_font=(getattr(user, "watermark_font", None) or "Poppins Negrita"),
                     watermark_opacity=float(getattr(user, "watermark_opacity", 0.85) or 0.85),
                     camera_mode=(session.camera_mode or "follow_speaker"),
-                    facecam_corner=(session.facecam_corner or "top-left"),
+                    facecam_corner=(session.facecam_corner or "auto"),
                     frame_enabled=(session.frame_enabled is not False),
                     frame_color=(session.frame_color
                                  or DEFAULT_FRAME_COLOR),
@@ -1141,7 +1367,7 @@ def _live_round(session_id: int) -> None:
                     subtitle_size=int(session.subtitle_size or 76),
                     subtitle_position=(session.subtitle_position or "bottom"),
                     highlight_color=session.highlight_color,
-                    quality=(session.quality or "1080p"),
+                    quality=(session.quality or "720p"),
                     template=session.template)
                 _run_render_job(rjob["id"], req)
                 rdone = jobs.get(rjob["id"]) or {}
@@ -1252,12 +1478,30 @@ def api_register(req: RegisterRequest, request: Request, db: Session = Depends(g
         user = auth.register_user(db, req.name, req.email, req.password)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    # Prueba gratis automática (2026-11-18, Juan: todo el que se
+    # registre queda con el plan de 1 día). Si el plan Free no existe,
+    # el registro sigue igual (el botón de prueba sigue disponible).
+    try:
+        _free = db.query(Plan).filter(Plan.name == "Free",
+                                      Plan.is_active.is_(True)).first()
+        if _free is not None:
+            assign_plan(db, user.id, _free.id)
+    except Exception:
+        pass
     ip = request.client.host if request.client else None
     sid = auth.start_session(db, user, ip,
                              request.headers.get("user-agent"))
     out = auth.user_out(user)
     out["plan_expires"] = _plan_expires_for(db, user)
     return {"access_token": auth.create_access_token(user.id, sid), "user": out}
+
+
+@app.get("/api/maintenance")
+def api_maintenance(db: Session = Depends(get_db)):
+    """Estado del modo mantenimiento (público, sin login): el frontend
+    lo consulta al cargar para avisar en el modal de login antes de que
+    el usuario intente entrar."""
+    return {"maintenance": get_setting(db, "maintenance_mode", "false").lower() == "true"}
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
@@ -1268,6 +1512,15 @@ def api_login(req: LoginRequest, request: Request, db: Session = Depends(get_db)
     if getattr(user, "is_suspended", False) and not user.is_admin:
         raise HTTPException(403, "Tu cuenta está suspendida. "
                                  "Contacta al administrador.")
+    if _trial_expired(db, user):
+        raise HTTPException(403, "Tu prueba gratis terminó. "
+                                 "Escríbenos por WhatsApp para activar tu plan.")
+    # Modo mantenimiento (2026-11-19, Juan): solo los admins pueden
+    # entrar. Un usuario que intenta loguearse con el modo activo recibe
+    # 403 con este mensaje (el frontend lo muestra en el modal de login).
+    if not user.is_admin and get_setting(db, "maintenance_mode", "false").lower() == "true":
+        raise HTTPException(403, "El sistema está en mantenimiento. "
+                                 "Vuelve pronto.")
     # Sesión única (v111): este login invalida cualquier sesión anterior
     # de la cuenta (otro dispositivo/IP queda fuera).
     ip = request.client.host if request.client else None
@@ -1289,6 +1542,9 @@ def api_logout(db: Session = Depends(get_db),
 @app.get("/api/auth/me", response_model=UserResponse)
 def api_me(db: Session = Depends(get_db),
            user: User = Depends(get_current_user)):
+    if _trial_expired(db, user):
+        raise HTTPException(401, "Tu prueba gratis terminó. "
+                                 "Escríbenos por WhatsApp para activar tu plan.")
     out = auth.user_out(user)
     out["plan_expires"] = _plan_expires_for(db, user)
     return out
@@ -1401,10 +1657,20 @@ def api_my_stats(db: Session = Depends(get_db),
 
 @app.get("/api/me/clips")
 def api_my_clips(db: Session = Depends(get_db),
-                 user: User = Depends(get_current_user)):
-    clips = (db.query(Clip).filter(Clip.user_id == user.id)
-             .order_by(Clip.created_at.desc()).all())
-    return [clip_out(c) for c in clips]
+                 user: User = Depends(get_current_user),
+                 limit: int = 10, offset: int = 0):
+    # v176 (2026-11-18, Juan: "agrega una paginación, si se cargan todos
+    # los videos de golpe se frizará"): paginación EN EL SERVIDOR. Antes
+    # devolvía TODOS los clips (~286 del admin) y el navegador los
+    # renderizaba de golpe — cada tarjeta con su <video preload=metadata> —
+    # y se congelaba. Ahora solo devuelve una página (10) + el total.
+    limit = max(1, min(limit, 50))
+    offset = max(0, offset)
+    q = (db.query(Clip).filter(Clip.user_id == user.id)
+         .order_by(Clip.created_at.desc()))
+    total = q.count()
+    clips = q.offset(offset).limit(limit).all()
+    return {"items": [clip_out(c) for c in clips], "total": total}
 
 
 class ClipPatchRequest(BaseModel):
@@ -1942,7 +2208,14 @@ def api_admin_get_settings(db: Session = Depends(get_db),
                            _admin: User = Depends(require_admin)):
     from .settings import DEFAULT_SETTINGS
 
-    return {k: get_setting(db, k, v) for k, v in DEFAULT_SETTINGS.items()}
+    out = {}
+    for k, v in DEFAULT_SETTINGS.items():
+        val = get_setting(db, k, v)
+        # Las claves nunca salen completas: solo los últimos 4 caracteres.
+        if k.endswith("_api_key") and val:
+            val = "••••••••" + val[-4:]
+        out[k] = val
+    return out
 
 
 @app.post("/api/admin/settings")
@@ -1955,9 +2228,45 @@ def api_admin_save_settings(req: SettingsRequest,
     for k, v in (req.settings or {}).items():
         if k not in DEFAULT_SETTINGS:
             continue
-        set_setting(db, k, str(v)[:500])
-        out[k] = str(v)[:500]
+        v = str(v)[:500]
+        # Una clave enmascarada (••••1234) es solo lectura: no se guarda.
+        if k.endswith("_api_key") and v.startswith("•"):
+            continue
+        set_setting(db, k, v)
+        out[k] = v
+    _init_llm_config()  # aplica el proveedor / claves nuevas al selector
     return out
+
+
+class LlmTestRequest(BaseModel):
+    provider: str = ""  # "groq" | "gemini" | "" = el configurado
+    key: str = ""  # clave a probar sin guardarla (opcional)
+
+
+@app.post("/api/admin/llm-test")
+def api_admin_llm_test(req: LlmTestRequest,
+                       db: Session = Depends(get_db),
+                       _admin: User = Depends(require_admin)):
+    """Prueba la IA que elige los clips con una llamada mínima. Devuelve
+    ok:true y el proveedor usado, o el error. Si trae una clave, la
+    prueba sin guardarla (se restaura la configuración después)."""
+    from .clips import LLM_PROVIDER, _gemini_chat, _groq_chat, configure_llm
+
+    provider = req.provider if req.provider in ("groq", "gemini") else LLM_PROVIDER
+    try:
+        if req.key:
+            if provider == "groq":
+                configure_llm(groq_key=req.key)
+            else:
+                configure_llm(gemini_key=req.key)
+        fn = _groq_chat if provider == "groq" else _gemini_chat
+        content = fn('Responde SOLO con este JSON: {"clips": []}')
+        if content is None:
+            return {"ok": False, "provider": provider,
+                    "error": "Sin respuesta. Revisa la clave."}
+        return {"ok": True, "provider": provider, "reply": content[:120]}
+    finally:
+        _init_llm_config()  # restaura la configuración guardada
 
 
 # ---------------------------------------------------------------- planes y pagos
@@ -2248,9 +2557,28 @@ def api_clips(req: ClipsRequest, background: BackgroundTasks,
     job = jobs.create("clips", req.model_dump())
     if user is not None:
         jobs.update(job["id"], user_id=user.id)
+    # v169: un LIVE analizado a mano ('Sacar clips') también necesita
+    # is_live=True — si no, el audio se baja en trozos paralelos y en un
+    # live todos los trozos empiezan con EL MISMO audio (v165). Se
+    # detecta por la URL (/live/) o por live_status (watch?v= en vivo).
+    _is_live = False
+    if req.url and not req.source_file:
+        if "/live/" in req.url:
+            _is_live = True
+        else:
+            try:
+                _st = live_status(req.url)
+                _is_live = bool(_st and _st.get("is_live"))
+            except Exception:
+                _is_live = False
+    # v196: la calidad guardada del usuario decide el cliente de descarga
+    # (720p -> android primero, rápido; 1080p -> tv_embedded, mejor calidad).
+    # Sin usuario, 720p por defecto.
+    _prefer_android = ((user.quality or "720p") == "720p"
+                       if user is not None else True)
     background.add_task(_run_clips_job, job["id"], req.url, req.start, req.end,
                         req.model, req.source_file, req.max_clips, req.min_len,
-                        req.max_len)
+                        req.max_len, _is_live, _prefer_android)
     return {"job_id": job["id"], "status": job["status"]}
 
 
@@ -2278,7 +2606,9 @@ class LiveCreateRequest(BaseModel):
     # Render prefs de "Configurar live" (mismo asistente que un video
     # normal). Opcionales: sin ellas el live usa los defaults.
     camera_mode: str = "follow_speaker"
-    facecam_corner: str = "top-left"
+    # (v189) "auto" = detectar en las 6 zonas; una esquina explícita
+    # restringe la detección a esa zona.
+    facecam_corner: str = "auto"
     frame_enabled: bool = True
     frame_color: str = DEFAULT_FRAME_COLOR
     frame_width: int = DEFAULT_FRAME_WIDTH
@@ -2288,7 +2618,7 @@ class LiveCreateRequest(BaseModel):
     subtitle_size: int = 76
     subtitle_position: str = "bottom"
     highlight_color: str | None = None
-    quality: str = "1080p"
+    quality: str = "720p"
     template: str | None = None
 
 
@@ -2373,7 +2703,7 @@ def api_lives_create(req: LiveCreateRequest,
         thumbnail=st.get("thumbnail") or "", interval_minutes=interval,
         clips_per_round=per_round, min_len=min_len, max_len=max_len,
         camera_mode=(req.camera_mode or "follow_speaker"),
-        facecam_corner=(req.facecam_corner or "top-left"),
+        facecam_corner=(req.facecam_corner or "auto"),
         frame_enabled=(req.frame_enabled is not False),
         frame_color=(req.frame_color or DEFAULT_FRAME_COLOR),
         frame_width=int(req.frame_width or DEFAULT_FRAME_WIDTH),
@@ -2383,7 +2713,7 @@ def api_lives_create(req: LiveCreateRequest,
         subtitle_size=int(req.subtitle_size or 76),
         subtitle_position=(req.subtitle_position or "bottom"),
         highlight_color=(req.highlight_color or None),
-        quality=(req.quality or "1080p"),
+        quality=(req.quality or "720p"),
         template=(req.template or None),
         status=STATUS_ACTIVE)
     db.add(session)
@@ -2505,7 +2835,7 @@ def api_lives_update(session_id: int, req: LiveUpdateRequest,
     if req.camera_mode is not None:
         session.camera_mode = req.camera_mode or "follow_speaker"
     if req.facecam_corner is not None:
-        session.facecam_corner = req.facecam_corner or "top-left"
+        session.facecam_corner = req.facecam_corner or "auto"
     if req.frame_enabled is not None:
         session.frame_enabled = bool(req.frame_enabled)
     if req.frame_color is not None:
@@ -2527,7 +2857,7 @@ def api_lives_update(session_id: int, req: LiveUpdateRequest,
     if req.watermark_enabled is not None:
         session.watermark_enabled = bool(req.watermark_enabled)
     if req.quality is not None:
-        session.quality = req.quality or "1080p"
+        session.quality = req.quality or "720p"
     if req.template is not None:
         session.template = req.template or None
     db.commit()

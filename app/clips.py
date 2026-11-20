@@ -9,8 +9,9 @@ absolute original-video times by adding the section start):
    on a speech segment boundary, scored by words-per-minute, exclamations
    and laughter. It does NOT understand topics, so it can cut a sentence
    in half; the user picks the window in the frontend.
-2. LLM (v2, ``build_candidates_llm``): a real model (Groq gpt-oss, free
-   tier) reads the whole transcript and picks up to 5 clips, each covering
+2. LLM (v2, ``build_candidates_llm``): a real model (Gemini Flash por
+   defecto desde 2026-11-18, Groq como respaldo; el admin elige en
+   Configuración) reads the whole transcript and picks up to 5 clips, each covering
    ONE complete topic/idea from its first sentence to its last. The code
    then snaps every cut to word boundaries, so a clip can never start or
    end mid-word. Any LLM failure (no key, 401/429/timeout, bad JSON, zero
@@ -271,7 +272,7 @@ def _llm_prompt(segments: list[dict], max_clips: int,
 def _groq_chat(prompt: str) -> str | None:
     """One Groq chat completion. Tries gpt-oss-120b first, then gpt-oss-20b.
     Returns the raw content string, or None on any failure."""
-    key = os.environ.get("GROQ_API_KEY")
+    key = _llm_key("groq")
     if not key:
         return None
     for model in (GROQ_LLM_PRIMARY, GROQ_LLM_FALLBACK):
@@ -359,6 +360,124 @@ def _groq_chat(prompt: str) -> str | None:
             logger.warning("Groq LLM %s response could not be read (%s)",
                            model, e)
             continue
+    return None
+
+
+# --- LLM selection via Gemini (gemini-2.5-flash) ---------------------------
+# 2026-11-18, Juan: cambiar a Gemini Flash, que elige mejor. Casi gratis
+# (~$0.006 por video de 1 h). Misma interfaz que _groq_chat: devuelve el
+# JSON crudo o None. Salida estructurada con responseMimeType +
+# responseSchema (el equivalente de Gemini al strict JSON de Groq). OJO:
+# el esquema de Gemini es un subconjunto de JSON Schema y NO acepta
+# additionalProperties, así que este esquema va sin ellos.
+GEMINI_CHAT_URL = ("https://generativelanguage.googleapis.com/v1beta/models/"
+                   "gemini-2.5-flash:generateContent")
+GEMINI_LLM_TIMEOUT = 90  # seconds per request
+_GEMINI_CLIPS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "clips": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "start": {"type": "number"},
+                    "end": {"type": "number"},
+                    "title": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["start", "end", "title", "reason"],
+            },
+        },
+    },
+    "required": ["clips"],
+}
+
+
+def _gemini_chat(prompt: str) -> str | None:
+    """One Gemini completion (gemini-2.5-flash).
+    Returns the raw JSON string, or None on any failure."""
+    key = _llm_key("gemini")
+    if not key:
+        return None
+    body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "systemInstruction": {"parts": [{"text":
+            "Eres un editor de clips virales. Respondes SOLO con JSON válido."}]},
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 4000,
+            "responseMimeType": "application/json",
+            "responseSchema": _GEMINI_CLIPS_SCHEMA,
+        },
+    }, ensure_ascii=False).encode("utf-8")
+    # La clave de Gemini solo tiene [A-Za-z0-9_-], segura en la URL.
+    req = urllib.request.Request(
+        GEMINI_CHAT_URL + "?key=" + key, data=body, method="POST",
+        headers={"Content-Type": "application/json",
+                 "User-Agent": "Clipzio Pro/1.5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=GEMINI_LLM_TIMEOUT) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            detail = e.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            detail = ""
+        logger.warning("Gemini LLM failed (HTTP %s %s)", e.code, detail)
+        return None
+    except Exception as e:  # noqa: BLE001 — timeout / DNS / network, any
+        logger.warning("Gemini LLM failed (%s)", e)
+        return None
+    if isinstance(payload, dict) and payload.get("error"):
+        logger.warning("Gemini LLM returned an error payload: %s",
+                       str(payload["error"])[:200])
+        return None
+    try:
+        return str(payload["candidates"][0]["content"]["parts"][0]["text"])
+    except Exception as e:  # noqa: BLE001 — unexpected response shape
+        logger.warning("Gemini LLM response could not be read (%s)", e)
+        return None
+
+
+# --- Proveedor de IA (configurable desde el Panel Admin) -------------------
+# El admin elige "groq" o "gemini" en Configuración; las claves se leen
+# de aquí (ajustes) y si están vacías, del .env. Si el proveedor elegido
+# falla o no tiene clave, se prueba el otro; si ninguno funciona, el
+# selector cae al heurístico (nunca tumba el trabajo).
+LLM_PROVIDER = "gemini"
+_LLM_KEYS = {"groq": None, "gemini": None}
+
+
+def configure_llm(provider=None, groq_key=None, gemini_key=None):
+    """Aplica la configuración de IA elegida por el admin (o del arranque)."""
+    global LLM_PROVIDER
+    if provider in ("groq", "gemini"):
+        LLM_PROVIDER = provider
+    if groq_key is not None:
+        _LLM_KEYS["groq"] = groq_key or None
+    if gemini_key is not None:
+        _LLM_KEYS["gemini"] = gemini_key or None
+
+
+def _llm_key(provider: str) -> str | None:
+    key = _LLM_KEYS.get(provider)
+    if key:
+        return key
+    return os.environ.get("GROQ_API_KEY" if provider == "groq"
+                          else "GEMINI_API_KEY")
+
+
+def _llm_chat(prompt: str) -> str | None:
+    """Una llamada a la IA que elige los clips, con el proveedor que el
+    admin configuró (primero) y el otro como respaldo."""
+    order = [LLM_PROVIDER,
+             "gemini" if LLM_PROVIDER == "groq" else "groq"]
+    for provider in order:
+        fn = _groq_chat if provider == "groq" else _gemini_chat
+        content = fn(prompt)
+        if content is not None:
+            return content
     return None
 
 
@@ -595,7 +714,7 @@ def _llm_chunk_candidates(chunk_segments: list[dict], max_clips: int,
     if t_end <= t_start:
         return None
     prompt = _llm_prompt(chunk_segments, max_clips, min_len, max_len)
-    content = _groq_chat(prompt)
+    content = _llm_chat(prompt)
     if content is None:
         return None
     items = _parse_llm_clips(content)
@@ -634,13 +753,15 @@ def build_candidates_llm(segments: list[dict], max_clips: int = LLM_MAX_CLIPS,
                          min_len: float = 20.0,
                          max_len: float = LLM_MAX_SECONDS,
                          abs_start: float = 0.0) -> list[dict] | None:
-    """Topic-aware clip selection with a real LLM (Groq gpt-oss, free tier).
+    """Topic-aware clip selection with a real LLM (provider configurable:
+    Gemini Flash por defecto desde 2026-11-18, Groq como respaldo).
 
     Returns candidates in the EXACT shape the frontend already uses
     (start/end/duration/text/words/score, plus the LLM's title/reason),
     score 95/90/85... in LLM order, sorted by start. Returns None when
-    the LLM was not attempted (no GROQ_API_KEY), failed, or produced zero
-    valid clips — the caller must then fall back to ``build_candidates``.
+    the LLM was not attempted (no key for either provider), failed, or
+    produced zero valid clips — the caller must then fall back to
+    ``build_candidates``.
     """
     if not segments:
         return None

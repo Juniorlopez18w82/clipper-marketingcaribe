@@ -174,6 +174,13 @@ async function apiFetch(path, opts = {}) {
         sessionStorage.removeItem("clipper_tab");
       } catch (e) {}
       if (typeof showUser === "function") showUser(null);
+      // Prueba gratis vencida (v179): la sesión se cerró por el
+      // vencimiento, no por otro inicio de sesión. Mostrar el aviso
+      // con el WhatsApp para activar el plan.
+      if (d && d.detail && d.detail.includes("prueba gratis terminó")
+          && typeof showTrialExpired === "function") showTrialExpired();
+      else if (d && d.detail && d.detail.includes("mantenimiento")
+          && typeof showMaintenance === "function") showMaintenance();
     }
     const e = new Error((d && d.detail) || FRIENDLY_ERROR);
     e.status = r.status;
@@ -268,10 +275,74 @@ function updateTopBar() {
   const imp = localStorage.getItem("clipper_admin_token");
   $("impBanner").hidden = !imp;
   if (imp) $("impName").textContent = localStorage.getItem("clipper_impersonating") || u.name || "";
+  // Banner de prueba gratis con cuenta atrás (v179).
+  updateTrialBanner();
 }
 // La cuenta atrás se actualiza sola cada minuto (de "29 días" a
 // "23 h 59 min" sin recargar).
 setInterval(() => { if (state.user) updateTopBar(); }, 60000);
+// Banner de prueba gratis (v179, Juan: fijo abajo del header, con
+// cuenta atrás en segundos). Solo para el plan Free con vencimiento;
+// el admin y los planes de pago no lo ven. Al llegar a cero, la
+// sesión se cierra y sale el aviso con el WhatsApp.
+function trialCountdownText(expiresIso) {
+  if (!expiresIso) return null;
+  const ms = new Date(expiresIso).getTime() - Date.now();
+  if (Number.isNaN(ms) || ms <= 0) return null;
+  const s = Math.floor(ms / 1000);
+  const h = String(Math.floor(s / 3600)).padStart(2, "0");
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${h}:${m}:${ss}`;
+}
+let _trialExpiredShown = false;
+function updateTrialBanner() {
+  const b = $("trialBanner");
+  if (!b) return;
+  const u = state.user;
+  const show = !!u && !u.is_admin && u.plan === "free" && !!u.plan_expires;
+  if (!show) { b.style.display = "none"; return; }
+  const left = trialCountdownText(u.plan_expires);
+  if (left === null) {
+    b.style.display = "none";
+    if (!_trialExpiredShown) {
+      _trialExpiredShown = true;
+      doLogout();
+      showTrialExpired();
+    }
+    return;
+  }
+  _trialExpiredShown = false;
+  const el = $("trialCountdown");
+  if (el) el.textContent = left;
+  b.style.display = "flex";
+}
+function showTrialExpired() {
+  openAuthModal("login");
+  const m = $("authMsg");
+  if (m) m.innerHTML = `Tu prueba gratis terminó. Escríbenos por <a href="https://wa.me/18293997968" target="_blank" rel="noopener">WhatsApp</a> para activar tu plan.`;
+}
+// Modo mantenimiento (2026-11-19): el sistema está cerrado para los
+// usuarios (solo entran los admins). Se muestra cuando un login es
+// rechazado por mantenimiento o cuando una sesión activa es expulsada.
+function showMaintenance() {
+  openAuthModal("login");
+  const m = $("authMsg");
+  if (m) m.textContent = "El sistema está en mantenimiento. Vuelve pronto.";
+}
+// Aviso en el modal de login si el mantenimiento está activo (se consulta
+// al cargar la página; el intento de login también lo muestra).
+let _maintenanceOn = false;
+fetch("/api/maintenance").then(r => r.json()).then(d => {
+  _maintenanceOn = !!(d && d.maintenance);
+  if (_maintenanceOn) {
+    const m = $("authMsg");
+    if (m && !$("authModal").hidden) m.textContent = "El sistema está en mantenimiento. Vuelve pronto.";
+  }
+}).catch(() => {});
+const _trialPlansBtn = $("trialBannerPlans");
+if (_trialPlansBtn) _trialPlansBtn.onclick = () => document.querySelector('[data-tab="plans"]').click();
+setInterval(() => { if (state.user) updateTrialBanner(); }, 1000);
 // Sesión única (v122): revalidar cada 30 s. Si otra cuenta entró con la
 // misma IP (o la misma cuenta en otro lado), el 401 de apiFetch cierra
 // la sesión al instante, aunque no se recargue la página.
@@ -309,6 +380,7 @@ function showUser(user) {
   $("authLoggedOut").hidden = !!user;
   $("authLoggedIn").hidden = !user;
   if (user) {
+    closeAuthModal();
     $("authUserName").textContent = user.name;
     $("authUserEmail").textContent = user.email;
     $("authUserPlan").textContent = user.is_admin ? "Admin" : user.plan;
@@ -337,7 +409,7 @@ function showUser(user) {
     // a mostrar Entrar / Crear cuenta.
     closePanel();
     const navLogin = $("btnNavLogin");
-    if (navLogin) { navLogin.textContent = "Entrar"; navLogin.onclick = landingGoToAccount; }
+    if (navLogin) { navLogin.textContent = "Entrar"; navLogin.onclick = () => landingGoToAccount("login"); }
     const navReg = $("btnNavRegister");
     if (navReg) navReg.hidden = false;
   }
@@ -380,8 +452,12 @@ $("btnLogin").onclick = async () => {
     localStorage.setItem("clipper_token", d.access_token);
     $("authMsg").textContent = "";
     showUser(d.user);
-    toast("Cuenta creada. ¡Bienvenido a Clipzio Pro!");
-  } catch (e) { $("authMsg").textContent = "Error: " + e.message; }
+    toast("¡Bienvenido de nuevo!");
+  } catch (e) {
+    if (e.message && e.message.includes("prueba gratis terminó")) showTrialExpired();
+    else if (e.message && e.message.includes("mantenimiento")) showMaintenance();
+    else $("authMsg").textContent = "Error: " + e.message;
+  }
 };
 $("btnRegister").onclick = async () => {
   try {
@@ -426,21 +502,62 @@ $("btnShowPanel").onclick = () => openPanel();
   els.forEach((el) => io.observe(el));
 })();
 // ---------- Landing (2026-11-12, Juan: tipo wayin.ai/clip-maker) ----------
-// Si hay sesión, los CTA llevan al panel; si no, bajan al formulario
-// de acceso. Los botones de plan llevan al formulario y, al entrar,
-// el panel abre solo (showUser ya lo hace).
-function landingGoToAccount() {
+// Si hay sesión, los CTA llevan al panel; si no, abren el modal de
+// acceso. (2026-11-18: el formulario ya no vive al final del home —
+// Juan lo quitó de ahí; ahora es un modal.)
+let _authMode = "login";
+function setAuthMode(mode) {
+  _authMode = mode === "register" ? "register" : "login";
+  const isReg = _authMode === "register";
+  const row = $("authNameRow");
+  if (row) row.style.display = isReg ? "" : "none";
+  const bl = $("btnLogin"), br = $("btnRegister");
+  if (bl) bl.style.display = isReg ? "none" : "";
+  if (br) br.style.display = isReg ? "" : "none";
+  const t = $("authModalTitle");
+  if (t) t.textContent = isReg ? "Crea tu cuenta gratis" : "Entra a Clipzio Pro";
+  const s = $("authModalSub");
+  if (s) s.textContent = isReg ? "Crea tu cuenta y después eliges tu plan." : "Entra con tu correo y contraseña.";
+  const sw = $("authSwitch");
+  if (sw) sw.textContent = isReg ? "¿Ya tienes cuenta? Entrar" : "¿No tienes cuenta? Crear cuenta";
+  const em = $("authEmail");
+  if (em && isReg) em.focus({ preventScroll: true });
+}
+function openAuthModal(mode) {
+  const m = $("authModal");
+  if (!m) return;
+  setAuthMode(mode || "login");
+  m.hidden = false;
+  // Si el mantenimiento está activo, avisar antes de que intente entrar.
+  if (_maintenanceOn) {
+    const am = $("authMsg");
+    if (am) am.textContent = "El sistema está en mantenimiento. Vuelve pronto.";
+  }
+  const em = $("authEmail");
+  if (em) em.focus({ preventScroll: true });
+}
+function closeAuthModal() {
+  const m = $("authModal");
+  if (m) m.hidden = true;
+}
+function landingGoToAccount(mode) {
   if (state.user) { openPanel(); return; }
-  $("accountCard").scrollIntoView({ behavior: "smooth", block: "start" });
-  $("authEmail").focus({ preventScroll: true });
+  openAuthModal(mode);
 }
 const _landingBtn = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
-_landingBtn("btnNavLogin", landingGoToAccount);
-_landingBtn("btnNavRegister", landingGoToAccount);
-_landingBtn("btnHeroStart", landingGoToAccount);
-_landingBtn("btnFinalStart", landingGoToAccount);
+_landingBtn("btnNavLogin", () => landingGoToAccount("login"));
+_landingBtn("btnNavRegister", () => landingGoToAccount("register"));
+_landingBtn("btnHeroStart", () => landingGoToAccount("register"));
+_landingBtn("btnFinalStart", () => landingGoToAccount("register"));
 _landingBtn("btnHeroPlans", () => { $("planes").scrollIntoView({ behavior: "smooth" }); });
-document.querySelectorAll("[data-plan-cta]").forEach((b) => { b.onclick = landingGoToAccount; });
+document.querySelectorAll("[data-plan-cta]").forEach((b) => { b.onclick = () => landingGoToAccount("register"); });
+const _authSwitch = $("authSwitch");
+if (_authSwitch) _authSwitch.onclick = (e) => { e.preventDefault(); setAuthMode(_authMode === "register" ? "login" : "register"); };
+// Cierre del modal de acceso: X, clic fuera y Escape.
+const _authClose = $("btnAuthClose"); if (_authClose) _authClose.onclick = closeAuthModal;
+const _authModal = $("authModal");
+if (_authModal) _authModal.addEventListener("click", (e) => { if (e.target === _authModal) closeAuthModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAuthModal(); });
 $("btnBackAdmin").onclick = () => {
   const adminToken = localStorage.getItem("clipper_admin_token");
   if (adminToken) localStorage.setItem("clipper_token", adminToken);
@@ -612,7 +729,7 @@ function fillConfig(u) {
   $("cfgMaxClips").value = u.max_clips ?? 5;
   $("cfgMinClip").value = u.min_clip_secs ?? 20;
   $("cfgMaxClip").value = u.max_clip_secs ?? 45;
-  $("cfgQuality").value = u.quality || "1080p";
+  $("cfgQuality").value = u.quality || "720p";
   // Marca de agua (v146).
   if ($("wmEnabled")) $("wmEnabled").checked = u.watermark_enabled !== false;
   if ($("wmType")) $("wmType").value = u.watermark_type || "text";
@@ -1226,14 +1343,50 @@ async function loadAdminSettings() {
     $("setTemplate").value = (s.default_template && TEMPLATES_JS[s.default_template])
       ? s.default_template : "Gancho grande";
     $("setHighlight").value = s.subtitle_highlight_color || "#FADE4C";
+    // IA que elige los clips (2026-11-18): proveedor + claves (enmascaradas).
+    $("setLlmProvider").value = (s.llm_provider === "groq") ? "groq" : "gemini";
+    _setKeyField("setGeminiKey", "setGeminiStatus", s.gemini_api_key);
+    _setKeyField("setGroqKey", "setGroqStatus", s.groq_api_key);
+    // Modo mantenimiento (2026-11-19): solo los admins pueden entrar.
+    $("setMaintenance").checked = String(s.maintenance_mode).toLowerCase() === "true";
   } catch { $("setMsg").textContent = "No se pudo cargar la configuración."; }
+}
+function _setKeyField(inputId, statusId, masked) {
+  const inp = $(inputId), st = $(statusId);
+  if (!inp) return;
+  inp.value = "";
+  if (masked) {
+    inp.placeholder = masked;
+    if (st) st.textContent = "Clave guardada (termina en " + masked.slice(-4) + "). Déjala vacía para no cambiarla.";
+  } else {
+    inp.placeholder = inputId === "setGeminiKey" ? "AIza…" : "gsk_…";
+    if (st) st.textContent = "Sin clave guardada — se usa la del servidor (.env).";
+  }
 }
 $("btnSaveSettings").onclick = async () => {
   try {
+    const settings = { default_brand_text: $("setBrand").value.trim() || "@marketingcaribe", default_frame_enabled: $("setFrame").checked ? "true" : "false", default_template: $("setTemplate").value, subtitle_highlight_color: $("setHighlight").value, llm_provider: $("setLlmProvider").value, maintenance_mode: $("setMaintenance").checked ? "true" : "false" };
+    const gk = $("setGeminiKey").value.trim();
+    if (gk) settings.gemini_api_key = gk;
+    const qk = $("setGroqKey").value.trim();
+    if (qk) settings.groq_api_key = qk;
     await apiFetch("/api/admin/settings", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ settings: { default_brand_text: $("setBrand").value.trim() || "@marketingcaribe", default_frame_enabled: $("setFrame").checked ? "true" : "false", default_template: $("setTemplate").value, subtitle_highlight_color: $("setHighlight").value } }) });
+      body: JSON.stringify({ settings }) });
+    $("setGeminiKey").value = ""; $("setGroqKey").value = "";
+    loadAdminSettings();
     $("setMsg").textContent = "Configuración guardada. Los usuarios nuevos recibirán estos valores.";
   } catch (e) { $("setMsg").textContent = "Error: " + e.message; }
+};
+// Probar la IA elegida (con la clave que está en el campo, si hay una
+// nueva sin guardar; si no, con la guardada). No guarda nada.
+$("btnTestLlm").onclick = async () => {
+  const provider = $("setLlmProvider").value;
+  const key = (provider === "gemini" ? $("setGeminiKey").value : $("setGroqKey").value).trim();
+  $("setLlmMsg").textContent = "Probando " + provider + "…";
+  try {
+    const r = await apiFetch("/api/admin/llm-test", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ provider, key }) });
+    $("setLlmMsg").textContent = r.ok ? ("✓ " + provider + " responde bien.") : ("✗ " + provider + ": " + (r.error || "sin respuesta"));
+  } catch (e) { $("setLlmMsg").textContent = "Error: " + e.message; }
 };
 
 // Mis Clips como TELÉFONOS: la tarjeta es el celular (marco redondeado
@@ -1385,13 +1538,12 @@ $("confirmDeleteOk").onclick = async () => {
       const ids = [..._bulkSelected];
       const res = await apiFetch("/api/me/clips/bulk-delete", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ clip_ids: ids }) });
       const gone = new Set(res.deleted || ids);
-      _myClips = _myClips.filter((c) => !gone.has(c.id));
       setBulkSelectMode(false);
-      renderMyClipsPage();
+      loadMyClips(); // v176: recarga la página actual del servidor (el total cambió)
       if ((res.not_found || []).length) toast(`Se eliminaron ${gone.size} clips. ${(res.not_found || []).length} ya no existían.`);
     } else {
       await apiFetch(`/api/me/clips/${t.clip.id}`, { method: "DELETE", headers: authHeaders() });
-      if (t.cardEl) t.cardEl.remove();
+      loadMyClips(); // v176: recarga la página actual del servidor (el total cambió)
     }
   } catch (e) {
     toast("No se pudo eliminar: " + e.message);
@@ -1438,60 +1590,59 @@ async function editClip(c) {
 
 // ---------- Mis Clips (con paginación, 2026-11-11, Juan) ----------
 const CLIPS_PER_PAGE = 10;
-let _myClips = [], _myClipsPage = 0;
-let _showAllClips = false; // v156: "Ver todos mis videos" (sin paginación)
+let _myClips = [], _myClipsPage = 0, _myClipsTotal = 0;
+// v176 (2026-11-18, Juan: "agrega una paginación, si se cargan todos los
+// videos de golpe se frizará"): la lista se pagina EN EL SERVIDOR (10 por
+// página). El modo "Ver todos" (v156) se eliminó: renderizar ~286 tarjetas
+// con su <video preload=metadata> de golpe era lo que congelaba el
+// navegador. Ahora solo se descargan y se dibujan 10 clips por página.
 function renderMyClipsPage() {
   const box = $("myClips");
-  const pages = Math.max(1, Math.ceil(_myClips.length / CLIPS_PER_PAGE));
+  const pages = Math.max(1, Math.ceil(_myClipsTotal / CLIPS_PER_PAGE));
   if (_myClipsPage >= pages) _myClipsPage = pages - 1;
   if (_myClipsPage < 0) _myClipsPage = 0;
   box.innerHTML = "";
-  // v156: "Ver todos mis videos" muestra todos sin paginar.
-  const list = _showAllClips ? _myClips : _myClips.slice(_myClipsPage * CLIPS_PER_PAGE, _myClipsPage * CLIPS_PER_PAGE + CLIPS_PER_PAGE);
-  list.forEach((c) => box.appendChild(clipRow(c, false)));
   const pg = $("clipsPagination");
+  if (!_myClipsTotal) {
+    box.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>";
+    if (pg) pg.innerHTML = "";
+    return;
+  }
+  _myClips.forEach((c) => box.appendChild(clipRow(c, false)));
   if (pg) {
     pg.innerHTML = "";
-    if (!_showAllClips && _myClips.length > CLIPS_PER_PAGE) {
+    if (_myClipsTotal > CLIPS_PER_PAGE) {
       const prev = document.createElement("button");
       prev.className = "small ghost";
       prev.textContent = "← Anterior";
       prev.disabled = _myClipsPage === 0;
-      prev.onclick = () => { _myClipsPage--; renderMyClipsPage(); };
+      prev.onclick = () => loadMyClips(_myClipsPage - 1);
       const info = document.createElement("span");
       info.className = "muted";
       info.style.cssText = "align-self:center;font-size:13px";
-      info.textContent = `Página ${_myClipsPage + 1} de ${pages} · ${_myClips.length} clips`;
+      info.textContent = `Página ${_myClipsPage + 1} de ${pages} · ${_myClipsTotal} clips`;
       const next = document.createElement("button");
       next.className = "small ghost";
       next.textContent = "Siguiente →";
       next.disabled = _myClipsPage >= pages - 1;
-      next.onclick = () => { _myClipsPage++; renderMyClipsPage(); };
+      next.onclick = () => loadMyClips(_myClipsPage + 1);
       pg.append(prev, info, next);
     }
   }
-  const sab = $("btnShowAllClips");
-  if (sab) {
-    sab.hidden = _myClips.length <= CLIPS_PER_PAGE;
-    sab.textContent = _showAllClips ? "Ver por páginas" : "Ver todos mis videos";
-  }
 }
-$("btnShowAllClips").onclick = () => { _showAllClips = !_showAllClips; _myClipsPage = 0; renderMyClipsPage(); };
-// v157: el botón de Inicio va a Mis Clips mostrando TODOS los videos.
-$("btnShowAllClipsHome").onclick = () => { _showAllClips = true; _myClipsPage = 0; renderMyClipsPage(); goTab("clips"); };
-async function loadMyClips() {
+// v157: el botón de Inicio va a Mis Clips (primera página, paginada).
+$("btnShowAllClipsHome").onclick = () => { loadMyClips(0); goTab("clips"); };
+async function loadMyClips(page) {
+  if (typeof page === "number") _myClipsPage = page;
   const box = $("myClips");
   try {
-    _myClips = await apiFetch("/api/me/clips", { headers: authHeaders() });
-    if (!_myClips.length) {
-      box.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>";
-      const pg = $("clipsPagination");
-      if (pg) pg.innerHTML = "";
-      return;
-    }
-    _myClipsPage = 0;
+    const data = await apiFetch(`/api/me/clips?limit=${CLIPS_PER_PAGE}&offset=${_myClipsPage * CLIPS_PER_PAGE}`, { headers: authHeaders() });
+    _myClips = data.items || [];
+    _myClipsTotal = data.total || 0;
+    if (!_myClips.length && _myClipsPage > 0) { _myClipsPage--; return loadMyClips(); } // página vacía tras borrar
     renderMyClipsPage();
     updatePvDownload();
+    refreshCandDownloads();
   } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
 }
 
@@ -1639,7 +1790,7 @@ function openLiveConfig(id, list) {
   _liveCfgId = id;
   const set = (el, v) => { if (el != null) el.value = v; };
   set($("lcCamera"), s.camera_mode || "follow_speaker");
-  set($("lcQuality"), s.quality || "1080p");
+  set($("lcQuality"), s.quality || "720p");
   set($("lcPerRound"), String(s.clips_per_round || 3));
   set($("lcInterval"), String(s.interval_minutes || 10));
   set($("lcMinLen"), s.min_len != null ? s.min_len : 20);
@@ -1720,22 +1871,40 @@ function tickLiveCountdowns() {
 }
 setInterval(tickLiveCountdowns, 1000);
 
-async function liveDelete(btn) {
-  // Dos toques para confirmar: el botón se pone rojo en el 1er toque.
-  if (btn.dataset.confirm !== "1") {
-    btn.dataset.confirm = "1";
-    btn.classList.add("confirm");
-    btn.title = "Toca de nuevo para confirmar";
-    setTimeout(() => { btn.dataset.confirm = ""; btn.classList.remove("confirm"); btn.title = "Eliminar"; }, 4000);
-    return;
-  }
+let _liveDelId = null;
+function liveDelete(btn) {
+  // v166: confirmación real en modal. El doble toque anterior se disparaba
+  // por accidente: la tuerca y el basurero son botones de 40px pegados, y
+  // en el móvil un toque a la tuerca cae fácil en el basurero; el segundo
+  // toque al mismo sitio borraba el live sin que se notara. Ahora el
+  // basurero solo abre el modal y borrar exige pulsar "Eliminar live".
+  const card = btn.closest(".live-card");
+  const title = card ? (card.querySelector(".live-title")?.textContent || "").trim() : "";
+  _liveDelId = +btn.dataset.liveDel;
+  $("liveDeleteTitle").textContent = "¿Eliminar este live?";
+  $("liveDeleteText").textContent = (title ? "«" + title + "» · " : "") + "Se dejará de monitorear y ya no sacará más clips. Los clips ya creados no se borran.";
+  $("liveDeleteMsg").textContent = "";
+  $("liveDeleteModal").hidden = false;
+}
+function closeLiveDelete() { $("liveDeleteModal").hidden = true; _liveDelId = null; }
+$("liveDeleteClose").onclick = closeLiveDelete;
+$("liveDeleteCancel").onclick = closeLiveDelete;
+$("liveDeleteModal").addEventListener("click", (e) => { if (e.target === $("liveDeleteModal")) closeLiveDelete(); });
+$("liveDeleteConfirm").onclick = async () => {
+  if (!_liveDelId) return;
+  const btn = $("liveDeleteConfirm");
+  const msg = $("liveDeleteMsg");
+  btn.disabled = true;
   try {
-    await apiFetch(`/api/lives/${btn.dataset.liveDel}`, { method: "DELETE", headers: authHeaders() });
+    await apiFetch(`/api/lives/${_liveDelId}`, { method: "DELETE", headers: authHeaders() });
+    closeLiveDelete();
     loadLives();
   } catch (e) {
-    $("liveMsg").textContent = "Error: " + e.message;
+    msg.textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
   }
-}
+};
 
 $("btnStartLive").onclick = async () => {
   const url = $("liveUrl").value.trim();
@@ -2476,7 +2645,7 @@ function wzSyncFromEditor() {
   set("wzMaxClips", $("cfgMaxClips") ? $("cfgMaxClips").value : 5);
   set("wzMinClip", $("cfgMinClip") ? $("cfgMinClip").value : 20);
   set("wzMaxClip", $("cfgMaxClip") ? $("cfgMaxClip").value : 45);
-  set("wzQuality", $("cfgQuality") ? $("cfgQuality").value : "1080p");
+  set("wzQuality", $("cfgQuality") ? $("cfgQuality").value : "720p");
   set("wzModel", $("model") ? $("model").value : "base");
   // Marca de agua (v152): en el asistente solo se activa o se quita; la
   // configuración (texto/logo, color, tamaño, posición) vive en el perfil.
@@ -2723,7 +2892,8 @@ $("btnClips").onclick = async () => {
       div.innerHTML = `<video muted playsinline preload="metadata" src="/api/jobs/${job.id}/clip-video?start=${c.abs_start}&end=${c.abs_end}#t=0.1"></video>`
         + `<div class="clip-body"><div class="clip-title">${esc(c.title || `Clip ${i + 1}`)}</div>`
         + `<div class="clip-meta">${TIMER_SVG} ${fmtDur(c.abs_start)} – ${fmtDur(c.abs_end)} ${fire}</div>`
-        + `<button type="button" class="cand-preview">${PLAY_SVG} Ver vista previa</button></div>`;
+        + `<button type="button" class="cand-preview">${PLAY_SVG} Editar video</button>`
+        + `<a class="cand-download btn-show-all" data-start="${c.abs_start}" data-end="${c.abs_end}" download>${DL_SVG} Generando…</a></div>`;
       const pick = () => { state.editingClipId = null; selectClip(c, div); };
       div.onclick = pick;
       div.querySelector(".cand-preview").onclick = (e) => { e.stopPropagation(); pick(); };
@@ -3171,6 +3341,36 @@ $("pvSoundBtn").onclick = () => {
 // renderizado que corresponde al candidato seleccionado (mismo inicio/fin)
 // y apunta el botón a su descarga. Si aún no está renderizado, queda
 // desactivado con "Generando…".
+// v170 (2026-11-18, Juan: en la tarjeta del clip que elige la IA el
+// botón debe decir "Editar video" y DEBAJO debe salir inmediatamente
+// "Descargar video ahora"): activa cada botón .cand-download cuando su
+// clip ya está renderizado en Mis Clips (mismo emparejamiento por
+// inicio/fin que updatePvDownload). Mientras se genera, queda en
+// "Generando…" sin enlace y sin poder pulsarse.
+function refreshCandDownloads() {
+  document.querySelectorAll(".cand-download").forEach((a) => {
+    const s = parseFloat(a.dataset.start || "0");
+    const e = parseFloat(a.dataset.end || "0");
+    let url = "";
+    if (_myClips.length) {
+      const m = _myClips.find((c) => c.download_url
+        && Math.abs((c.start || 0) - s) < 1.5
+        && Math.abs((c.end || 0) - e) < 1.5);
+      if (m) url = m.download_url;
+    }
+    if (url) {
+      a.href = url;
+      a.style.opacity = "";
+      a.style.pointerEvents = "";
+      a.innerHTML = DL_SVG + " Descargar video ahora";
+    } else {
+      a.removeAttribute("href");
+      a.style.opacity = ".55";
+      a.style.pointerEvents = "none";
+      a.innerHTML = DL_SVG + " Generando…";
+    }
+  });
+}
 function updatePvDownload() {
   const btn = $("pvDownloadBtn");
   if (!btn) return;
@@ -3286,12 +3486,14 @@ $("coverRange").addEventListener("input", () => {
   setCoverMode(true);
 });
 
-// ---------- Guardar título y portada (re-renderiza el clip) ----------
-// Cuando se está editando un clip existente, guardar el título y la
-// portada RE-RENDERIZA ese mismo clip (mismo id y mismo archivo): el
-// título de enganche se quema grande sobre la portada al inicio del
-// video, sin marco ni marca. Un PATCH solo cambiaría la miniatura, y
-// el título no saldría en el video (eso era lo que estaba mal).
+// ---------- Guardar cambios en el clip (re-renderiza el clip) ----------
+// v200 (Juan): el botón se llama "Guardar cambios en el clip" y aplica
+// TODOS los ajustes del editor (plantilla, colores de subtítulos y de
+// portada, cámara, marco, marca) re-renderizando el mismo clip (mismo
+// id y mismo archivo). El botón "Guardar configuración" ya no sale en
+// el editor: eso es para los próximos videos y se configura en Mi
+// Cuenta, aquí solo confundía. Al guardar se va a Mis Clips para ver
+// el clip nuevo.
 $("btnSaveMeta").onclick = async () => {
   if (!state.editingClipId) return;
   if (!state.clipsJob || state.busy) return;
@@ -3305,9 +3507,11 @@ $("btnSaveMeta").onclick = async () => {
     body.update_clip_id = state.editingClipId;
     const d = await apiFetch("/api/render", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
     await pollJob(d.job_id, () => {});
-    msg.textContent = "Guardado. El título ya sale en la portada del video.";
-    loadMyClips();
+    msg.textContent = "Clip actualizado con tus cambios.";
+    loadMyClips(0);
     if (state.user && state.user.is_admin) loadAdminClips();
+    // v200: al guardar, llevar a Mis Clips para ver el clip nuevo.
+    goTab("clips");
   } catch (e) {
     msg.textContent = "Error: " + e.message;
   } finally {
@@ -3528,12 +3732,12 @@ async function autoRenderCandidates(cands) {
       done++;
     } catch (e) { failed++; }
     setStatus();
-    loadMyClips();
+    loadMyClips(0);
   })()));
   renderSteps(5, -1, done === total ? `¡Listo! Tus ${total} clips están en Mis Clips, ya para descargar.` : `${done} de ${total} clips listos en Mis Clips${failed ? ` (${failed} fallaron)` : ""}.`);
   setJobProgress(100);
   loadPanel();
-  loadMyClips();
+  loadMyClips(0);
   // Ir a Mis Clips para que los clips se vean de inmediato (v152).
   if (done > 0) goTab("clips");
 }
@@ -3574,7 +3778,7 @@ $("btnRender").onclick = async () => {
     $("downloadLink").download = file;
     document.getElementById("resultCard").scrollIntoView({ behavior: "smooth" });
     loadPanel();
-    loadMyClips();
+    loadMyClips(0);
     // El render creó un clip nuevo: ya no se está editando el anterior.
     state.editingClipId = null;
     $("btnSaveMeta").hidden = true;
@@ -3632,7 +3836,7 @@ if (_heroForm) {
     }
     sessionStorage.setItem("clipper_pending_url", link);
     if (state.user) { openPanel(); }
-    else { landingGoToAccount(); toast("Crea tu cuenta o entra — tu link queda guardado."); }
+    else { landingGoToAccount("register"); toast("Crea tu cuenta o entra — tu link queda guardado."); }
   });
 }
 
@@ -3646,34 +3850,191 @@ const FMT_MODES = [
   ["mirror_blur", "Espejo · fondo borroso"], ["mirror_black", "Espejo · fondo negro"],
 ];
 let _fmtSelected = "follow_speaker";
-(function initFormats() {
-  const pills = $("fmtPills"), prev = $("fmtPreview"), fname = $("fmtName"), hint = $("fmtHint");
-  if (!pills || !prev) return;
-  FMT_MODES.forEach(([mode, label]) => {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "fmt-pill"; b.textContent = label;
-    b.setAttribute("data-fmt", mode);
-    b.setAttribute("role", "tab");
-    b.onclick = () => selectFmt(mode);
-    pills.appendChild(b);
+// ---------- Carrusel de formatos v177 (estilo ViroCut) ----------
+// Tarjetas inclinadas en abanico con los 8 modos de cámara y sus videos
+// demo reales. Se arrastra horizontalmente; tocar una tarjeta la activa
+// (reproduce su video) y "Probar este modo" lo guarda para Crear Clip.
+const FMT_DESCS = {
+  center: "El recorte 9:16 fijo en el centro del video.",
+  follow_speaker: "La cámara sigue sola a quien está hablando.",
+  dual: "Dos personas lado a lado, siempre visibles.",
+  split: "La cara arriba y el contenido abajo, en dos pantallas.",
+  blur: "El video entero, sin recortar, con fondo borroso.",
+  mirror: "Todo el video volteado, como en un espejo.",
+  mirror_blur: "Reflejo suave con el video desenfocado de fondo.",
+  mirror_black: "El video centrado sobre fondo negro.",
+};
+(function initFormatsCarousel() {
+  const track = $("fmtCarousel"), hint = $("fmtHint");
+  if (!track) return;
+  const TILTS = ["-4deg", "-2deg", "0deg", "2deg", "4deg", "2deg", "0deg", "-2deg"];
+  let dragged = false;
+  FMT_MODES.forEach(([mode, label], i) => {
+    const card = document.createElement("article");
+    card.className = "fmt-card";
+    card.style.setProperty("--tilt", TILTS[i % TILTS.length]);
+    card.setAttribute("data-fmt", mode);
+    card.innerHTML = `<video src="/demos/cam-${mode}.mp4" muted loop playsinline preload="metadata"></video><div class="fmt-meta"><b>${esc(label)}</b><span>${esc(FMT_DESCS[mode] || "")}</span></div>`;
+    card.addEventListener("click", () => {
+      if (dragged) { dragged = false; return; }
+      selectFmt(mode, true);
+    });
+    track.appendChild(card);
   });
-  function selectFmt(mode) {
+  function selectFmt(mode, user) {
     _fmtSelected = mode;
-    pills.querySelectorAll(".fmt-pill").forEach((p) => p.classList.toggle("on", p.getAttribute("data-fmt") === mode));
-    prev.innerHTML = (typeof CAMERA_PREVIEWS !== "undefined" && CAMERA_PREVIEWS[mode]) || "";
-    if (fname) fname.textContent = (FMT_MODES.find((m) => m[0] === mode) || [mode, mode])[1];
+    track.querySelectorAll(".fmt-card").forEach((c) => {
+      const on = c.getAttribute("data-fmt") === mode;
+      c.classList.toggle("on", on);
+      const v = c.querySelector("video");
+      if (v) { if (on) v.play().catch(() => {}); else v.pause(); }
+    });
     if (hint) hint.textContent = (typeof CAMERA_HINTS !== "undefined" && CAMERA_HINTS[mode]) || "";
-    prev.classList.remove("fmt-pop"); void prev.offsetWidth; prev.classList.add("fmt-pop");
+    if (user) {
+      const el = track.querySelector(`.fmt-card[data-fmt="${mode}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
   }
-  selectFmt("follow_speaker");
+  // Arrastre horizontal con puntero (el scroll táctil nativo ya funciona).
+  let dragging = false, startX = 0, startLeft = 0;
+  track.addEventListener("pointerdown", (e) => {
+    dragging = true; dragged = false; startX = e.clientX; startLeft = track.scrollLeft;
+    track.classList.add("dragging");
+  });
+  track.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    if (Math.abs(e.clientX - startX) > 6) dragged = true;
+    track.scrollLeft = startLeft - (e.clientX - startX);
+  });
+  const stopDrag = () => { dragging = false; track.classList.remove("dragging"); };
+  track.addEventListener("pointerup", stopDrag);
+  track.addEventListener("pointerleave", stopDrag);
+  track.addEventListener("pointercancel", stopDrag);
+  // El video activo solo se reproduce cuando el carrusel se ve.
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        const v = track.querySelector(".fmt-card.on video");
+        if (!v) return;
+        if (en.isIntersecting) v.play().catch(() => {});
+        else v.pause();
+      });
+    }, { threshold: 0.15 });
+    io.observe(track);
+  }
+  selectFmt("follow_speaker", false);
   const tryBtn = $("btnFmtTry");
   if (tryBtn) {
     tryBtn.onclick = () => {
       sessionStorage.setItem("clipper_pending_mode", _fmtSelected);
       if (state.user) { openPanel(); }
-      else { landingGoToAccount(); toast("Crea tu cuenta o entra — el modo queda guardado."); }
+      else { landingGoToAccount("register"); toast("Crea tu cuenta o entra — el modo queda guardado."); }
     };
   }
+})();
+
+// ---------- Demo interactiva del editor v177 (estilo ViroCut) ----------
+// Mock: el video cambia entre los 8 modos de cámara y el overlay de
+// subtítulo cambia de estilo por CSS. NO re-renderiza nada.
+const ED_SUB_GROUPS = [
+  ["MIRA", "ESTO"],
+  ["QUÉ", "LOCURA"],
+  ["NO LO", "CREO"],
+  ["ESTO ES", "ORO"],
+];
+let _edStyle = "impacto";
+let _edGroup = 0;
+let _edTimer = null;
+(function initEditorDemo() {
+  const video = $("edDemoVideo"), sub = $("edSub"), playBtn = $("edPlay");
+  const progress = $("edProgress"), timeEl = $("edTime");
+  const layouts = $("edLayouts"), stylesBox = $("edStyles");
+  if (!video || !sub || !layouts) return;
+  function edRenderSub() {
+    const g = ED_SUB_GROUPS[_edGroup % ED_SUB_GROUPS.length];
+    sub.innerHTML = `<span class="ed-line">${esc(g[0])} <span class="kw">${esc(g[1])}</span></span>`;
+  }
+  function edStartWords() {
+    if (_edTimer) return;
+    edRenderSub();
+    _edTimer = setInterval(() => { _edGroup++; edRenderSub(); }, 1400);
+  }
+  function edStopWords() {
+    if (_edTimer) { clearInterval(_edTimer); _edTimer = null; }
+  }
+  function updatePlayBtn() {
+    if (playBtn) playBtn.innerHTML = video.paused ? PLAY_SVG : PAUSE_SVG;
+  }
+  FMT_MODES.forEach(([mode, label]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.setAttribute("data-mode", mode);
+    if (mode === "follow_speaker") b.classList.add("on");
+    b.onclick = () => {
+      layouts.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      video.src = `/demos/cam-${mode}.mp4`;
+      video.play().catch(() => {});
+      updatePlayBtn();
+    };
+    layouts.appendChild(b);
+  });
+  if (stylesBox) {
+    stylesBox.querySelectorAll("button[data-style]").forEach((b) => {
+      b.onclick = () => {
+        _edStyle = b.getAttribute("data-style");
+        stylesBox.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        sub.className = "ed-sub " + _edStyle;
+        edRenderSub();
+      };
+    });
+  }
+  if (playBtn) {
+    playBtn.onclick = () => {
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+      updatePlayBtn();
+    };
+  }
+  video.addEventListener("play", () => { edStartWords(); updatePlayBtn(); });
+  video.addEventListener("pause", () => { edStopWords(); updatePlayBtn(); });
+  video.addEventListener("timeupdate", () => {
+    const d = video.duration || 10;
+    if (progress) progress.style.width = `${Math.min(100, (video.currentTime / d) * 100)}%`;
+    if (timeEl) timeEl.textContent = fmtDur(video.currentTime);
+  });
+  // Solo reproduce cuando se ve (y arranca solo al entrar en vista).
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) video.play().catch(() => {});
+        else video.pause();
+        updatePlayBtn();
+      });
+    }, { threshold: 0.2 });
+    io.observe(video);
+  } else {
+    video.play().catch(() => {});
+  }
+  edRenderSub();
+  updatePlayBtn();
+})();
+
+// ---------- Modales Términos / Privacidad (landing v177) ----------
+(function initLegalModals() {
+  const open = (id) => { const m = $(id); if (m) m.hidden = false; };
+  const close = (id) => { const m = $(id); if (m) m.hidden = true; };
+  const ft = $("footTerms"); if (ft) ft.onclick = () => open("termsModal");
+  const fp = $("footPrivacy"); if (fp) fp.onclick = () => open("privacyModal");
+  const bt = $("btnTermsClose"); if (bt) bt.onclick = () => close("termsModal");
+  const bp = $("btnPrivacyClose"); if (bp) bp.onclick = () => close("privacyModal");
+  ["termsModal", "privacyModal"].forEach((id) => {
+    const m = $(id);
+    if (m) m.addEventListener("click", (e) => { if (e.target === m) close(id); });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { close("termsModal"); close("privacyModal"); }
+  });
 })();
 
 // Contadores animados: cuentan de 0 al valor al entrar en vista.

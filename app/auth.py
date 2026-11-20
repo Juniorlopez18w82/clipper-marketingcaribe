@@ -59,7 +59,7 @@ class User(Base):
     max_clips = Column(Integer, nullable=False, default=5)
     min_clip_secs = Column(Float, nullable=False, default=20.0)
     max_clip_secs = Column(Float, nullable=False, default=45.0)
-    quality = Column(String(10), nullable=False, default="1080p")  # 720p | 1080p
+    quality = Column(String(10), nullable=False, default="720p")  # 720p | 1080p
     subtitles_enabled = Column(Boolean, nullable=False, default=True)
     template = Column(String(80), nullable=False, default="Gancho grande")
     # Marca de agua persistente (v146, Juan: configurable como el título
@@ -143,7 +143,7 @@ def user_out(user: User) -> dict:
         "max_clips": user.max_clips if user.max_clips is not None else 5,
         "min_clip_secs": user.min_clip_secs if user.min_clip_secs is not None else 20.0,
         "max_clip_secs": user.max_clip_secs if user.max_clip_secs is not None else 45.0,
-        "quality": user.quality or "1080p",
+        "quality": user.quality or "720p",
         "subtitles_enabled": bool(user.subtitles_enabled) if user.subtitles_enabled is not None else True,
         "template": user.template or "Gancho grande",
         "watermark_enabled": bool(getattr(user, "watermark_enabled", True)) if getattr(user, "watermark_enabled", None) is not None else True,
@@ -298,6 +298,16 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Tu cuenta está suspendida. "
                             "Contacta al administrador.")
+    # Modo mantenimiento (2026-11-19, Juan): solo los admins pueden
+    # usar el sistema. Un usuario no admin con un token válido recibe
+    # 401 aquí, así el frontend lo expulsa al instante (la revalidación
+    # de /api/auth/me cada 30 s y cualquier llamada a la API lo sacan).
+    if not user.is_admin:
+        from .settings import get_setting
+        if get_setting(db, "maintenance_mode", "false").lower() == "true":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="El sistema está en mantenimiento. "
+                                "Vuelve pronto.")
     return user
 
 

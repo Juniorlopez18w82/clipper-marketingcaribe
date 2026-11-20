@@ -337,6 +337,9 @@ def _download_audio_chunk(url: str, start: float, end: float,
             old.unlink()
         cmd = [
             sys.executable, "-m", "yt_dlp", "--no-warnings",
+            # v197: -N 8 = 8 fragmentos a la vez (medido: +20% en
+            # tv_embedded, más en android; sin cambio de calidad).
+            "-N", "8",
             "--extractor-args", f"youtube:player_client={client}",
             "--download-sections", section,
             "-f", "250/251/bestaudio/best",
@@ -502,13 +505,31 @@ def _download_audio_parallel(url: str, start: float, end: float,
 def download_section(url: str, start: float, end: float, job_id: str,
                      audio_only: bool = False,
                      lowres: bool = False,
-                     progress_cb=None) -> Path:
+                     progress_cb=None,
+                     is_live: bool = False,
+                     prefer_android: bool = False) -> Path:
     """Download only [start, end] (absolute seconds in the original video).
 
     Returns the downloaded file. Format: best video <=1080p + audio, merged
     by ffmpeg (yt-dlp does the merge; the section cut is keyframe-based,
     so the file can be a few seconds longer than requested — render.py
     trims exactly with -ss/-t).
+
+    is_live (2026-11-17, v165: los clips de lives salían con los
+    primeros segundos duplicados): NUNCA bajar un live en trozos
+    paralelos. yt-dlp --download-sections usa ffmpeg -ss sobre el
+    manifiesto HLS/DASH en vivo, y ese seek NO cae en el timestamp
+    pedido: cada descarga cae (casi) en el mismo sitio — medido
+    2026-11-17 en dos lives reales (uno de 90 días, otro de 5.5 h):
+    dos descargas del mismo rango de 60 s difieren ~9 s entre sí, y
+    en un audio paralelo de 300 s los 3 trozos de 100 s empiezan con
+    EL MISMO audio (correlación 1.0-1.1), así que el concat era
+    [X][X][X]: el mismo contenido 3 veces y la transcripción repetida.
+    En un VOD el manifiesto es estático y el seek es exacto, por eso
+    solo fallan los lives. Con is_live se baja en SERIE (una sola
+    descarga): el archivo es continuo por dentro (sin duplicados) —
+    su único error es un desfase global de segundos, que el render
+    absorbe porque audio y video se cortan del mismo archivo padre.
 
     audio_only (2026-11-11, velocidad): el análisis de clips (Sacar clips)
     solo necesita el AUDIO para transcribir; bajar el video completo de
@@ -537,8 +558,10 @@ def download_section(url: str, start: float, end: float, job_id: str,
     # Audio largo: en trozos paralelos (2026-11-11). Una sola conexión
     # se atora en el límite de YouTube (600 s = 300 s un día); en
     # paralelo baja ~3.5x más rápido. Si el paralelo falla, se cae al
-    # método en serie de abajo.
-    if audio_only and (end - start) > AUDIO_PARALLEL_MIN_SECONDS:
+    # método en serie de abajo. NUNCA en un live (is_live): el seek por
+    # timestamp sobre el manifiesto en vivo no es fiable (ver docstring
+    # de download_section) y los trozos se solapan/duplican.
+    if audio_only and not is_live and (end - start) > AUDIO_PARALLEL_MIN_SECONDS:
         try:
             out = _download_audio_parallel(url, start, end, job_id,
                                            progress_cb=progress_cb)
@@ -580,7 +603,13 @@ def download_section(url: str, start: float, end: float, job_id: str,
         _serial_watcher = threading.Thread(target=_watch_serial, daemon=True)
         _serial_watcher.start()
     try:
-        for client in PLAYER_CLIENTS:
+        # v196: prefer_android (calidad de salida 720p) prueba android
+        # primero: sirve 360p y baja ~2-5x más rápido que tv_embedded;
+        # si falla o no trae video, cae a tv_embedded y luego a web.
+        # Con 1080p se usa el orden normal (tv_embedded primero, 720p).
+        _clients = (["android", "tv_embedded", "web"] if prefer_android
+                    else PLAYER_CLIENTS)
+        for client in _clients:
             # Solo audio: itag 250 (Opus ~70 kbps) ANTES que bestaudio.
             # Medido 2026-11-11 (180 s del video de Juan, tv_embedded, WARP):
             # bestaudio (itag 251, Opus ~160 kbps, 3.2 MB) tarda 96-97 s
@@ -598,6 +627,9 @@ def download_section(url: str, start: float, end: float, job_id: str,
                     old.unlink()
                 cmd = [
                     sys.executable, "-m", "yt_dlp", "--no-warnings",
+                    # v197: -N 8 = 8 fragmentos a la vez (medido: +20% en
+                    # tv_embedded, más en android; sin cambio de calidad).
+                    "-N", "8",
                     "--extractor-args", f"youtube:player_client={client}",
                     "--download-sections", section,
                     "-f", fmt,
@@ -610,7 +642,13 @@ def download_section(url: str, start: float, end: float, job_id: str,
                 proxy = _proxy()
                 if proxy:
                     cmd[3:3] = ["--proxy", proxy]
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                # v170: el timeout escala con la ventana — en un live el
+                # análisis baja el VIDEO completo (no solo audio) y una
+                # ventana de 60 min a 1080p tarda más de 600 s (medido:
+                # 137.8 MB en 480 s y siguió). 2 s de margen por cada
+                # segundo de video, con 600 s de mínimo.
+                _dl_timeout = max(600, int((end - start) * 2))
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=_dl_timeout)
                 if proc.returncode != 0:
                     err = proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "yt-dlp failed"
                     errors.append(f"{client}/{fmt}: {err}")

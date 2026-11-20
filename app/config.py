@@ -32,6 +32,11 @@ DEFAULT_TITLE_TEXT = ""
 DEFAULT_SUBTITLE_SIZE = 76
 # Max concurrent heavy jobs (download/transcribe/render) in-process.
 MAX_WORKERS = int(os.environ.get("CLIPPER_MAX_WORKERS", "2"))
+# Renders a la vez (v195, 2026-11-19, Juan: 16 vCPU es caro): sin
+# límite, 10 renders a la vez corrían 10 ffmpeg a la vez y todos iban
+# lentos. Con 3 a la vez cada render tiene ~3 núcleos en un servidor
+# de 8-10 vCPU y los demás esperan en cola. Ajustable por env.
+MAX_CONCURRENT_RENDERS = int(os.environ.get("CLIPPER_MAX_CONCURRENT_RENDERS", "3"))
 # Límite de subida de video por el usuario (500 MB).
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 

@@ -23,6 +23,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY frontend ./frontend
+# Modelos del detector de caras DNN (OpenCV SSD, v190): sin ellos la
+# detección de facecam usa Haar (más débil, no ve a Speed). ~10.6 MB.
+COPY face_models ./face_models
 COPY entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh \
  && mkdir -p data/sources data/outputs data/jobs data/transcripts

@@ -26,6 +26,20 @@ DEFAULT_SETTINGS = {
     "default_template": "Gancho grande",
     # Color de fondo de la palabra clave en los subtítulos.
     "subtitle_highlight_color": "#FADE4C",
+    # IA que elige los clips (2026-11-18, Juan: cambiar a Gemini Flash,
+    # y poder elegirla desde el Panel Admin + agregar claves): "groq"
+    # (gpt-oss-120b/20b, gratis) o "gemini" (gemini-2.5-flash, ~$0.006
+    # por video de 1 h, elige mejor). Las claves viven aquí (las pone el
+    # admin) y si están vacías se usa el .env. Nunca se devuelven
+    # completas por la API (GET las enmascara, POST ignora la máscara).
+    "llm_provider": "gemini",
+    "groq_api_key": "",
+    "gemini_api_key": "",
+    # Modo mantenimiento (2026-11-19, Juan): "true" = solo los admins
+    # pueden entrar; los usuarios no pueden loguearse y los que están
+    # dentro son expulsados (get_current_user devuelve 401). Se activa
+    # desde Panel Admin > Configuración.
+    "maintenance_mode": "false",
 }
 
 

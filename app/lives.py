@@ -55,7 +55,9 @@ class LiveSession(Base):
     # las pasa al RenderRequest de cada clip del live. None = default.
     camera_mode = Column(String(32), nullable=False,
                          default="follow_speaker")
-    facecam_corner = Column(String(32), nullable=False, default="top-left")
+    # (v189) "auto" = detectar en las 6 zonas; una esquina explícita
+    # restringe la detección a esa zona.
+    facecam_corner = Column(String(32), nullable=False, default="auto")
     frame_enabled = Column(Boolean, nullable=False, default=True)
     frame_color = Column(String(16), nullable=False,
                          default=DEFAULT_FRAME_COLOR)
@@ -118,7 +120,7 @@ def live_session_out(session: LiveSession, clip_count: int = 0) -> dict:
         "min_len": session.min_len,
         "max_len": session.max_len,
         "camera_mode": session.camera_mode or "follow_speaker",
-        "facecam_corner": session.facecam_corner or "top-left",
+        "facecam_corner": session.facecam_corner or "auto",
         "frame_enabled": session.frame_enabled is not False,
         "frame_color": session.frame_color or DEFAULT_FRAME_COLOR,
         "frame_width": session.frame_width or DEFAULT_FRAME_WIDTH,

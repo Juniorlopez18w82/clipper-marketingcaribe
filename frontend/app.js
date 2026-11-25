@@ -386,7 +386,12 @@ function showUser(user) {
     $("authUserPlan").textContent = user.is_admin ? "Admin" : user.plan;
     updateTopBar();
     $("panelWelcome").textContent = `Hola, ${user.name} — tus clips y tu cuenta, todo en un solo lugar.`;
-    $("tabAdmin").hidden = !user.is_admin;
+    $("tabAdmin").hidden = !(user.is_admin || user.is_moderator);
+    // Moderador (v215): en Panel Admin solo ve Solicitudes de pago.
+    const _isMod = !!user.is_moderator && !user.is_admin;
+    document.querySelectorAll("#adminTabs .mini-tab").forEach((b) => {
+      b.hidden = _isMod && b.dataset.admin !== "requests";
+    });
     // La configuración guardada del usuario manda en el creador.
     if (user.brand_text) $("brandText").value = user.brand_text;
     $("frameEnabled").checked = user.frame_enabled !== false;
@@ -637,6 +642,7 @@ function goTab(tab, { push = false } = {}) {
   document.querySelectorAll(".panel .pane").forEach((p) => p.hidden = true);
   $("pane-" + tab).hidden = false;
   if (tab === "create") preloadCameraDemos();
+  if (tab === "home") refreshStats();
   if (tab === "clips") loadMyClips();
   if (tab === "lives") loadLives();
   if (tab === "images") { loadImageModels(); loadMyImages(); }
@@ -856,6 +862,32 @@ $("cfgTemplate").addEventListener("change", () => {
 ["frameEnabled", "frameColor", "frameWidth", "subPos"]
   .forEach((id) => $(id).addEventListener("input", () => { state.templateTouched = true; }));
 
+// v213: refresca las estadísticas del panel (MINUTOS GENERADOS, clips,
+// videos). Antes solo se pedían una vez al entrar (loadPanel), así que el
+// contador se quedaba pegado hasta recargar. Ahora se vuelve a pedir
+// cuando termina un trabajo y al volver a Inicio.
+async function refreshStats() {
+  try {
+    const s = await apiFetch("/api/me/stats", { headers: authHeaders() });
+    $("stMonth").textContent = s.clips_this_month ?? 0;
+    $("stProcessing").textContent = s.videos_in_process ?? 0;
+    $("stTotalClips").textContent = s.clips_total ?? 0;
+    $("stVideos").textContent = s.videos_total ?? 0;
+    $("stMinutes").textContent = s.minutes_total ?? 0;
+    $("stLives").textContent = s.lives_active ?? 0;
+    const recent = $("homeRecent");
+    if (recent) {
+      recent.innerHTML = "";
+      const list = s.recent_clips || [];
+      if (!list.length) {
+        recent.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>";
+      } else {
+        list.forEach((c) => recent.appendChild(clipRow(c, false)));
+      }
+    }
+  } catch { /* stats best-effort */ }
+}
+
 async function loadPanel() {
   // ¿Tiene plan activo? Si no, se bloquean Inicio / Mis Clips / Crear / Cuenta.
   // El ADMIN nunca se bloquea: no necesita plan para usar la plataforma.
@@ -905,25 +937,7 @@ async function loadPanel() {
   // Lives: con plan pero sin Gold → aviso de actualización a Gold.
   const livePane = $("pane-lives");
   if (livePane) livePane.classList.toggle("is-locked-full", hasPlan && !state.canLives);
-  try {
-    const s = await apiFetch("/api/me/stats", { headers: authHeaders() });
-    $("stMonth").textContent = s.clips_this_month ?? 0;
-    $("stProcessing").textContent = s.videos_in_process ?? 0;
-    $("stTotalClips").textContent = s.clips_total ?? 0;
-    $("stVideos").textContent = s.videos_total ?? 0;
-    $("stMinutes").textContent = s.minutes_total ?? 0;
-    $("stLives").textContent = s.lives_active ?? 0;
-    const recent = $("homeRecent");
-    if (recent) {
-      recent.innerHTML = "";
-      const list = s.recent_clips || [];
-      if (!list.length) {
-        recent.innerHTML = "<p class='muted'>Aún no tienes clips. Ve a Crear Clip.</p>";
-      } else {
-        list.forEach((c) => recent.appendChild(clipRow(c, false)));
-      }
-    }
-  } catch { /* stats best-effort */ }
+  await refreshStats();
   $("accName").value = state.user.name || "";
   $("accEmail").value = state.user.email || "";
   $("accBrand").value = state.user.brand_text || "@marketingcaribe";
@@ -947,12 +961,31 @@ function featureItem(f) {
   const no = f.trim().toLowerCase().startsWith("sin ");
   return `<li class="${no ? "no" : ""}">${no ? X_SVG : CHECK_SVG} ${f}</li>`;
 }
+function fmtDateShort(iso) {
+  // "2026-11-28" -> "28 de noviembre" (para la fecha fin del descuento).
+  const months = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(iso || "");
+  return `${Number(m[3])} de ${months[Number(m[2]) - 1] || ""}`;
+}
 function planPriceLabel(p) {
   // Free: "$0 / 1 día". Pro/Gold: "$25 / mes". Precio en US$ + el
   // equivalente en la moneda del país (si se detectó).
   const usd = Number(p.price_usd || 0);
+  const sale = Number(p.sale_price_usd ?? usd);
+  const pct = Number(p.discount_pct || 0);
   const per = p.duration_days === 1 ? "1 día" : `${p.duration_days} días`;
-  const local = usdToLocal(usd);
+  const local = usdToLocal(sale);
+  // Black Friday (v216): precio de oferta grande, original tachado,
+  // etiqueta de la promo y fecha fin.
+  if (pct > 0 && sale < usd) {
+    const ends = p.discount_ends ? fmtDateShort(p.discount_ends) : "";
+    return `$${sale} <small>/ ${per}</small>` +
+      `<div class="price-old"><s>$${usd}</s> <span class="bf-badge">Black Friday −${pct}%</span></div>` +
+      (ends ? `<div class="bf-ends">hasta el ${ends}</div>` : "") +
+      (local ? `<div class="local-price">${local}</div>` : "");
+  }
   return `$${usd.toLocaleString("en-US")} <small>/ ${per}</small>` +
     (local ? `<div class="local-price">${local}</div>` : "");
 }
@@ -1008,12 +1041,43 @@ async function startBuy(plan) {
   } catch { $("buyMsg").textContent = "No se pudieron cargar los métodos de pago."; }
   $("buyBox").scrollIntoView({ behavior: "smooth" });
 }
+function bankLogo(bank) {
+  const b = (bank || "").toLowerCase();
+  if (b.includes("reserv")) return "logos/banreservas.png";
+  if (b.includes("popular")) return "logos/popular.svg";
+  if (b.includes("paypal")) return "logos/paypal.svg";
+  return "";
+}
 function showBank() {
   const m = _methods.find((x) => String(x.id) === $("buyMethod").value);
   const box = $("bankBox");
   if (!m) { box.hidden = true; return; }
   box.hidden = false;
-  box.innerHTML = `<b>Banco:</b> ${m.bank}<br><b>Cuenta (${m.account_type}):</b> ${m.account_number}<br><b>Titular:</b> ${m.account_holder}<br><b>Instrucciones:</b> ${m.instructions || "—"}`;
+  const logo = bankLogo(m.bank);
+  const isPayPal = /paypal/i.test(`${m.bank || ""} ${m.name || ""}`);
+  const label = isPayPal ? "Correo PayPal" : `Cuenta (${m.account_type})`;
+  box.innerHTML = `${logo ? `<img src="${logo}" alt="${m.bank}" style="max-height:44px;max-width:180px;object-fit:contain;display:block;margin-bottom:10px">` : ""}
+    <b>Banco:</b> ${m.bank}<br>
+    <b>${label}:</b> <span id="bankAcctNum">${m.account_number}</span>
+    <button type="button" id="btnCopyAcct" style="margin-left:8px">Copiar</button><br>
+    <b>Titular:</b> ${m.account_holder}<br>
+    <b>Instrucciones:</b> ${m.instructions || "—"}`;
+  const btn = $("btnCopyAcct");
+  if (btn) btn.onclick = async () => {
+    const done = () => { btn.textContent = "¡Copiado!"; setTimeout(() => { btn.textContent = "Copiar"; }, 2000); };
+    try {
+      await navigator.clipboard.writeText(m.account_number);
+      done();
+    } catch {
+      const range = document.createRange();
+      range.selectNode($("bankAcctNum"));
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      try { document.execCommand("copy"); } catch {}
+      sel.removeAllRanges();
+      done();
+    }
+  };
 }
 $("buyMethod").onchange = showBank;
 $("btnBuy").onclick = async () => {
@@ -1228,7 +1292,7 @@ $("addUserConfirm").onclick = async () => {
   if (password.length < 6) { msg.textContent = "La contraseña debe tener al menos 6 caracteres."; return; }
   msg.textContent = "Creando…";
   try {
-    const r = await apiFetch("/api/admin/users", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ name, email, password, is_admin: role === "admin" }) });
+    const r = await apiFetch("/api/admin/users", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ name, email, password, is_admin: role === "admin", is_moderator: role === "moderator" }) });
     closeAddUserModal();
     await loadAdminUsers();
     const m2 = $("usersMsg");
@@ -1277,7 +1341,7 @@ async function loadAdminRequests() {
     list.forEach((s) => {
       const div = document.createElement("div");
       div.className = "rowline";
-      div.innerHTML = `<div><b>${s.plan_name || "Plan"}</b> · ${s.user_name || ""} (${s.user_email || ""})<br><small>${s.payment_method_name || ""} · ${s.created_at ? s.created_at.slice(0, 10) : ""}</small><br><a href="${s.receipt_url}" target="_blank">Ver comprobante</a></div>
+      div.innerHTML = `<div><b>${s.plan_name || "Plan"}</b>${s.plan_price_usd != null ? ` · $${s.plan_price_usd}` : ""} · ${s.user_name || ""} (${s.user_email || ""})<br><small>${s.payment_method_name || ""} · ${s.created_at ? s.created_at.slice(0, 10) : ""}</small><br><a href="${s.receipt_url}" target="_blank">Ver comprobante</a></div>
         <span class="badge ${s.status === "approved" ? "aprobado" : ""}">${s.status === "pending" ? "Pendiente" : s.status === "approved" ? "Aprobada" : "Rechazada"}</span>`;
       if (s.status === "pending") {
         const acts = document.createElement("div");
@@ -1347,6 +1411,8 @@ async function loadAdminSettings() {
     $("setLlmProvider").value = (s.llm_provider === "groq") ? "groq" : "gemini";
     _setKeyField("setGeminiKey", "setGeminiStatus", s.gemini_api_key);
     _setKeyField("setGroqKey", "setGroqStatus", s.groq_api_key);
+    // YouTube Data API v225: clave oficial para leer el borde del live.
+    _setKeyField("setYoutubeKey", "setYoutubeStatus", s.youtube_api_key);
     // Modo mantenimiento (2026-11-19): solo los admins pueden entrar.
     $("setMaintenance").checked = String(s.maintenance_mode).toLowerCase() === "true";
   } catch { $("setMsg").textContent = "No se pudo cargar la configuración."; }
@@ -1359,7 +1425,7 @@ function _setKeyField(inputId, statusId, masked) {
     inp.placeholder = masked;
     if (st) st.textContent = "Clave guardada (termina en " + masked.slice(-4) + "). Déjala vacía para no cambiarla.";
   } else {
-    inp.placeholder = inputId === "setGeminiKey" ? "AIza…" : "gsk_…";
+    inp.placeholder = (inputId === "setGroqKey") ? "gsk_…" : "AIza…";
     if (st) st.textContent = "Sin clave guardada — se usa la del servidor (.env).";
   }
 }
@@ -1370,9 +1436,11 @@ $("btnSaveSettings").onclick = async () => {
     if (gk) settings.gemini_api_key = gk;
     const qk = $("setGroqKey").value.trim();
     if (qk) settings.groq_api_key = qk;
+    const yk = $("setYoutubeKey").value.trim();
+    if (yk) settings.youtube_api_key = yk;
     await apiFetch("/api/admin/settings", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ settings }) });
-    $("setGeminiKey").value = ""; $("setGroqKey").value = "";
+    $("setGeminiKey").value = ""; $("setGroqKey").value = ""; $("setYoutubeKey").value = "";
     loadAdminSettings();
     $("setMsg").textContent = "Configuración guardada. Los usuarios nuevos recibirán estos valores.";
   } catch (e) { $("setMsg").textContent = "Error: " + e.message; }
@@ -1441,9 +1509,11 @@ function clipRow(c, admin) {
   const hasTitleCard = !!(c.title && String(c.title).trim());
   const thumbTime = hasTitleCard ? 1
     : (typeof c.cover_at === "number" ? c.cover_at : 0);
-  const thumb = c.download_url
-    ? `<video muted playsinline preload="metadata" src="${c.download_url}#t=${thumbTime}"></video>`
-    : `<div class="clip-thumb-empty">Sin video</div>`;
+  const thumb = c.thumbnail_url
+    ? `<img src="${c.thumbnail_url}" alt="" loading="lazy">`
+    : (c.download_url
+      ? `<video muted playsinline preload="metadata" src="${c.download_url}#t=${thumbTime}"></video>`
+      : `<div class="clip-thumb-empty">Sin video</div>`);
   const date = c.created_at ? c.created_at.slice(0, 10) : "";
   const meta = [c.uploader || "", date].filter(Boolean).join(" · ");
   const who = admin
@@ -1485,6 +1555,66 @@ function clipRow(c, admin) {
 // Reproducir un clip en un modal (con sonido), para verlo sin salir de
 // Mis Clips. Al cerrar se pausa el video para que no siga sonando.
 let clipModalClip = null;
+// v227: reproductor propio (Juan: botones originales, no los nativos
+// del navegador). Play/pausa, barra de progreso (clic para saltar),
+// tiempo, silencio y pantalla completa, con estilo de marca.
+const _cpPlaySVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const _cpPauseSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+const _cpVolSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const _cpMuteSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+function _cpSetPlayIcon() {
+  const v = $("clipModalVideo");
+  $("clipPlayBtn").innerHTML = v.paused ? _cpPlaySVG : _cpPauseSVG;
+  $("clipPlayBtn").setAttribute("aria-label", v.paused ? "Reproducir" : "Pausar");
+}
+function _cpSetMuteIcon() {
+  const v = $("clipModalVideo");
+  $("clipMuteBtn").innerHTML = v.muted ? _cpMuteSVG : _cpVolSVG;
+  $("clipMuteBtn").setAttribute("aria-label", v.muted ? "Activar sonido" : "Silencio");
+}
+function _cpSyncProgress() {
+  const v = $("clipModalVideo");
+  const d = v.duration || 0;
+  $("clipTimeCur").textContent = fmtDur(v.currentTime || 0);
+  $("clipTimeDur").textContent = fmtDur(d);
+  $("clipProgressFill").style.width = d > 0 ? `${(v.currentTime / d) * 100}%` : "0%";
+}
+function _cpSeek(e) {
+  const v = $("clipModalVideo");
+  const bar = $("clipProgress");
+  const r = bar.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  if (v.duration) v.currentTime = frac * v.duration;
+  _cpSyncProgress();
+}
+(function _cpWire() {
+  const v = $("clipModalVideo");
+  if (!v) return;
+  $("clipPlayBtn").onclick = (e) => { e.stopPropagation(); if (v.paused) v.play().catch(() => {}); else v.pause(); };
+  v.addEventListener("click", () => { if (v.paused) v.play().catch(() => {}); else v.pause(); });
+  v.addEventListener("play", _cpSetPlayIcon);
+  v.addEventListener("pause", _cpSetPlayIcon);
+  v.addEventListener("timeupdate", _cpSyncProgress);
+  v.addEventListener("loadedmetadata", _cpSyncProgress);
+  v.addEventListener("ended", () => { _cpSetPlayIcon(); _cpSyncProgress(); });
+  $("clipProgress").addEventListener("click", _cpSeek);
+  $("clipProgress").addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (v.duration) v.currentTime = Math.min(v.duration, Math.max(0, v.currentTime + (e.key === "ArrowRight" ? 5 : -5)));
+    }
+  });
+  $("clipMuteBtn").onclick = (e) => { e.stopPropagation(); v.muted = !v.muted; _cpSetMuteIcon(); };
+  $("clipFullBtn").onclick = (e) => {
+    e.stopPropagation();
+    const p = $("clipPlayer");
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else if (p.requestFullscreen) p.requestFullscreen().catch(() => {});
+    else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  };
+  _cpSetPlayIcon();
+  _cpSetMuteIcon();
+})();
 function openClipModal(c) {
   if (!c.download_url) return;
   clipModalClip = c;
@@ -1497,15 +1627,21 @@ function openClipModal(c) {
   $("clipModalDl").href = c.download_url;
   $("clipModalDl").setAttribute("download", c.file || "clip.mp4");
   $("clipModal").hidden = false;
-  v.play().catch(() => {});
+  $("clipTimeCur").textContent = "0:00";
+  $("clipTimeDur").textContent = dur;
+  $("clipProgressFill").style.width = "0%";
+  _cpSetMuteIcon();
+  v.play().then(_cpSetPlayIcon).catch(() => { _cpSetPlayIcon(); });
 }
 function closeClipModal() {
   const v = $("clipModalVideo");
   v.pause();
   v.removeAttribute("src");
   v.load();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   $("clipModal").hidden = true;
   clipModalClip = null;
+  _cpSetPlayIcon();
 }
 $("clipModalClose").onclick = closeClipModal;
 $("clipModal").addEventListener("click", (e) => { if (e.target === $("clipModal")) closeClipModal(); });
@@ -1635,15 +1771,23 @@ $("btnShowAllClipsHome").onclick = () => { loadMyClips(0); goTab("clips"); };
 async function loadMyClips(page) {
   if (typeof page === "number") _myClipsPage = page;
   const box = $("myClips");
-  try {
-    const data = await apiFetch(`/api/me/clips?limit=${CLIPS_PER_PAGE}&offset=${_myClipsPage * CLIPS_PER_PAGE}`, { headers: authHeaders() });
-    _myClips = data.items || [];
-    _myClipsTotal = data.total || 0;
-    if (!_myClips.length && _myClipsPage > 0) { _myClipsPage--; return loadMyClips(); } // página vacía tras borrar
-    renderMyClipsPage();
-    updatePvDownload();
-    refreshCandDownloads();
-  } catch { box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>"; }
+  // v213: un reintento antes de mostrar el error (un solo fetch fallido
+  // mostraba "No se pudieron cargar tus clips" aunque fuera transitorio).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const data = await apiFetch(`/api/me/clips?limit=${CLIPS_PER_PAGE}&offset=${_myClipsPage * CLIPS_PER_PAGE}`, { headers: authHeaders() });
+      _myClips = data.items || [];
+      _myClipsTotal = data.total || 0;
+      if (!_myClips.length && _myClipsPage > 0) { _myClipsPage--; return loadMyClips(); } // página vacía tras borrar
+      renderMyClipsPage();
+      updatePvDownload();
+      refreshCandDownloads();
+      return;
+    } catch {
+      if (attempt === 0) { await sleep(1500); continue; }
+      box.innerHTML = "<p class='muted'>No se pudieron cargar tus clips.</p>";
+    }
+  }
 }
 
 // ---------- Eliminar clips en masa (2026-11-12, Juan) ----------
@@ -1789,7 +1933,7 @@ function openLiveConfig(id, list) {
   if (!s) return;
   _liveCfgId = id;
   const set = (el, v) => { if (el != null) el.value = v; };
-  set($("lcCamera"), s.camera_mode || "follow_speaker");
+  set($("lcCamera"), s.camera_mode || "mirror_black");
   set($("lcQuality"), s.quality || "720p");
   set($("lcPerRound"), String(s.clips_per_round || 3));
   set($("lcInterval"), String(s.interval_minutes || 10));
@@ -2197,6 +2341,16 @@ async function loadAdminClips() {
   } catch { $("adminClips").innerHTML = "<p class='muted'>No se pudieron cargar los clips.</p>"; }
 }
 function loadAdmin() {
+  // Moderador (v215): solo Solicitudes de pago, sin cargar el resto
+  // (le darían 403) y con esa pestaña ya abierta.
+  const _isMod = !!(state.user && state.user.is_moderator && !state.user.is_admin);
+  if (_isMod) {
+    document.querySelectorAll(".admin-pane").forEach((p) => p.hidden = true);
+    $("adminPane-requests").hidden = false;
+    document.querySelectorAll("#adminTabs .mini-tab").forEach((b) => b.classList.toggle("on", b.dataset.admin === "requests"));
+    loadAdminRequests();
+    return;
+  }
   loadAdminUsers();
   loadAdminClips();
   loadAdminRequests();
@@ -2405,7 +2559,7 @@ async function pollJob(jobId, onProgress) {
     }
     if (_elapsedEl) _elapsedEl.textContent = _fmtElapsed();
     if (onProgress) onProgress(j);
-    if (j.status === "done") return j;
+    if (j.status === "done") { refreshStats(); return j; }
     if (j.status === "error") {
       const err = new Error("JOB_FAILED");
       err.raw = j.error || "";
@@ -2639,7 +2793,7 @@ function wzSyncFromEditor() {
   set("wzSubPos", $("subPos") ? $("subPos").value : "bottom");
   // v153: el marco (nombre/color/grosor) ya no está en el asistente; viene
   // del perfil cargado en el editor.
-  set("wzCameraMode", $("cameraMode") ? $("cameraMode").value : "follow_speaker");
+  set("wzCameraMode", $("cameraMode") ? $("cameraMode").value : "mirror_black");
   set("wzRangeStart", $("rangeStart") ? $("rangeStart").value : 0);
   set("wzRangeEnd", $("rangeEnd") ? $("rangeEnd").value : 120);
   set("wzMaxClips", $("cfgMaxClips") ? $("cfgMaxClips").value : 5);
@@ -2852,10 +3006,10 @@ $("btnClips").onclick = async () => {
       showJobError(`El rango es muy corto: de ${body.start} s a ${body.end} s son ${Math.max(0, body.end - body.start)} s y cada clip dura al menos ${body.min_len} s. Pon un Hasta mayor (por defecto se analiza el video completo).`);
       return;
     }
-    // El servidor acepta hasta 60 min por análisis (2026-11-11): un
-    // video más largo se analiza por partes con Desde/Hasta.
-    if ((body.end - body.start) > 3600) {
-      showJobError(`El video dura ${fmtDur(body.end - body.start)} y el análisis cubre hasta 60 min por vez. Pon un Hasta de 60 min o menos, o analiza el video por partes con Desde/Hasta.`);
+    // El servidor acepta hasta 90 min por análisis (v218, 2026-11-23):
+    // un video más largo se analiza por partes con Desde/Hasta.
+    if ((body.end - body.start) > 5400) {
+      showJobError(`El video dura ${fmtDur(body.end - body.start)} y el análisis cubre hasta 90 min por vez. Pon un Hasta de 90 min o menos, o analiza el video por partes con Desde/Hasta.`);
       return;
     }
     const d = await apiFetch("/api/clips", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
@@ -3420,6 +3574,21 @@ function selectClip(c, el) {
   setCoverMode(true);
   $("coverVal").textContent = startCover.toFixed(1) + " s";
   $("btnSaveMeta").hidden = !state.editingClipId;
+  // v204: al EDITAR un clip existente el editor solo personaliza ese
+  // video — no se elige otro clip ni se cambia la calidad. Se ocultan
+  // Inicio/Fin (elegir otro trozo), la pestaña Clips (generar más clips)
+  // y la pestaña Video (calidad, que se decide al crear). Al crear un
+  // clip nuevo vuelve todo como antes.
+  const _editing = !!state.editingClipId;
+  $("clipRangeRow").hidden = _editing;
+  document.querySelectorAll('#configCard [data-cfg="clips"], #configCard [data-cfg="video"]').forEach((b) => { b.hidden = _editing; });
+  if (_editing) {
+    // Solo queda Plantilla: dejarla activa.
+    document.querySelectorAll(".panel [data-cfg]").forEach((b) => b.classList.toggle("on", b.dataset.cfg === "template"));
+    document.querySelectorAll(".cfg-pane").forEach((p) => { p.hidden = p.id !== "cfg-template"; });
+  } else {
+    document.querySelectorAll('#configCard [data-cfg="clips"], #configCard [data-cfg="video"]').forEach((b) => { b.hidden = false; });
+  }
   $("saveMetaMsg").textContent = "";
   $("pvSubs").innerHTML = state.words.slice(0, 3).map((w, i) => i === 1 ? `<span>${w.w.trim().toUpperCase()}</span>` : w.w.trim().toUpperCase()).join(" ") || "SUBTÍTULOS";
   // Ya hay un clip que ver: aparece la vista previa (encima de Configuración)
@@ -3523,7 +3692,7 @@ $("btnSaveMeta").onclick = async () => {
 const CAMERA_HINTS = {
   center: "Centrada: el recorte 9:16 fijo en el centro del video, como siempre.",
   follow_speaker: "La cámara sigue a la persona que está hablando. Si no se ve ninguna cara, queda centrada.",
-  dual: "Para entrevistas con dos personas sentadas a izquierda y derecha: la mitad izquierda arriba y la derecha abajo, cada una centrada.",
+  dual: "Para entrevistas con dos personas: una arriba y una abajo, cada una centrada y con el cuerpo completo. Si solo se ve una persona, la enfoca completa sola y vuelve a dos cuando aparece la otra.",
   split: "Para videos con una cara en una esquina (reacción, entrevista, juego): la cara arriba y el contenido abajo, en dos pantallas.",
   blur: "Video completo con fondo borroso: el video entero sin recortar en el centro, con el mismo video desenfocado de fondo arriba y abajo. El título gancho queda arriba todo el clip y los subtítulos abajo.",
   mirror: "Espejo completo: todo el video volteado horizontalmente, como en un espejo. La persona que se mueve a la derecha sale moviéndose a la izquierda.",
@@ -3857,7 +4026,7 @@ let _fmtSelected = "follow_speaker";
 const FMT_DESCS = {
   center: "El recorte 9:16 fijo en el centro del video.",
   follow_speaker: "La cámara sigue sola a quien está hablando.",
-  dual: "Dos personas lado a lado, siempre visibles.",
+  dual: "Dos personas, una arriba y una abajo; con una sola, la enfoca completa.",
   split: "La cara arriba y el contenido abajo, en dos pantallas.",
   blur: "El video entero, sin recortar, con fondo borroso.",
   mirror: "Todo el video volteado, como en un espejo.",

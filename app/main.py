@@ -62,6 +62,8 @@ from .billing import (PaymentMethod, PaymentRequest, Plan, REQ_APPROVED,
                       get_active_subscription, has_active_subscription,
                       method_out, plan_out, reject_request, request_out,
                       subscription_out)
+from .cache import (cache_get, transcript_get, transcript_put,
+                    video_id_from_url)
 from .clips import build_candidates, build_candidates_llm
 from .clips_db import Clip, clip_out, create_clip
 from .config import (BASE_DIR, DEFAULT_BRAND_TEXT, DEFAULT_FRAME_COLOR,
@@ -81,9 +83,10 @@ from .videos import (AIVideoJob, build_fal_payload, create_job,
                      submit_video, user_can_generate_videos)
 from .render import DEFAULT_TEMPLATE, TEMPLATES, render_clip, resolve_template
 from .settings import get_setting, set_setting
+from .subtitles import fetch_subtitles
 from .transcribe import transcribe_file, transcription_engine
 from .video import (actual_section_start, download_section, live_status,
-                    probe, video_info)
+                    measure_av_offset, probe, video_info, video_language)
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +112,40 @@ def _init_llm_config():
         logger.warning("No se pudo cargar la config de IA (%s); se usa el .env", e)
 
 
+def _recover_interrupted_jobs() -> None:
+    """Recuperación después de un reinicio (v205, mejora 3).
+    Los trabajos son JSON persistentes en data/jobs/, así que sobreviven
+    al reinicio — pero un trabajo que estaba en "running" o "queued"
+    cuando el proceso murió se queda atascado en ese estado para
+    siempre (el frontend lo muestra girando sin fin). Al arrancar, se
+    marcan como error con un mensaje claro para que el usuario pueda
+    reintentarlo con un clic. Es la misma limpieza que antes se hacía
+    a mano tras un despliegue (v192), ahora automática.
+    No re-lanza los trabajos solo: un trabajo que fallaba en bucle se
+    re-lanzaría en bucle. El usuario decide si reintenta."""
+    try:
+        active = jobs.list_active()
+    except Exception as e:  # noqa: BLE001 — la recuperación nunca debe impedir el arranque
+        logger.warning("recover_interrupted_jobs falló (%s)", e)
+        return
+    recovered = 0
+    for job in active:
+        try:
+            jobs.update(job["id"], status="error",
+                        message="El trabajo se interrumpió al reiniciar el sistema. Vuelve a intentarlo.",
+                        error="interrupted_by_restart")
+            recovered += 1
+        except Exception:
+            continue
+    if recovered:
+        logger.info("recover_interrupted_jobs: %d trabajo(s) interrumpido(s) marcado(s) como error",
+                    recovered)
+
+
 async def lifespan(_app: FastAPI):
     init_db()  # crea la tabla users si no existe (Postgres o SQLite)
     _init_llm_config()  # IA que elige los clips: proveedor + claves del admin
+    _recover_interrupted_jobs()  # trabajos atascados por un reinicio (v205)
     _start_lives_monitor()  # hilo del monitor de Lives (sesiones activas)
     yield
 
@@ -250,7 +284,7 @@ class RenderRequest(BaseModel):
     # que habla suele estar a un lado (Masha a la derecha) y "center"
     # lo cortaba; follow_speaker lo centra y, si no hay cara, cae al
     # centro igual.
-    camera_mode: str = "follow_speaker"
+    camera_mode: str = "mirror_black"
     # left | center | right — solo para follow_person.
     camera_person: str = "center"
     # Esquina de la facecam — solo para camera_mode="split" (pantalla
@@ -405,6 +439,7 @@ def _cut_upload(upload: Path, start: float, end: float, job_id: str) -> Path:
            "-t", str(dur), "-c", "copy", str(out)]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        # v212: revert a veryfast (ultrafast v211 no funcionó).
         cmd = ["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-i", str(upload),
                "-t", str(dur), "-c:v", "libx264", "-preset", "veryfast",
                "-c:a", "aac", str(out)]
@@ -431,6 +466,10 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
                    max_len: float = 45.0, is_live: bool = False,
                    prefer_android: bool = False):
     try:
+        # Caché (v205): _vid y _audio_from_cache se inicializan aquí
+        # porque la rama de archivo subido no pasa por la descarga.
+        _vid = video_id_from_url(url) if url else None
+        _audio_from_cache = False
         if source_file:
             jobs.update(job_id, status="running", progress=10,
                         message="Leyendo tu archivo…")
@@ -483,36 +522,35 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
             # momento, siempre. En un VOD se sigue bajando solo audio
             # (la descarga por timestamp sí es fiable ahí).
             _dl_audio_only = not is_live
-            source = download_section(url, start, end, job_id,
-                                      audio_only=_dl_audio_only,
-                                      progress_cb=_dl_progress,
-                                      is_live=is_live,
-                                      prefer_android=prefer_android)
+            # Caché inteligente (v205): si otro trabajo ya bajó este
+            # mismo audio, reutilizarlo. Se comprueba aquí (y no solo
+            # dentro de download_section) para saber si el audio viene
+            # de la caché: solo entonces la transcripción cacheada es
+            # válida (mismo archivo => mismo inicio real). Los lives
+            # nunca usan la caché.
+            _audio_from_cache = False
+            source = None
+            if _vid and not is_live:
+                _cached_audio = cache_get(_vid, start, end, "audio")
+                if _cached_audio is not None:
+                    _dest = SOURCES_DIR / f"{job_id}{_cached_audio.suffix}"
+                    try:
+                        shutil.copyfile(_cached_audio, _dest)
+                        source = _dest
+                        _audio_from_cache = True
+                        logger.info("cache hit (audio): %s [%s-%s]",
+                                    _vid, start, end)
+                        jobs.update(job_id, progress=40,
+                                    message="Audio reutilizado de la caché…")
+                    except OSError:
+                        source = None
+            if source is None:
+                source = download_section(url, start, end, job_id,
+                                          audio_only=_dl_audio_only,
+                                          progress_cb=_dl_progress,
+                                          is_live=is_live,
+                                          prefer_android=prefer_android)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
-        # Progreso REAL de la transcripción (2026-11-11, Juan: no debe
-        # quedarse quieta minutos). La transcripción es la fase 40→70:
-        # cada trozo de Groq que termina (o cada segmento del motor
-        # local) mueve la barra y el mensaje lleva el trozo y el
-        # tiempo que lleva el trabajo.
-        _tr_t0 = time.monotonic()
-
-        def _tr_progress(frac: float, msg: str):
-            pct = 40 + int(30 * max(0.0, min(1.0, frac)))
-            el = int(time.monotonic() - _tr_t0)
-            mm, ss = divmod(el, 60)
-            jobs.update(job_id, progress=pct,
-                        message=f"{msg} · {mm}:{ss:02d}")
-        transcript = transcribe_file(source, job_id, model=model,
-                                     progress_cb=_tr_progress)
-        if not transcript["segments"]:
-            raise RuntimeError(
-                "No se pudo transcribir el audio de este video. "
-                "Prueba con otro rango u otro video.")
-        # La llamada a la IA es una sola petición: no hay trozos que
-        # contar, así que el progreso honesto es el tiempo real que
-        # lleva. Un hilo actualiza el mensaje cada 2 s con los segundos
-        # reales y deja la barra subir de 80 a 94 como mucho — el 95
-        # solo llega cuando los candidatos existen de verdad.
         # INICIO REAL DEL AUDIO (2026-11-12, corrección del desfase): la
         # descarga por secciones empieza en el keyframe anterior, así que
         # el archivo NO empieza en `start` — la transcripción es relativa
@@ -527,10 +565,87 @@ def _run_clips_job(job_id: str, url: str | None, start: float, end: float,
         # render. Para un archivo subido (_cut_upload corta exacto) o un
         # audio paralelo ya recortado, actual_section_start devuelve
         # `start` sin cambios.
+        # (v205: se mide ANTES de transcribir, porque los subtítulos de
+        # YouTube —que se prueban antes de Whisper— necesitan este valor
+        # para pasar de tiempo absoluto a tiempo relativo al archivo.)
         section_start_real = _actual_section_start(source, start, end)
         if section_start_real != start:
             logger.info("clips job %s: el audio empieza en %.2fs (pedido %.2fs)",
                         job_id, section_start_real, start)
+        # Progreso REAL de la transcripción (2026-11-11, Juan: no debe
+        # quedarse quieta minutos). La transcripción es la fase 40→70:
+        # cada trozo de Groq que termina (o cada segmento del motor
+        # local) mueve la barra y el mensaje lleva el trozo y el
+        # tiempo que lleva el trabajo.
+        _tr_t0 = time.monotonic()
+
+        def _tr_progress(frac: float, msg: str):
+            pct = 40 + int(30 * max(0.0, min(1.0, frac)))
+            el = int(time.monotonic() - _tr_t0)
+            mm, ss = divmod(el, 60)
+            jobs.update(job_id, progress=pct,
+                        message=f"{msg} · {mm}:{ss:02d}")
+        # Orden de obtención de la transcripción (v205, orden optimizado
+        # v206 — Juan: la caché primero, sin tocar YouTube si es válida):
+        #   1. Transcripción cacheada — solo si el audio también vino de
+        #      la caché (mismo archivo => mismos tiempos). Instantánea:
+        #      no consulta metadata ni subtítulos de YouTube.
+        #   2. Subtítulos de YouTube (manuales o automáticos) — segundos,
+        #      no minutos. Solo en VOD (no en lives ni en archivos subidos).
+        #   3. Whisper (Groq y luego faster-whisper en local), como antes.
+        transcript = None
+        if _vid and _audio_from_cache:
+            _cached_tr = transcript_get(_vid, start, end)
+            if _cached_tr is not None:
+                transcript = _cached_tr
+                transcript["job_id"] = job_id
+                jobs.update(job_id, progress=70,
+                            message="Transcripción reutilizada de la caché…")
+                logger.info("cache hit (transcript): %s [%s-%s]",
+                            _vid, start, end)
+        if transcript is None and not source_file and not is_live and url:
+            try:
+                transcript = fetch_subtitles(url, start, end,
+                                             section_start_real)
+            except Exception as e:  # noqa: BLE001 — un fallo aquí nunca debe romper el trabajo
+                logger.warning("subtitles falló (%s); usando Whisper", e)
+                transcript = None
+            if transcript is not None:
+                transcript["job_id"] = job_id
+                jobs.update(job_id, progress=70,
+                            message="Subtítulos de YouTube encontrados…")
+        if transcript is None:
+            # Idioma del video (2026-11-24): de los metadatos; si no se
+            # sabe, transcribe_file usa 'es' (contenido de Juan).
+            _lang = video_language(url) if url else None
+            transcript = transcribe_file(source, job_id, model=model,
+                                         progress_cb=_tr_progress,
+                                         language=_lang)
+            # Guardar en la caché para el próximo trabajo del mismo
+            # video y rango (el audio ya quedó cacheado en la descarga).
+            if _vid and not is_live and not source_file:
+                transcript_put(transcript, _vid, start, end)
+        else:
+            # La transcripción vino de subtítulos o de la caché: dejar
+            # el mismo archivo {job_id}.json que transcribe_file
+            # escribiría, para que el resto del pipeline no note nada.
+            _tr_path = TRANSCRIPTS_DIR / f"{job_id}.json"
+            try:
+                _tr_path.write_text(
+                    json.dumps(transcript, ensure_ascii=False, indent=2),
+                    encoding="utf-8")
+                transcript = {**transcript, "path": str(_tr_path)}
+            except OSError:
+                pass
+        if not transcript["segments"]:
+            raise RuntimeError(
+                "No se pudo transcribir el audio de este video. "
+                "Prueba con otro rango u otro video.")
+        # La llamada a la IA es una sola petición: no hay trozos que
+        # contar, así que el progreso honesto es el tiempo real que
+        # lleva. Un hilo actualiza el mensaje cada 2 s con los segundos
+        # reales y deja la barra subir de 80 a 94 como mucho — el 95
+        # solo llega cuando los candidatos existen de verdad.
         jobs.update(job_id, progress=80,
                     message="La IA está eligiendo los mejores momentos…")
         _llm_stop = threading.Event()
@@ -731,7 +846,7 @@ def _measure_section_true_start(section_path: Path, transcript: dict,
 def _remux_with_parent_audio(section_path: Path, parent_audio: Path,
                              transcript_base: float, section_start: float,
                              req_start: float, req_end: float,
-                             job_id: str) -> Path | None:
+                             job_id: str, av_offset: float = 0.0) -> Path | None:
     """Reemplazar el audio de la sección de video por el del análisis.
 
     v163 (2026-11-16, Juan: la VOZ se repite/sale mal en los lives): el
@@ -749,8 +864,13 @@ def _remux_with_parent_audio(section_path: Path, parent_audio: Path,
     """
     try:
         dur = max(1.0, float(req_end - req_start))
-        audio_off = max(0.0, float(req_start - transcript_base))
-        video_off = max(0.0, float(req_start - section_start))
+        # v227/v228 REVERSIÓN: el intento de corregir el desfase por
+        # start_time (v228) EMPEORÓ el audio (clip 769 original +1.14 s,
+        # con v228 -5.20 s medido por correlación cruzada). El desfase
+        # por start_time NO refleja el desfase real de contenido.
+        # Se vuelve al comportamiento previo (sin corrección).
+        audio_off = max(0.0, float(req_start - transcript_base) - max(0.0, av_offset))
+        video_off = max(0.0, float(req_start - section_start) + min(0.0, av_offset))
         out_path = SOURCES_DIR / f"{job_id}_av.mp4"
         # v163.1: el video se RE-CODIFICA (no -c:v copy): con copy, el
         # -ss cae en el keyframe anterior y el video empieza ~1 s
@@ -814,30 +934,51 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         # baja ahora a 1080p. Si el padre ya tenía video, se reutiliza.
         _early_transcript = None
         if res.get("audio_only") and res.get("url"):
-            jobs.update(job_id, status="running", progress=10,
-                        message="Descargando el video del clip…")
-            # Progreso REAL de la descarga del video (2026-11-11, Juan:
-            # el render tampoco debe quedarse quieto). La descarga es
-            # la fase 10→40: el hilo vigilante reporta MB y velocidad
-            # reales; el total se estima a ~200 KB/s para 1080p.
-            import time as _time
-            _rd_t0 = _time.monotonic()
-            _rd_dur = max(1.0, float(req.end - req.start))
+            # v203: reutilizar el video de la vista previa (clip-video)
+            # si ya está descargado para este mismo padre + rango: la
+            # vista previa y el render bajaban el mismo trozo [start,
+            # end] 2 veces. La vista previa se guarda como
+            # {padre}_clip_{start10}_{end10}.mp4 en SOURCES_DIR.
+            _pv_tag = f"{req.job_id}_clip_{int(req.start * 10)}_{int(req.end * 10)}"
+            _preview = None
+            for _f in sorted(SOURCES_DIR.glob(f"{_pv_tag}.*")):
+                if _f.name.endswith(".part"):
+                    continue
+                try:
+                    if _f.stat().st_size > 0:
+                        _preview = _f
+                        break
+                except OSError:
+                    continue
+            if _preview is not None:
+                jobs.update(job_id, status="running", progress=40,
+                            message="Usando el video de la vista previa…")
+                source = _preview
+            else:
+                jobs.update(job_id, status="running", progress=10,
+                            message="Descargando el video del clip…")
+                # Progreso REAL de la descarga del video (2026-11-11, Juan:
+                # el render tampoco debe quedarse quieto). La descarga es
+                # la fase 10→40: el hilo vigilante reporta MB y velocidad
+                # reales; el total se estima a ~200 KB/s para 1080p.
+                import time as _time
+                _rd_t0 = _time.monotonic()
+                _rd_dur = max(1.0, float(req.end - req.start))
 
-            def _rd_progress(done: int, total: int, nbytes: int,
-                             elapsed: float):
-                est_total = max(1.0, _rd_dur * 200000)
-                frac = min(0.95, nbytes / est_total)
-                pct = 10 + int(30 * frac)
-                mb = nbytes / 1048576
-                kbps = int(nbytes / max(1.0, elapsed) / 1024)
-                jobs.update(job_id, progress=pct,
-                            message=f"Descargando el video del clip… {mb:.1f} MB · {kbps} KB/s")
-            # v196: calidad 720p -> android primero (rápido, 360p);
-            # 1080p -> tv_embedded primero (mejor calidad).
-            source = download_section(res["url"], req.start, req.end, job_id,
-                                      progress_cb=_rd_progress,
-                                      prefer_android=(req.quality == "720p"))
+                def _rd_progress(done: int, total: int, nbytes: int,
+                                 elapsed: float):
+                    est_total = max(1.0, _rd_dur * 200000)
+                    frac = min(0.95, nbytes / est_total)
+                    pct = 10 + int(30 * frac)
+                    mb = nbytes / 1048576
+                    kbps = int(nbytes / max(1.0, elapsed) / 1024)
+                    jobs.update(job_id, progress=pct,
+                                message=f"Descargando el video del clip… {mb:.1f} MB · {kbps} KB/s")
+                # v196: calidad 720p -> android primero (rápido, 360p);
+                # 1080p -> tv_embedded primero (mejor calidad).
+                source = download_section(res["url"], req.start, req.end, job_id,
+                                          progress_cb=_rd_progress,
+                                          prefer_android=(req.quality == "720p"))
             # La descarga por secciones puede empezar antes del inicio
             # pedido (keyframe): medir el inicio real para que el render
             # caiga exactamente en req.start (ver _actual_section_start).
@@ -899,6 +1040,12 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
                 float(res["section_end"]))
             # Mismo archivo para video y transcripción.
             transcript_base = section_start
+            # v228 REVERSIÓN (2026-11-24): el remux por start_time se
+            # probó y EMPEORÓ el audio (clip 769 original +1.14 s por
+            # correlación cruzada; con v228 -5.20 s). El start_time del
+            # contenedor NO refleja el desfase real de contenido. Se
+            # quita el remux de la rama (b); queda pendiente medir el
+            # desfase de VIDEO (no solo audio) para encontrar la causa.
         transcript = (_early_transcript if _early_transcript is not None
                       else json.loads(
                           (TRANSCRIPTS_DIR / res["transcript_file"]).read_text(
@@ -910,7 +1057,8 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         source = _cut_upload(_upload_path(req.source_file), req.start, req.end, job_id)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=req.model,
-                                     progress_cb=_tr_progress)
+                                     progress_cb=_tr_progress,
+                                     language=None)
         return source, req.start, transcript, req.start
     if req.url:
         jobs.update(job_id, status="running", progress=10,
@@ -923,7 +1071,8 @@ def _resolve_source_for_render(req: RenderRequest, job_id: str):
         section_start = _actual_section_start(source, req.start, req.end)
         jobs.update(job_id, progress=40, message="Transcribiendo el audio…")
         transcript = transcribe_file(source, job_id, model=req.model,
-                                     progress_cb=_tr_progress)
+                                     progress_cb=_tr_progress,
+                                     language=video_language(req.url))
         return source, section_start, transcript, section_start
     raise HTTPException(400, "Pasa job_id, url o un archivo subido")
 
@@ -1168,6 +1317,21 @@ def _run_render_job_inner(job_id: str, req: RenderRequest):
             title_pos_y=req.title_pos_y,
         )
         info = probe(out_path)
+        # Miniatura JPG para Mis Clips (v215): un JPG de ~30-50 KB frente
+        # a cargar el metadato del mp4 en cada tarjeta. Se extrae el mismo
+        # fotograma que mostraba el <video> (1 s si tiene título, si no
+        # cover_at o 0). Nunca rompe el render si falla.
+        try:
+            _has_title = bool((req.clip_title or req.video_title
+                               or req.title_text or "").strip())
+            _thumb_t = 1.0 if _has_title else float(req.cover_at or 0)
+            _thumb_path = OUTPUTS_DIR / (Path(out_name).stem + ".jpg")
+            subprocess.run(["ffmpeg", "-y", "-ss", str(_thumb_t), "-i",
+                            str(out_path), "-frames:v", "1", "-vf",
+                            "scale=360:-1", "-q:v", "4", str(_thumb_path)],
+                           capture_output=True, timeout=30, check=False)
+        except Exception:
+            pass
         jobs.update(job_id, status="done", progress=100, message="Clip listo.",
                     result={"file": out_name, "download_url": f"/api/download/{out_name}",
                             "duration": duration, "output": info,
@@ -1247,7 +1411,11 @@ def _live_round(session_id: int) -> None:
         session = db.get(LiveSession, session_id)
         if session is None or session.status != STATUS_ACTIVE:
             return
-        st = live_status(session.url)
+        # v225: si yt-dlp está bloqueado, live_status usa la YouTube
+        # Data API oficial con la clave de Configuración (o .env).
+        yt_key = (get_setting(db, "youtube_api_key", "")
+                  or os.environ.get("YOUTUBE_API_KEY", ""))
+        st = live_status(session.url, youtube_api_key=yt_key)
         if st is None:
             session.last_error = ("YouTube bloqueó la lectura del live, "
                                   "se reintenta en el próximo intervalo.")
@@ -1355,7 +1523,7 @@ def _live_round(session_id: int) -> None:
                     watermark_box_color=(getattr(user, "watermark_box_color", None) or "#000000"),
                     watermark_font=(getattr(user, "watermark_font", None) or "Poppins Negrita"),
                     watermark_opacity=float(getattr(user, "watermark_opacity", 0.85) or 0.85),
-                    camera_mode=(session.camera_mode or "follow_speaker"),
+                    camera_mode=(session.camera_mode or "mirror_black"),
                     facecam_corner=(session.facecam_corner or "auto"),
                     frame_enabled=(session.frame_enabled is not False),
                     frame_color=(session.frame_color
@@ -1775,6 +1943,70 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def require_admin_or_moderator(user: User = Depends(get_current_user)) -> User:
+    """Admin o moderador (v215): el moderador solo puede gestionar las
+    solicitudes de pago (ver comprobantes, aprobar, rechazar)."""
+    if not (user.is_admin or getattr(user, "is_moderator", False)):
+        raise HTTPException(403, "Solo el administrador o un moderador")
+    return user
+
+
+@app.get("/api/admin/cache")
+def api_admin_cache(_admin: User = Depends(require_admin)):
+    """Estadísticas de la caché inteligente (v205): cuántos archivos,
+    cuánto ocupa y cuál es el más viejo. Solo para el admin."""
+    from .cache import CACHE_DIR
+    files = []
+    total = 0
+    oldest = None
+    for p in CACHE_DIR.rglob("*"):
+        if not p.is_file() or p.name == ".last_cleanup":
+            continue
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        total += st.st_size
+        files.append(p)
+        if oldest is None or st.st_mtime < oldest:
+            oldest = st.st_mtime
+    return {
+        "files": len(files),
+        "bytes": total,
+        "mb": round(total / 1048576, 1),
+        "oldest_age_days": (
+            round((time.time() - oldest) / 86400, 1) if oldest else None),
+    }
+
+
+@app.post("/api/admin/cache/cleanup")
+def api_admin_cache_cleanup(db: Session = Depends(get_db),
+                            _admin: User = Depends(require_admin)):
+    """Limpieza manual de la caché (v205): borra archivos con más de
+    cache_max_age_days (por defecto 30). Devuelve lo borrado."""
+    from .cache import cleanup_cache
+    try:
+        max_age = int(get_setting(db, "cache_max_age_days", "30") or "30")
+    except ValueError:
+        max_age = 30
+    result = cleanup_cache(max_age)
+    return {"deleted": result["deleted"],
+            "freed_mb": round(result["freed_bytes"] / 1048576, 1)}
+
+
+@app.post("/api/admin/clips/cleanup")
+def api_admin_clips_cleanup(days: int = 7,
+                           db: Session = Depends(get_db),
+                           _admin: User = Depends(require_admin)):
+    """Limpieza manual de clips viejos (v217): borra los clips (mp4 +
+    JPG + registro) con más de `days` días (por defecto 7). Devuelve
+    lo borrado. La limpieza automática corre una vez al día."""
+    from .clips_db import cleanup_old_clips
+    result = cleanup_old_clips(db, max_age_days=max(0, days))
+    return {"deleted": result["deleted"],
+            "freed_mb": round(result["freed_bytes"] / 1048576, 1)}
+
+
 @app.get("/api/admin/users")
 def api_admin_users(db: Session = Depends(get_db),
                     _admin: User = Depends(require_admin)):
@@ -1794,6 +2026,7 @@ class CreateUserRequest(BaseModel):
     email: str
     password: str
     is_admin: bool = False
+    is_moderator: bool = False  # v215: el admin puede crear moderadores
 
 
 @app.post("/api/admin/users")
@@ -1810,6 +2043,10 @@ def api_admin_create_user(req: CreateUserRequest,
         raise HTTPException(400, str(e)) from e
     if req.is_admin:
         user.is_admin = True
+        db.commit()
+        db.refresh(user)
+    if req.is_moderator:
+        user.is_moderator = True
         db.commit()
         db.refresh(user)
     row = auth.user_out(user)
@@ -2278,6 +2515,9 @@ class PlanRequest(BaseModel):
     is_popular: bool = False
     is_active: bool = True
     sort_order: int = 0
+    # Black Friday (v216): % de descuento y último día válido ("YYYY-MM-DD").
+    discount_pct: int = 0
+    discount_ends: str | None = None
 
 
 class MethodRequest(BaseModel):
@@ -2466,7 +2706,7 @@ def api_free_trial(db: Session = Depends(get_db),
 
 @app.get("/api/admin/subscriptions")
 def api_admin_subscriptions(db: Session = Depends(get_db),
-                            _admin: User = Depends(require_admin)):
+                            _admin: User = Depends(require_admin_or_moderator)):
     reqs = (db.query(PaymentRequest)
             .order_by(PaymentRequest.created_at.desc()).all())
     out = []
@@ -2482,7 +2722,7 @@ def api_admin_subscriptions(db: Session = Depends(get_db),
 @app.post("/api/admin/subscriptions/{req_id}/approve")
 def api_admin_approve_sub(req_id: int, body: DecideRequest | None = None,
                           db: Session = Depends(get_db),
-                          _admin: User = Depends(require_admin)):
+                          _admin: User = Depends(require_admin_or_moderator)):
     req = db.query(PaymentRequest).filter(PaymentRequest.id == req_id).first()
     if req is None:
         raise HTTPException(404, "Solicitud no encontrada")
@@ -2500,7 +2740,7 @@ def api_admin_approve_sub(req_id: int, body: DecideRequest | None = None,
 @app.post("/api/admin/subscriptions/{req_id}/reject")
 def api_admin_reject_sub(req_id: int, body: DecideRequest | None = None,
                          db: Session = Depends(get_db),
-                         _admin: User = Depends(require_admin)):
+                         _admin: User = Depends(require_admin_or_moderator)):
     req = db.query(PaymentRequest).filter(PaymentRequest.id == req_id).first()
     if req is None:
         raise HTTPException(404, "Solicitud no encontrada")
@@ -2520,7 +2760,7 @@ def _request_full(db: Session, req: PaymentRequest) -> dict:
 
 @app.get("/api/admin/receipts/{filename}")
 def api_admin_receipt(filename: str,
-                      _admin: User = Depends(require_admin)):
+                      _admin: User = Depends(require_admin_or_moderator)):
     path = RECEIPTS_DIR / Path(filename).name
     if not path.exists():
         raise HTTPException(404, "Comprobante no encontrado")
@@ -2567,7 +2807,9 @@ def api_clips(req: ClipsRequest, background: BackgroundTasks,
             _is_live = True
         else:
             try:
-                _st = live_status(req.url)
+                _yt = (get_setting(db, "youtube_api_key", "")
+                       or os.environ.get("YOUTUBE_API_KEY", ""))
+                _st = live_status(req.url, youtube_api_key=_yt)
                 _is_live = bool(_st and _st.get("is_live"))
             except Exception:
                 _is_live = False
@@ -2605,7 +2847,7 @@ class LiveCreateRequest(BaseModel):
     max_len: float = 45.0
     # Render prefs de "Configurar live" (mismo asistente que un video
     # normal). Opcionales: sin ellas el live usa los defaults.
-    camera_mode: str = "follow_speaker"
+    camera_mode: str = "mirror_black"
     # (v189) "auto" = detectar en las 6 zonas; una esquina explícita
     # restringe la detección a esa zona.
     facecam_corner: str = "auto"
@@ -2690,7 +2932,9 @@ def api_lives_create(req: LiveCreateRequest,
     per_round = max(1, min(5, int(req.clips_per_round or 3)))
     min_len = max(5.0, min(120.0, float(req.min_len or 20.0)))
     max_len = max(min_len, min(180.0, float(req.max_len or 45.0)))
-    st = live_status(url)
+    _yt = (get_setting(db, "youtube_api_key", "")
+           or os.environ.get("YOUTUBE_API_KEY", ""))
+    st = live_status(url, youtube_api_key=_yt)
     if st is None:
         raise HTTPException(
             502, "No se pudo leer el live, inténtalo de nuevo")
@@ -2702,7 +2946,7 @@ def api_lives_create(req: LiveCreateRequest,
         uploader=st.get("uploader") or "",
         thumbnail=st.get("thumbnail") or "", interval_minutes=interval,
         clips_per_round=per_round, min_len=min_len, max_len=max_len,
-        camera_mode=(req.camera_mode or "follow_speaker"),
+        camera_mode=(req.camera_mode or "mirror_black"),
         facecam_corner=(req.facecam_corner or "auto"),
         frame_enabled=(req.frame_enabled is not False),
         frame_color=(req.frame_color or DEFAULT_FRAME_COLOR),
@@ -2833,7 +3077,7 @@ def api_lives_update(session_id: int, req: LiveUpdateRequest,
     if req.max_len is not None:
         session.max_len = max(session.min_len, min(180.0, float(req.max_len)))
     if req.camera_mode is not None:
-        session.camera_mode = req.camera_mode or "follow_speaker"
+        session.camera_mode = req.camera_mode or "mirror_black"
     if req.facecam_corner is not None:
         session.facecam_corner = req.facecam_corner or "auto"
     if req.frame_enabled is not None:
@@ -2878,7 +3122,13 @@ def api_download(filename: str):
     path = OUTPUTS_DIR / Path(filename).name
     if not path.exists():
         raise HTTPException(404, "Archivo no encontrado")
-    return FileResponse(path, media_type="video/mp4", filename=path.name)
+    # v226: sin filename= para que el video se reproduzca en línea en
+    # el móvil. Con filename=, FileResponse manda Content-Disposition:
+    # attachment y el navegador móvil no reproduce el <video>, solo lo
+    # descarga. El botón Descargar sigue funcionando porque el <a> lleva
+    # el atributo download, que fuerza la descarga sin importar esto.
+    _media = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "video/mp4"
+    return FileResponse(path, media_type=_media)
 
 
 # ---------------------------------------------------------------- imágenes con IA (fal.ai)
@@ -3078,7 +3328,9 @@ def api_video_file(video_id: int):
     path = VIDEOS_DIR / str(job.user_id) / Path(job.file).name
     if not path.exists():
         raise HTTPException(404, "Archivo no encontrado")
-    return FileResponse(path, media_type="video/mp4", filename=path.name)
+    # v226: sin filename=, igual que /api/download — el video debe
+    # reproducirse en línea en el móvil, no forzarse a descargar.
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.get("/api/jobs/{job_id}/transcript")
@@ -3124,7 +3376,9 @@ def api_job_source(job_id: str):
         path = files[0] if files else None
     if path is None or not path.exists():
         raise HTTPException(404, "Video no encontrado")
-    return FileResponse(path, media_type="video/mp4", filename=path.name)
+    # v226: sin filename= — este archivo alimenta <video> (miniaturas y
+    # vista previa), debe servirse en línea, no como descarga.
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.get("/api/jobs/{job_id}/clip-video")
@@ -3145,11 +3399,11 @@ def api_job_clip_video(job_id: str, start: float, end: float):
     # Caché en disco: {job_id}_clip_{start}_{end}.mp4 (o .webm según formato).
     tag = f"{safe_id}_clip_{int(start * 10)}_{int(end * 10)}"
     for f in sorted(SOURCES_DIR.glob(f"{tag}.*")):
-        return FileResponse(f, media_type="video/mp4", filename=f.name)
+        return FileResponse(f, media_type="video/mp4")
     # Descarga solo este trozo a 1080p (rápido: 30-60 s de video).
     tmp_job = f"{tag}"
     path = download_section(url, start, end, tmp_job)
-    return FileResponse(path, media_type="video/mp4", filename=path.name)
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.get("/api/jobs/{job_id}/camera-track")

@@ -4,6 +4,12 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 yt-dlp==2026.10.26
+# --- PO Token (bgutil, v219, 2026-11-23) ---
+# YouTube exige Proof-of-Origin en IPs de datacenter; el plugin
+# bgutil-ytdlp-pot-provider pide el token al servidor local (puerto
+# 4416, ver Dockerfile/entrypoint) y yt-dlp lo usa solo. Sin el
+# servidor, yt-dlp sigue sin PO Token (y puede fallar con bot-block).
+bgutil-ytdlp-pot-provider==2.0.2
 faster-whisper==1.2.1
 # NOTE: faster-whisper 1.2.1 + av 19.x breaks decode_audio() (metadata_errors kwarg).
 # We never pass a file path to Whisper: transcribe.py loads the WAV with the

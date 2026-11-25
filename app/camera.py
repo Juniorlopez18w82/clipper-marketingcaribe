@@ -9,9 +9,13 @@ How it works
 Frames are extracted with the SYSTEM ffmpeg (2 fps, 640 px wide) —
 OpenCV's bundled ffmpeg cannot decode the AV1 webm sources reliably
 (seek/decode fails), while the system ffmpeg is the same decoder the
-rest of the pipeline already uses. Faces are then detected with the
-OpenCV Haar cascade (haarcascade_frontalface_default.xml, shipped
-with opencv-python-headless).
+rest of the pipeline already uses. Faces are detected with YuNet
+(``app/models/face_detection_yunet_2023mar.onnx``, the same good
+detector framing.py uses, score threshold 0.6) — v223, 2026-11-23,
+Juan: follow must SEE the person instead of guessing. Haar
+(haarcascade_frontalface_default.xml) is only a fallback if the YuNet
+model is missing. Haar demanded 50 px faces and in 640x360 videos
+faces are ~30-40 px, so it found none and fell back to center.
 
 Speaking score: for each detected face, the mouth region (lower third
 of the face box) is compared with the previous sampled frame — the
@@ -57,6 +61,35 @@ SPEAK_FLOOR = 5.0        # mean abs diff below this = mouth not moving
 MAX_PAN_PER_S = 0.6      # crop-widths per second, max pan speed
 SMOOTH_WINDOW = 5        # moving-average window (samples)
 MATCH_DIST_FRAC = 0.12   # face-center match radius, fraction of width
+YUNET_SCORE_MIN = 0.6    # YuNet confidence below this = not a face
+_MODEL_PATH = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
+
+
+def _make_detector(cv2):
+    """YuNet (bueno) primero; Haar solo si YuNet no está/falla.
+
+    (2026-11-23, v223, pedido de Juan: que follow VEA a la persona en
+    vez de adivinar. Haar exigía caras de 50 px y en videos 640x360
+    las caras miden ~30-40 px, así que no encontraba ninguna y caía a
+    centro. YuNet con umbral 0.6 sí las ve, igual que en framing.py.)
+    Returns (kind, detector); kind is "yunet" or "haar", or (None, None).
+    """
+    if _MODEL_PATH.is_file() and _MODEL_PATH.stat().st_size > 100000:
+        try:
+            det = cv2.FaceDetectorYN_create(
+                str(_MODEL_PATH), "", (DETECT_WIDTH, 360),
+                score_threshold=YUNET_SCORE_MIN)
+            return "yunet", det
+        except Exception as e:  # noqa: BLE001 — fall back to Haar
+            logger.warning("camera: YuNet init failed (%s); using Haar", e)
+    try:
+        cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        if cascade.empty():
+            return None, None
+        return "haar", cascade
+    except Exception:  # noqa: BLE001 — no detector at all
+        return None, None
 
 
 def probe_size(source: Path) -> tuple[int, int]:
@@ -167,10 +200,9 @@ def _analyse_frames(frames: list[Path], width: int, height: int,
                     person: str, duration: float) -> dict:
     import cv2
 
-    cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    if cascade.empty():
-        raise RuntimeError("Haar cascade could not be loaded")
+    kind, detector = _make_detector(cv2)
+    if detector is None:
+        raise RuntimeError("no face detector available")
     scale = width / DETECT_WIDTH  # detection coords -> source pixels
     match_dist = MATCH_DIST_FRAC * DETECT_WIDTH
 
@@ -200,9 +232,23 @@ def _analyse_frames(frames: list[Path], width: int, height: int,
             targets.append(None)
             continue
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = cascade.detectMultiScale(
-            gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
-        faces = [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
+        if kind == "yunet":
+            # YuNet ve caras chicas (~30 px) que Haar (mín. 50 px) no ve.
+            h_img, w_img = img.shape[:2]
+            detector.setInputSize((w_img, h_img))
+            _, found = detector.detect(img)
+            faces = []
+            if found is not None:
+                for f in found:
+                    x, y, fw, fh = (float(v) for v in f[:4])
+                    score = float(f[14]) if len(f) > 14 else 1.0
+                    if score < YUNET_SCORE_MIN:
+                        continue
+                    faces.append((int(x), int(y), int(fw), int(fh)))
+        else:
+            faces = detector.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
+            faces = [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
         faces_total += len(faces)
         if faces:
             samples_with_faces += 1

@@ -1,0 +1,8 @@
+services:
+  clipper:
+    ports:
+      - "80:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./warp/wireproxy.conf:/etc/secrets/wireproxy.conf:ro

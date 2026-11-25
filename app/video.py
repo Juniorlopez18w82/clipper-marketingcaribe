@@ -1,4 +1,5 @@
-"""YouTube / live download via yt-dlp. No YouTube Data API, no API key.
+"""YouTube / live download via yt-dlp, with a YouTube Data API v3 fallback
+for the live edge (v225).
 
 Proven 2026-11-10 on https://www.youtube.com/watch?v=lvPIofmDIGk
 (BULIN 47, Alofokeradioshow, 54:13): yt-dlp reads title/duration/uploader
@@ -15,6 +16,13 @@ all read the Bulin video, ios was blocked. If ALL clients are blocked,
 the only remaining fix is a YouTube cookies file (see _cookies_file):
 put cookies.txt in data/ or set YTDLP_COOKIES_FILE, exported from a
 browser logged into YouTube.
+
+YouTube Data API v3 fallback (v225, 2026-11-23): when _raw_info is
+bot-blocked, live_status falls back to the official API
+(videos.list, liveStreamingDetails) using the youtube_api_key setting
+(or YOUTUBE_API_KEY from .env). The edge is now - actualStartTime.
+The key is restricted by HTTP referrer to https://clipziopro.com/,
+so every call sends Referer: https://clipziopro.com/.
 
 PROXY TYPE (root cause found 2026-11-10, job 3503f24a083a): yt-dlp cuts
 the section with ffmpeg, and ffmpeg fetches the remote googlevideo URL
@@ -37,11 +45,17 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yt_dlp
 
+from .cache import (cache_get, cache_put, maybe_cleanup,
+                    video_id_from_url)
 from .config import BASE_DIR, SOURCES_DIR
 
 logger = logging.getLogger(__name__)
@@ -127,6 +141,107 @@ def video_info(url: str) -> dict:
     }
 
 
+def _live_hls_manifest_url(info: dict, prefer_hd: bool = True) -> str | None:
+    """URL del manifiesto HLS (media playlist) de un live.
+
+    Devuelve la URL de la playlist de medios (no la master): si el
+    formato es una master playlist, sigue la variante de mayor calidad
+    (o la de 720p si existe). None si no hay HLS.
+    """
+    fmts = [f for f in (info.get("formats") or [])
+            if "m3u8" in (f.get("url") or "")]
+    if not fmts:
+        return None
+    # Preferir un formato combinado (video+audio) si existe; si no, el
+    # mejor video. Ordenar por altura y luego por tbr.
+    def _rank(f: dict) -> tuple:
+        h = f.get("height") or 0
+        has_av = 1 if (f.get("vcodec") not in (None, "none")
+                       and f.get("acodec") not in (None, "none")) else 0
+        return (has_av, h, f.get("tbr") or 0)
+    fmts.sort(key=_rank, reverse=True)
+    url = fmts[0].get("url") or ""
+    try:
+        text = _fetch_text(url)
+    except Exception:
+        return url
+    if "#EXT-X-STREAM-INF" not in text:
+        return url
+    # Master playlist: elegir la variante de mayor ancho de banda con
+    # video (la de más calidad), resolver la URL relativa si hace falta.
+    lines = text.splitlines()
+    best = None
+    for i, ln in enumerate(lines):
+        if ln.startswith("#EXT-X-STREAM-INF"):
+            m = re.search(r"BANDWIDTH=(\d+)", ln)
+            uri = lines[i + 1].strip() if i + 1 < len(lines) else ""
+            if uri and not uri.startswith("#"):
+                bw = int(m.group(1)) if m else 0
+                if best is None or bw > best[0]:
+                    best = (bw, uri)
+    if not best:
+        return url
+    uri = best[1]
+    if uri.startswith("http"):
+        return uri
+    return urllib.parse.urljoin(url, uri)
+
+
+def _download_live_hls(url: str, start: float, end: float,
+                       job_id: str) -> Path | None:
+    """Baja [start, end] de un LIVE como un solo archivo continuo.
+
+    v232 (idea de Juan, 2026-11-24): en vez de yt-dlp
+    --download-sections (que busca por timestamp sobre el manifiesto
+    HLS en vivo y cae en sitios distintos cada vez — video y audio
+    desalineados, escenas repetidas), se baja el trozo COMPLETO y
+    UNIDO: ffmpeg lee el manifiesto HLS directamente y captura la
+    ventana en una sola pasada, con video y audio del mismo flujo y
+    los mismos timestamps. Como vamos 5 min por detrás del borde, el
+    contenido ya está grabado (DVR) y se descarga como un VOD.
+    Devuelve el archivo o None si falla (el llamador cae al método
+    --download-sections de siempre).
+    """
+    info = _raw_info(url)
+    if info is None:
+        return None
+    manifest = _live_hls_manifest_url(info)
+    if not manifest:
+        return None
+    out = SOURCES_DIR / f"{job_id}_hls.mp4"
+    dur = max(1.0, float(end - start))
+    # ffmpeg lee el manifiesto HLS (DVR) y captura la ventana. El -ss
+    # de entrada busca por segmento en el manifiesto; el -t corta la
+    # duración. Se re-codifica (no -c copy) para que el corte sea
+    # exacto al fotograma y los timestamps queden en 0.
+    env = dict(os.environ)
+    proxy = _proxy()
+    if proxy:
+        env["http_proxy"] = proxy
+        env["https_proxy"] = proxy
+    cmd = ["ffmpeg", "-y", "-v", "error",
+           "-ss", str(max(0.0, start)), "-i", manifest,
+           "-t", str(dur),
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+           "-c:a", "aac", "-b:a", "128k",
+           "-shortest", str(out)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=max(600, int(dur * 2)), env=env)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        return None
+    v_dur, a_dur = _stream_durations(out)
+    if a_dur < dur * 0.8 or v_dur < dur * 0.8:
+        try:
+            out.unlink()
+        except OSError:
+            pass
+        return None
+    return out
+
+
 def _raw_info(url: str) -> dict | None:
     """Raw yt-dlp info dict (with formats), trying player clients in
     order. Returns None when every client is bot-blocked (the caller
@@ -138,6 +253,21 @@ def _raw_info(url: str) -> dict | None:
                 return ydl.extract_info(url, download=False)
         except Exception:
             continue
+    return None
+
+
+def video_language(url: str) -> str | None:
+    """Idioma del video (2 letras, p. ej. 'es'/'en') según los
+    metadatos de YouTube/Twitch. None si no se puede determinar
+    (entonces el llamador usa 'es', el idioma del contenido de Juan).
+    2026-11-24: sin esto, Whisper detectaba 'en' en el spanglish
+    dominicano y los subtítulos salían en inglés."""
+    info = _raw_info(url)
+    if not info:
+        return None
+    lang = (info.get("language") or "").strip().lower()
+    if lang:
+        return lang[:2]
     return None
 
 
@@ -154,7 +284,81 @@ def _fetch_text(url: str) -> str:
         "utf-8", "replace")
 
 
-def live_status(url: str) -> dict | None:
+def _extract_video_id(url: str) -> str | None:
+    """Video ID from a watch / youtu.be / /live/ URL."""
+    m = re.search(r"[?&]v=([A-Za-z0-9_-]{11})", url)
+    if m:
+        return m.group(1)
+    m = re.search(r"youtu\.be/([A-Za-z0-9_-]{11})", url)
+    if m:
+        return m.group(1)
+    m = re.search(r"/live/([A-Za-z0-9_-]{11})", url)
+    if m:
+        return m.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url.strip()):
+        return url.strip()
+    return None
+
+
+def _live_status_via_api(url: str, api_key: str) -> dict | None:
+    """Live status via the official YouTube Data API v3.
+
+    Used when _raw_info is bot-blocked. Calls videos.list
+    (part=liveStreamingDetails,snippet) and returns the same shape as
+    live_status. The edge is now (UTC) - actualStartTime. Returns None
+    when the API key is missing/invalid, the API is disabled, or the
+    video is not found. The key is restricted by HTTP referrer to
+    https://clipziopro.com/, so the call sends that Referer header.
+    """
+    if not (api_key or "").strip():
+        return None
+    video_id = _extract_video_id(url)
+    if not video_id:
+        return None
+    api_url = (
+        "https://youtube.googleapis.com/youtube/v3/videos"
+        f"?part=liveStreamingDetails,snippet&id={video_id}"
+        f"&key={urllib.parse.quote(api_key.strip(), safe='')}"
+    )
+    req = urllib.request.Request(api_url, headers={
+        "Accept": "application/json",
+        "Referer": "https://clipziopro.com/",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 - API down/key bad = no fallback
+        logger.warning("YouTube Data API falló (%s)", exc)
+        return None
+    items = data.get("items") or []
+    if not items:
+        return None
+    item = items[0]
+    details = item.get("liveStreamingDetails") or {}
+    snippet = item.get("snippet") or {}
+    start = details.get("actualStartTime")
+    end = details.get("actualEndTime")
+    is_live = bool(start) and not end
+    edge = None
+    if is_live:
+        try:
+            t0 = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            edge = round(
+                (datetime.now(timezone.utc) - t0).total_seconds(), 1)
+        except ValueError:
+            edge = None
+    return {
+        "is_live": is_live,
+        "title": snippet.get("title") or "",
+        "uploader": snippet.get("channelTitle") or "",
+        "video_id": video_id,
+        "duration": None,
+        "thumbnail": (snippet.get("thumbnails") or {}).get("high", {}).get("url") or "",
+        "edge": edge,
+    }
+
+
+def live_status(url: str, youtube_api_key: str | None = None) -> dict | None:
     """Live status + current live edge (seconds from stream start).
 
     For a live in progress returns {"is_live": True, "title": ...,
@@ -175,11 +379,15 @@ def live_status(url: str) -> dict | None:
     (end of the window), else #EXT-X-TWITCH-ELAPSED-SECS (start of
     the window) + the window duration.
     For a finished live / VOD returns {"is_live": False, "duration": ...,
-    "edge": None}. Returns None when the info fetch is bot-blocked.
+    "edge": None}. Returns None when the info fetch is bot-blocked AND
+    no YouTube Data API key is available (v225 fallback).
     """
     info = _raw_info(url)
     if info is None:
-        return None
+        # Bot-blocked: fall back to the official YouTube Data API v3.
+        key = (youtube_api_key if youtube_api_key is not None
+               else os.environ.get("YOUTUBE_API_KEY", ""))
+        return _live_status_via_api(url, key or "")
     base = {
         "is_live": bool(info.get("is_live")),
         "title": info.get("title") or "",
@@ -312,6 +520,77 @@ def _stream_durations(path: Path) -> tuple[float, float]:
     return v_dur, a_dur
 
 
+def measure_stream_starts(path: Path) -> tuple[float, float]:
+    """(video_start_time, audio_start_time) del archivo, en segundos;
+    (0.0, 0.0) si no se puede medir. En descargas de lives, el video y
+    el audio empiezan en momentos distintos del contenedor (medido:
+    video 6.05 s / audio 1.40 s en el padre del clip 769; 2.05/1.40 en
+    el del 762). Ese desfase se hereda al clip: el audio suena
+    adelantado respecto a la imagen. Para cortar el contenido del
+    instante absoluto X hay que buscar el video en
+    (X - section_start + video_start) y el audio en
+    (X - transcript_base + audio_start)."""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "stream=codec_type,start_time",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=60,
+        )
+        if proc.returncode != 0:
+            return (0.0, 0.0)
+        data = json.loads(proc.stdout)
+        v_start = a_start = None
+        for s in data.get("streams", []):
+            try:
+                st = float(s.get("start_time") or 0)
+            except (TypeError, ValueError):
+                st = 0.0
+            if s.get("codec_type") == "video" and v_start is None:
+                v_start = st
+            elif s.get("codec_type") == "audio" and a_start is None:
+                a_start = st
+        if v_start is None or a_start is None:
+            return (0.0, 0.0)
+        return (v_start, a_start)
+    except Exception:
+        return (0.0, 0.0)
+
+
+def measure_av_offset(path: Path) -> float:
+    """video_start_time - audio_start_time, en segundos; 0 si no se puede
+    medir. En descargas de lives, el video y el audio pueden empezar en
+    momentos distintos del contenedor (medido: 4.65 s en el padre del
+    clip 754, 0.65 s en el padre del clip 762). Ese desfase se hereda al
+    clip: el audio suena adelantado respecto a la imagen. Positivo =
+    el audio va por delante (hay que buscarlo antes / retrasarlo)."""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "stream=codec_type,start_time",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=60,
+        )
+        if proc.returncode != 0:
+            return 0.0
+        data = json.loads(proc.stdout)
+        v_start = a_start = None
+        for s in data.get("streams", []):
+            try:
+                st = float(s.get("start_time") or 0)
+            except (TypeError, ValueError):
+                st = 0.0
+            if s.get("codec_type") == "video" and v_start is None:
+                v_start = st
+            elif s.get("codec_type") == "audio" and a_start is None:
+                a_start = st
+        if v_start is None or a_start is None:
+            return 0.0
+        return v_start - a_start
+    except Exception:
+        return 0.0
+
+
 # Format selectors tried in order per client. 2026-11-11 (calidad): antes
 # android iba primero y solo ofrece el formato 18 (640x360), así que
 # TODOS los clips salían en 360p y se veían borrosos al subirlos a
@@ -381,6 +660,98 @@ def _download_audio_chunk(url: str, start: float, end: float,
                     return trimmed
             return files[0]
     return None
+
+
+def _download_audio_fmt18(url: str, start: float, end: float,
+                          job_id: str) -> Path | None:
+    """Audio vía formato 18 (Android) — método alternativo (v207, Juan).
+
+    Medido 2026-11-21: el flujo bestaudio de tv_embedded baja a ~29 KB/s
+    (itag 250/251 ni siquiera existen para este video), mientras que el
+    formato 18 (mp4 360p progresivo, único formato del cliente Android)
+    baja a ~5,600 KB/s — unas 200× más rápido. Bajar el video de 40 MB
+    y extraer el audio (7 s + 8 s) es mucho más rápido que bajar solo
+    el audio de 9 MB por el flujo limitado (83 s en paralelo, 311 s en
+    serie). El audio extraído es idéntico en contenido (misma pista de
+    audio del video) y se guarda en el mismo formato que el método
+    actual (Opus 96k webm), así que el resto del pipeline no nota nada.
+
+    Pasos: (1) baja la sección con formato 18 (cliente Android, WARP);
+    (2) extrae el audio con ffmpeg (libopus 96k); (3) recorta al rango
+    exacto con actual_section_start + _trim_audio_to_range (la sección
+    empieza en el keyframe anterior, igual que en el método actual);
+    (4) verifica duración (>=80% del rango) e integridad. Cualquier
+    fallo devuelve None y el llamador usa el método actual (paralelo
+    y luego en serie) — nunca rompe un trabajo. NUNCA se usa en lives.
+    """
+    tag = f"{job_id}_fmt18"
+    section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
+    out_tmpl = str(SOURCES_DIR / f"{tag}.%(ext)s")
+    for old in SOURCES_DIR.glob(f"{tag}.*"):
+        old.unlink()
+    cmd = [
+        sys.executable, "-m", "yt_dlp", "--no-warnings",
+        "-N", "8",
+        "--extractor-args", "youtube:player_client=android",
+        "--download-sections", section,
+        "-f", "18",
+        "-o", out_tmpl,
+        url,
+    ]
+    cookies = _cookies_file()
+    if cookies:
+        cmd[3:3] = ["--cookies", cookies]
+    proxy = _proxy()
+    if proxy:
+        cmd[3:3] = ["--proxy", proxy]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=600)
+    except subprocess.TimeoutExpired:
+        logger.warning("fmt18: timeout bajando la sección")
+        return None
+    if proc.returncode != 0:
+        logger.info("fmt18 no disponible o falló (%s)",
+                    (proc.stderr.strip().splitlines()[-1]
+                     if proc.stderr.strip() else "sin error"))
+        return None
+    files = sorted(SOURCES_DIR.glob(f"{tag}.*"))
+    if not files:
+        return None
+    video_file = files[0]
+    # (2) Extraer el audio (Opus 96k, igual que el concat actual).
+    audio_file = SOURCES_DIR / f"{tag}_audio.webm"
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(video_file),
+         "-vn", "-c:a", "libopus", "-b:a", "96k", str(audio_file)],
+        capture_output=True, text=True, timeout=300)
+    if proc.returncode != 0 or not audio_file.exists():
+        logger.warning("fmt18: extracción de audio falló (%s)",
+                       proc.stderr[-200:] if proc.stderr else "")
+        return None
+    # (3) Recortar al rango exacto (la sección trae lead-in del keyframe).
+    true_start = actual_section_start(audio_file, start, end)
+    result = audio_file
+    if true_start < start - 0.05:
+        trimmed = _trim_audio_to_range(audio_file, true_start,
+                                       start, end, tag)
+        if trimmed is not None:
+            result = trimmed
+    # (4) Verificar duración e integridad antes de devolverlo.
+    try:
+        _, a_dur = _stream_durations(result)
+    except Exception:  # noqa: BLE001 — no se pudo verificar
+        return None
+    if a_dur < (end - start) * 0.8:
+        logger.warning("fmt18: audio incompleto (%.1fs de %.0fs)",
+                       a_dur, end - start)
+        return None
+    # El archivo de video ya no hace falta; el audio queda como fuente.
+    try:
+        video_file.unlink()
+    except OSError:
+        pass
+    return result
 
 
 def _download_audio_parallel(url: str, start: float, end: float,
@@ -549,12 +920,59 @@ def download_section(url: str, start: float, end: float, job_id: str,
     """
     if end <= start:
         raise ValueError("end must be greater than start")
-    # Límite 60 min (2026-11-11): antes era 15 min (900 s) porque bajar
-    # el video completo era lento; ahora el análisis baja solo el audio
-    # (itag 250, rápido), así que un video de 43 min (2611 s) cabe. Más
-    # de 60 min: el usuario lo analiza por partes con Desde/Hasta.
-    if end - start > 3600:
-        raise ValueError("El rango es muy largo (máx. 60 min por análisis). Analiza el video por partes con Desde/Hasta.")
+    # Límite 90 min (v218, 2026-11-23): antes 60 min (2026-11-11) porque
+    # bajar el video completo era lento; ahora el análisis baja solo el
+    # audio (itag 250, rápido), así que un video de 83 min (4995 s)
+    # cabe. El chunking LLM se adapta (8 partes máx., ~11 min cada una
+    # a 90 min). Más de 90 min: el usuario lo analiza por partes con
+    # Desde/Hasta.
+    if end - start > 5400:
+        raise ValueError("El rango es muy largo (máx. 90 min por análisis). Analiza el video por partes con Desde/Hasta.")
+    # Caché inteligente (v205): si otro trabajo ya bajó este mismo
+    # video y rango, reutilizarlo en vez de volver a descargarlo. Los
+    # lives nunca se cachean (su contenido cambia y el seek no es
+    # fiable). kind distingue audio / video y calidad, para no servir
+    # un 360p cuando se pidió 1080p.
+    _vid = video_id_from_url(url)
+    _kind = ("audio" if audio_only else "v360" if lowres
+             else "v720" if prefer_android else "v1080")
+    if _vid and not is_live:
+        try:
+            maybe_cleanup()
+        except Exception:
+            pass
+        _cached = cache_get(_vid, start, end, _kind,
+                            need_video=not audio_only)
+        if _cached is not None:
+            import shutil
+            _dest = SOURCES_DIR / f"{job_id}{_cached.suffix}"
+            try:
+                shutil.copyfile(_cached, _dest)
+                logger.info("cache hit: %s [%s-%s] %s -> %s",
+                            _vid, start, end, _kind, _dest.name)
+                return _dest
+            except OSError:
+                pass  # si la copia falla, bajar normal
+    # Formato 18 primero (v207, Juan): el flujo bestaudio de tv_embedded
+    # baja a ~29 KB/s, mientras que el formato 18 (Android) baja a
+    # ~5,600 KB/s y extraer el audio son ~8 s — total ~15 s frente a
+    # 83 s del método actual. Si el formato 18 no existe o falla, se
+    # sigue con el método actual (paralelo y luego en serie). NUNCA en
+    # un live: el seek por timestamp en vivo no es fiable.
+    if audio_only and not is_live and (end - start) > AUDIO_PARALLEL_MIN_SECONDS:
+        try:
+            out = _download_audio_fmt18(url, start, end, job_id)
+        except Exception as e:  # noqa: BLE001 — nunca debe romper el trabajo
+            logger.warning("fmt18 falló (%s); método actual", e)
+            out = None
+        if out is not None:
+            _, a_dur = _stream_durations(out)
+            if a_dur >= (end - start) * 0.8:
+                if _vid and not is_live:
+                    cache_put(out, _vid, start, end, _kind)
+                return out
+            logger.warning("fmt18 incompleto (%.1fs de %.0fs); método actual",
+                           a_dur, end - start)
     # Audio largo: en trozos paralelos (2026-11-11). Una sola conexión
     # se atora en el límite de YouTube (600 s = 300 s un día); en
     # paralelo baja ~3.5x más rápido. Si el paralelo falla, se cae al
@@ -571,9 +989,27 @@ def download_section(url: str, start: float, end: float, job_id: str,
         if out is not None:
             _, a_dur = _stream_durations(out)
             if a_dur >= (end - start) * 0.8:
+                if _vid and not is_live:
+                    cache_put(out, _vid, start, end, _kind)
                 return out
             logger.warning("audio paralelo incompleto (%.1fs de %.0fs); "
                            "reintento en serie", a_dur, end - start)
+    # v232 (idea de Juan): en un LIVE, primero intentar la descarga
+    # COMPLETA y UNIDA por HLS (ffmpeg directo al manifiesto), en vez
+    # de --download-sections. Si falla, se cae al método de siempre.
+    if is_live and not audio_only:
+        try:
+            _hls = _download_live_hls(url, start, end, job_id)
+        except Exception as e:  # noqa: BLE001 — el fallback lo cubre
+            logger.warning("descarga HLS continua falló (%s); método "
+                           "--download-sections", e)
+            _hls = None
+        if _hls is not None:
+            logger.info("live HLS continuo OK: %s [%s-%s]",
+                        _hls.name, start, end)
+            return _hls
+        logger.warning("descarga HLS continua no dio archivo; método "
+                       "--download-sections")
     out_tmpl = str(SOURCES_DIR / f"{job_id}.%(ext)s")
     section = f"*{_fmt_time(start)}-{_fmt_time(end)}"
     errors: list[str] = []
@@ -672,6 +1108,8 @@ def download_section(url: str, start: float, end: float, job_id: str,
                 # ("Cannot determine format").
                 if a_dur >= (end - start) * 0.8 and (audio_only or (
                         v_dur >= (end - start) * 0.8 and _video_decodable(files[0]))):
+                    if _vid and not is_live:
+                        cache_put(files[0], _vid, start, end, _kind)
                     return files[0]
                 errors.append(f"{client}/{fmt}: audio {a_dur:.1f}s video {v_dur:.1f}s for a "
                               f"{end - start:.0f}s section (truncated)")

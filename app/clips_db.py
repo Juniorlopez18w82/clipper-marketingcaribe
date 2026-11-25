@@ -7,14 +7,27 @@ The status field stays in the DB for history but blocks nothing; new
 clips are recorded as "listo".
 Jobs themselves stay in data/jobs/ JSON files (v1); Clip is the durable,
 per-user record the panel and the admin panel list.
+
+Retención (v217): los clips con más de CLIP_RETENTION_DAYS (7) se
+borran automáticamente (archivo mp4 + miniatura JPG + registro DB),
+una vez al día junto a la limpieza de caché (maybe_cleanup). Así el
+sistema solo guarda los videos que el usuario realmente usará.
 """
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import (Column, DateTime, Float, ForeignKey, Integer,
                         String)
 
 from . import auth  # noqa: F401 — registers the users table for the FK below
+from .config import OUTPUTS_DIR
 from .db import Base
+
+logger = logging.getLogger(__name__)
+
+# Días que un clip vive antes de borrarse automáticamente (v217, Juan).
+CLIP_RETENTION_DAYS = 7
 
 STATUS_PENDIENTE = "pendiente"  # legacy, ya no bloquea nada
 STATUS_APROBADO = "aprobado"  # legacy, ya no bloquea nada
@@ -59,6 +72,14 @@ class Clip(Base):
 
 
 def clip_out(clip: Clip) -> dict:
+    # Miniatura JPG (v215): solo se devuelve si el JPG existe en
+    # outputs/ (se genera al renderizar y se rellena para los viejos
+    # con el backfill). Si no existe, el frontend usa el <video>.
+    _thumb = None
+    if clip.file:
+        _jpg = OUTPUTS_DIR / (Path(clip.file).stem + ".jpg")
+        if _jpg.exists():
+            _thumb = f"/api/download/{_jpg.name}"
     return {
         "id": clip.id,
         "user_id": clip.user_id,
@@ -70,6 +91,7 @@ def clip_out(clip: Clip) -> dict:
         "status": clip.status,
         "job_id": clip.job_id,
         "file": clip.file,
+        "thumbnail_url": _thumb,
         "score": clip.score,
         "section_start": clip.section_start,
         "cover_at": clip.cover_at,
@@ -96,3 +118,33 @@ def create_clip(db, *, user_id, video_url, title, uploader, start, end,
     db.commit()
     db.refresh(clip)
     return clip
+
+
+def cleanup_old_clips(db, max_age_days: int = CLIP_RETENTION_DAYS) -> dict:
+    """Borra clips con más de max_age_days (v217): el mp4, su miniatura
+    JPG y el registro en DB. Devuelve {deleted, freed_bytes}. Nunca
+    rompe el trabajo si un archivo ya no existe (se sigue con el
+    resto). Solo borra por created_at; un clip de hoy nunca se toca
+    (tiene 0 días)."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    old = db.query(Clip).filter(Clip.created_at < cutoff).all()
+    deleted = 0
+    freed = 0
+    for clip in old:
+        if clip.file:
+            for p in (OUTPUTS_DIR / clip.file,
+                      OUTPUTS_DIR / (Path(clip.file).stem + ".jpg")):
+                try:
+                    if p.is_file():
+                        freed += p.stat().st_size
+                        p.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        db.delete(clip)
+        deleted += 1
+    if deleted:
+        db.commit()
+        logger.info("cleanup_old_clips: %d clips borrados (más de %d días), "
+                    "%.1f MB liberados", deleted, max_age_days,
+                    freed / 1048576)
+    return {"deleted": deleted, "freed_bytes": freed}

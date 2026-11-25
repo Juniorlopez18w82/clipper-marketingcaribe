@@ -48,6 +48,10 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     plan = Column(String(20), nullable=False, default="free")
     is_admin = Column(Boolean, nullable=False, default=False)
+    # Moderador (v215): puede ver Solicitudes de pago y aprobar/rechazar
+    # comprobantes, pero NO es admin (no ve Usuarios, Planes, Métodos,
+    # Ganancias, Configuración ni Caché). Lo asigna el admin.
+    is_moderator = Column(Boolean, nullable=False, default=False)
     # Suspendida por el admin (Panel Admin > Usuarios > Suspender):
     # no puede entrar ni usar el panel hasta que la reactiven.
     is_suspended = Column(Boolean, nullable=False, default=False)
@@ -137,6 +141,7 @@ def user_out(user: User) -> dict:
         "email": user.email,
         "plan": user.plan,
         "is_admin": bool(user.is_admin),
+        "is_moderator": bool(getattr(user, "is_moderator", False)),
         "is_suspended": bool(getattr(user, "is_suspended", False)),
         "brand_text": user.brand_text,
         "frame_enabled": bool(user.frame_enabled),

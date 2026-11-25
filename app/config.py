@@ -8,6 +8,7 @@ SOURCES_DIR = DATA_DIR / "sources"
 OUTPUTS_DIR = DATA_DIR / "outputs"
 JOBS_DIR = DATA_DIR / "jobs"
 TRANSCRIPTS_DIR = DATA_DIR / "transcripts"
+CACHE_DIR = DATA_DIR / "cache"  # descargas y transcripciones reutilizables (v205)
 LOGOS_DIR = DATA_DIR / "logos"  # logos de marca de agua (v146)
 RECEIPTS_DIR = DATA_DIR / "receipts"  # comprobantes de pago subidos
 UPLOADS_DIR = DATA_DIR / "uploads"  # videos subidos por el usuario
@@ -15,7 +16,7 @@ IMAGES_DIR = DATA_DIR / "images"  # imágenes generadas con IA (fal.ai)
 VIDEOS_DIR = DATA_DIR / "videos"  # videos generados con IA (fal.ai)
 
 for d in (SOURCES_DIR, OUTPUTS_DIR, JOBS_DIR, TRANSCRIPTS_DIR, RECEIPTS_DIR,
-          UPLOADS_DIR, IMAGES_DIR, VIDEOS_DIR):
+          UPLOADS_DIR, IMAGES_DIR, VIDEOS_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # Whisper model: "tiny" (fast, rough) or "base" (proven 2026-11-10, better ES).

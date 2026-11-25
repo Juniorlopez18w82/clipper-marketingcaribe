@@ -95,6 +95,16 @@ def build_candidates(segments: list[dict], min_len: float = 20.0,
         _idx = _idx_of(win_words[-1])
         if 0 <= _idx < len(words) - 1 and words[_idx + 1]["s"] < clip_end:
             clip_end = words[_idx + 1]["s"]
+        # v210: margen final (igual que en la ruta LLM): 0.5 s de respiro
+        # tras la última palabra, sin entrar en la palabra siguiente, sin
+        # pasar del final real del video (última palabra de la
+        # transcripción) y sin superar la duración máxima pedida.
+        _midx = _idx_of(win_words[-1])
+        if 0 <= _midx < len(words) - 1:
+            clip_end = min(clip_end + 0.5, words[_midx + 1]["s"],
+                           words[-1]["e"], start + max_len)
+        else:
+            clip_end = min(clip_end + 0.5, words[-1]["e"], start + max_len)
         if clip_end - start < min_len:
             continue
         text = " ".join(w["w"].strip() for w in win_words).strip()
@@ -638,6 +648,18 @@ def _validate_llm_clips(items: list[dict], words: list[dict],
         first, last = _snap_to_sentences(first, last, words,
                                          v_min, v_max)
         s, e = words[first]["s"], words[last]["e"]
+        # v209: margen final — que el clip no se corte justo al terminar
+        # la última palabra. Se deja un respiro de hasta 0.5 s (la
+        # pausa natural del hablante), sin entrar en la palabra
+        # siguiente, sin pasar del final de la transcripción y sin
+        # superar la duración máxima. La palabra queda completa y el
+        # corte suena limpio en vez de abrupto.
+        _margin = 0.5
+        if last + 1 < len(words):
+            e = min(e + _margin, words[last + 1]["s"], t_end)
+        else:
+            e = min(e + _margin, t_end)
+        e = min(e, s + v_max)
         # Si la palabra siguiente empieza antes de que termine la última
         # (los tiempos de Whisper se solapan), cortar ahí: si no, el audio
         # y los subtítulos incluyen el inicio de la frase siguiente

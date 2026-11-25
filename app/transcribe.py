@@ -158,18 +158,21 @@ def _split_wav(wav_path: Path,
     return out
 
 
-def _transcribe_groq_one(wav_path: Path, key: str) -> tuple[list[dict] | None, str]:
+def _transcribe_groq_one(wav_path: Path, key: str,
+                         language: str = "es") -> tuple[list[dict] | None, str]:
     """Una llamada a Groq Whisper. Devuelve (segmentos, idioma detectado)
     — los segmentos posiblemente vacíos si el trozo no tiene habla, o
     (None, "es") si la llamada falló; el llamador decide si reintenta
-    en local. El idioma NO se fuerza: si se manda language="es", un
-    video en inglés se transcribe como español (subtítulos en español
-    sobre audio en inglés, visto 2026-11-10 con el live de KaiCenat
-    en Twitch). Sin el parámetro, Whisper detecta el idioma solo y
-    la respuesta verbose_json trae "language" (p. ej. "en" o "es")."""
+    en local. El idioma SE fuerza (2026-11-24, Juan: su contenido es
+    español y los subtítulos salían en inglés porque Whisper detectaba
+    'en' en el spanglish dominicano): el llamador pasa el idioma del
+    video (metadatos de YouTube/Twitch) y si no se sabe, 'es'. Un video
+    en inglés se transcribe en inglés (el idioma viene del video, no
+    es fijo)."""
     boundary = uuid.uuid4().hex
     fields = [
         ("model", GROQ_MODEL),
+        ("language", language),
         ("response_format", "verbose_json"),
         ("timestamp_granularities[]", "word"),
         ("timestamp_granularities[]", "segment"),
@@ -213,7 +216,8 @@ def _transcribe_groq_one(wav_path: Path, key: str) -> tuple[list[dict] | None, s
         return None, "es"
 
 
-def _transcribe_groq(wav_path: Path, progress_cb=None) -> tuple[list[dict] | None, str]:
+def _transcribe_groq(wav_path: Path, progress_cb=None,
+                     language: str = "es") -> tuple[list[dict] | None, str]:
     """Try Groq Whisper. Returns (segments, detected language) on
     success, (None, "es") when Groq was not attempted or failed — the
     caller then falls back to local faster-whisper. An EMPTY result is
@@ -245,7 +249,7 @@ def _transcribe_groq(wav_path: Path, progress_cb=None) -> tuple[list[dict] | Non
         return None, "es"
     if _groq_eligible(wav_path):
         _report(0.0, "Transcribiendo… trozo 1 de 1")
-        segments, lang = _transcribe_groq_one(wav_path, key)
+        segments, lang = _transcribe_groq_one(wav_path, key, language)
         if segments is None:
             return None, "es"
         _report(1.0, "Transcribiendo… trozo 1 de 1")
@@ -263,7 +267,7 @@ def _transcribe_groq(wav_path: Path, progress_cb=None) -> tuple[list[dict] | Non
         lang = "es"
         try:
             for idx, (chunk_path, offset) in enumerate(parts):
-                chunk_segs, chunk_lang = _transcribe_groq_one(chunk_path, key)
+                chunk_segs, chunk_lang = _transcribe_groq_one(chunk_path, key, language)
                 if chunk_segs is None:
                     return None, "es"
                 lang = chunk_lang
@@ -332,7 +336,7 @@ def load_wav_array(wav_path: Path) -> np.ndarray:
 
 
 def transcribe_file(source: Path, job_id: str, model: str | None = None,
-                    progress_cb=None) -> dict:
+                    progress_cb=None, language: str | None = None) -> dict:
     """Transcribe a downloaded section. Returns {segments, words, path}.
 
     Times are RELATIVE to the start of ``source`` (the downloaded section).
@@ -343,9 +347,11 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None,
     return shape is identical either way. ``model`` only applies to the
     local engine; Groq always uses whisper-large-v3.
 
-    progress_cb (2026-11-11 v52): se llama con (fracción 0→1,
-    mensaje) — cada trozo de Groq ("Transcribiendo… trozo X de N")
-    o cada segmento del motor local ("Transcribiendo… X s de Y s").
+    ``language`` (2026-11-24, Juan): idioma a forzar en Whisper ('es'
+    por defecto — el contenido de Juan es español; sin forzarlo, el
+    spanglish dominicano se detectaba como inglés y los subtítulos
+    salían en inglés). El llamador lo toma de los metadatos del video;
+    un video en inglés se transcribe en inglés.
     """
     def _report(frac: float, msg: str):
         if progress_cb:
@@ -356,8 +362,10 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None,
 
     wav_path = TRANSCRIPTS_DIR / f"{job_id}.wav"
     extract_wav(source, wav_path)
+    lang = (language or "es").strip().lower()[:2] or "es"
     groq_segments, groq_lang = _transcribe_groq(wav_path,
-                                                 progress_cb=progress_cb)
+                                                 progress_cb=progress_cb,
+                                                 language=lang)
     if groq_segments is not None:
         out_segments = groq_segments
         used_model = GROQ_MODEL
@@ -365,11 +373,9 @@ def transcribe_file(source: Path, job_id: str, model: str | None = None,
     else:
         audio = load_wav_array(wav_path)
         whisper = _get_model(model)
-        # Sin language="es": faster-whisper detecta el idioma solo.
-        # Forzar "es" hacía que un video en inglés se transcribiera
-        # como español (subtítulos en español sobre audio en inglés).
-        segments, _info = whisper.transcribe(audio, language=None, word_timestamps=True)
-        detected_lang = (_info.language or "es").lower()
+        # Idioma forzado (2026-11-24): el mismo que se pasó a Groq.
+        segments, _info = whisper.transcribe(audio, language=lang, word_timestamps=True)
+        detected_lang = (_info.language or lang).lower()
         out_segments = []
         total = _wav_duration(wav_path)
         for s in segments:

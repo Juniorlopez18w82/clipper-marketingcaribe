@@ -856,7 +856,16 @@ def _overlay_chain(tmpdir: Path, *, out_w: int, out_h: int, scale: float,
             chain = "[wm]"
         else:
             _wt = (watermark_text or "").strip() or (brand_text or "").strip()
-            if _wt:
+            # v209: si el marco ya muestra la marca (brand_text) arriba y
+            # la marca de agua de texto es EL MISMO texto, no dibujarla:
+            # quedaban las dos superpuestas en el mismo sitio ("@m@...be").
+            # La marca del marco ya cumple como marca de agua. Solo se
+            # salta cuando el texto es idéntico; un texto distinto sí se
+            # dibuja (es una marca diferente, configurada por el usuario).
+            _dup = bool(frame_enabled and brand_text
+                        and brand_text.strip()
+                        and _wt.lower() == brand_text.strip().lower())
+            if _wt and not _dup:
                 _wm_file = tmpdir / "watermark.txt"
                 _wm_file.write_text(_wt, encoding="utf-8")
                 _whex = hex_to_ffmpeg(watermark_color or "#FFFFFF")
@@ -1085,6 +1094,8 @@ def _title_card(source: Path, cover_abs: float, title: str, out_w: int,
         f"borderw={borderw}:bordercolor={bordercolor}:"
         f"x=(w-text_w)*{px}:y=(h-text_h)*{py}:" + box_part +
         "line_spacing=12",
+        # v212: revert a veryfast — ultrafast (v211) no aceleró y triplicó
+        # el tamaño de los archivos. CRF 20 igual.
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-r", "30", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-shortest", str(card),
@@ -1107,10 +1118,50 @@ def _concat_title_card(card: Path, clip: Path, output: Path) -> None:
     ], "title card concat")
 
 
+def _source_av_delay(source: Path) -> float:
+    """Retraso a aplicar al VIDEO para alinearlo con el audio (v235).
+
+    Los padres descargados de lives con yt-dlp --download-sections
+    salen con el video adelantado respecto al audio (medido: +4.0 s
+    en el padre 6826ec55d749 con -ss de entrada; con -ss de salida
+    el residuo es ~+0.5 s). La causa es la diferencia de start_time
+    entre los streams del contenedor (video 2.05 / audio 1.40 en ese
+    padre). Medido en prueba: con -ss de salida, un delay de video de
+    +0.5 s deja el desfase en 0.0 s exactos (3 puntos, diff 0.8-2.9).
+    Se mide por ffprobe (video_start - audio_start), limitado a
+    [0, 2.0] s; si no se puede medir, 0.0 (sin cambio)."""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", str(source)],
+            capture_output=True, text=True, timeout=30)
+        import json as _json
+        streams = _json.loads(proc.stdout or "{}").get("streams", [])
+        v_start = a_start = None
+        for s in streams:
+            st = s.get("start_time")
+            if st is None:
+                continue
+            try:
+                st = float(st)
+            except (TypeError, ValueError):
+                continue
+            if s.get("codec_type") == "video" and v_start is None:
+                v_start = st
+            elif s.get("codec_type") == "audio" and a_start is None:
+                a_start = st
+        if v_start is None or a_start is None:
+            return 0.0
+        d = v_start - a_start
+        return max(0.0, min(2.0, d))
+    except Exception:
+        return 0.0
+
+
 def _render_follow(source: Path, start_in_source: float, duration: float,
                    output: Path, cam_path: list, *, out_w: int, out_h: int,
                    tmpdir: Path, overlay_kwargs: dict,
-                   progress_cb=None) -> Path:
+                   progress_cb=None, av_delay: float = 0.0) -> Path:
     """Follow modes: 2 s chunks, each cropped at the smoothed crop-x of
     its midpoint, then concatenated and overlaid in one final pass.
 
@@ -1130,13 +1181,27 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
         cd = min(chunk_dur, duration - t)
         x = int(round(_path_x_at(cam_path, t + cd / 2)))
         chunk = tmpdir / f"chunk_{i:03d}.mp4"
+        # v233: corte DESPUÉS de decodificar (-ss de salida, no de entrada).
+        # El -ss de entrada cae en el keyframe anterior (hasta 2 s antes) y el
+        # video de cada trozo empezaba antes: al unirlos el video volvía
+        # ~1.9 s atrás mientras el audio seguía normal (medido clip 881).
+        # Con -ss de salida el corte es exacto por timestamp. -force_key_frames
+        # "0" deja cada trozo empezando en keyframe para un concat limpio.
+        # v235: el delay de video NO va por trozo (medido: un delay de
+        # 0.65 s por trozo se ACUMULA al concatenar y el audio queda
+        # varios segundos adelante — ejemplo de Juan: dicen "casa" y
+        # varios segundos después señalan la casa). El delay se aplica
+        # UNA sola vez en el pase final (ver base más abajo).
         _run([
             "ffmpeg", "-y", "-v", "error",
-            "-ss", str(start_in_source + t), "-i", str(source), "-t", str(cd),
+            "-i", str(source), "-ss", str(start_in_source + t), "-t", str(cd),
             "-vf", f"crop=ih*9/16:ih:{x}:0,scale={out_w}:{out_h},setpts=PTS-STARTPTS",
             "-af", "asetpts=PTS-STARTPTS",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
-            "-c:a", "aac", "-b:a", "128k", str(chunk),
+            "-force_key_frames", "0",
+            "-c:a", "aac", "-b:a", "128k",
+            "-avoid_negative_ts", "make_zero",
+            str(chunk),
         ], f"follow chunk {i}")
         chunks.append(chunk)
         if progress_cb:
@@ -1149,7 +1214,11 @@ def _render_follow(source: Path, start_in_source: float, duration: float,
     concat_file = tmpdir / "concat.txt"
     concat_file.write_text(
         "".join(f"file '{c}'\n" for c in chunks), encoding="utf-8")
-    base = "[0:v]setpts=PTS-STARTPTS[vid]"
+    # v235: delay de video UNA sola vez aquí (pase final), no por trozo:
+    # el padre de live sale con el video adelantado (start_time video >
+    # audio); el delay retrasa el video ese tiempo para alinearlo.
+    _vsetpts = f"setpts=PTS-STARTPTS+{av_delay:.3f}/TB" if av_delay > 0 else "setpts=PTS-STARTPTS"
+    base = f"[0:v]{_vsetpts}[vid]"
     chain = _overlay_chain(tmpdir, out_w=out_w, out_h=out_h, **overlay_kwargs)
 
     def _final_frac(frac: float):
@@ -1187,7 +1256,7 @@ def _framing_at(framing: dict, t: float) -> dict:
 def _render_auto(source: Path, start_in_source: float, duration: float,
                  output: Path, framing: dict, *, out_w: int, out_h: int,
                  tmpdir: Path, overlay_kwargs: dict,
-                 progress_cb=None) -> Path:
+                 progress_cb=None, av_delay: float = 0.0) -> Path:
     """Auto interview framing: 2 s chunks, each rendered with the layout
     the framing timeline says at its midpoint, then concatenated and
     overlaid in one final pass (same chunk+concat+overlay pattern as
@@ -1231,6 +1300,8 @@ def _render_auto(source: Path, start_in_source: float, duration: float,
     if not spans:
         spans = [(0.0, float(duration))]
     n_chunks = len(spans)
+    # v235: el delay de video NO va por trozo (se acumula al concatenar).
+    # Se aplica UNA sola vez en el pase final (ver base más abajo).
     chunks: list[Path] = []
     i = 0
     for (t, span_end) in spans:
@@ -1241,9 +1312,10 @@ def _render_auto(source: Path, start_in_source: float, duration: float,
         crop = sample.get("crop")
         if crops:
             (w1, h1, x1, y1), (w2, h2, x2, y2) = crops
+            # v233: -ss de salida (corte exacto tras decodificar), igual que follow.
             _run([
                 "ffmpeg", "-y", "-v", "error",
-                "-ss", str(start_in_source + t), "-i", str(source),
+                "-i", str(source), "-ss", str(start_in_source + t),
                 "-t", str(cd),
                 "-filter_complex",
                 f"[0:v]split=2[tp][bt];"
@@ -1253,30 +1325,39 @@ def _render_auto(source: Path, start_in_source: float, duration: float,
                 f"[0:a]asetpts=PTS-STARTPTS[aout]",
                 "-map", "[vid]", "-map", "[aout]",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                "-r", "30", "-c:a", "aac", "-b:a", "128k", str(chunk),
+                "-r", "30", "-force_key_frames", "0",
+                "-c:a", "aac", "-b:a", "128k",
+                "-avoid_negative_ts", "make_zero",
+                str(chunk),
             ], f"auto dual chunk {i}")
         elif crop:
             w, h, x, y = crop
             _run([
                 "ffmpeg", "-y", "-v", "error",
-                "-ss", str(start_in_source + t), "-i", str(source),
+                "-i", str(source), "-ss", str(start_in_source + t),
                 "-t", str(cd),
                 "-vf", f"crop={w}:{h}:{x}:{y},scale={out_w}:{out_h},setpts=PTS-STARTPTS",
                 "-af", "asetpts=PTS-STARTPTS",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                "-r", "30", "-c:a", "aac", "-b:a", "128k", str(chunk),
+                "-r", "30", "-force_key_frames", "0",
+                "-c:a", "aac", "-b:a", "128k",
+                "-avoid_negative_ts", "make_zero",
+                str(chunk),
             ], f"auto single chunk {i}")
         else:
             # No crop at all (should not happen — the timeline always
             # carries one): centre 9:16, exactly the approved behavior.
             _run([
                 "ffmpeg", "-y", "-v", "error",
-                "-ss", str(start_in_source + t), "-i", str(source),
+                "-i", str(source), "-ss", str(start_in_source + t),
                 "-t", str(cd),
                 "-vf", f"crop=ih*9/16:ih:(iw-ow)/2:0,scale={out_w}:{out_h},setpts=PTS-STARTPTS",
                 "-af", "asetpts=PTS-STARTPTS",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                "-r", "30", "-c:a", "aac", "-b:a", "128k", str(chunk),
+                "-r", "30", "-force_key_frames", "0",
+                "-c:a", "aac", "-b:a", "128k",
+                "-avoid_negative_ts", "make_zero",
+                str(chunk),
             ], f"auto centre chunk {i}")
         chunks.append(chunk)
         if progress_cb:
@@ -1288,7 +1369,9 @@ def _render_auto(source: Path, start_in_source: float, duration: float,
     concat_file = tmpdir / "concat.txt"
     concat_file.write_text(
         "".join(f"file '{c}'\n" for c in chunks), encoding="utf-8")
-    base = "[0:v]setpts=PTS-STARTPTS[vid]"
+    # v235: delay de video UNA sola vez aquí (pase final), no por trozo.
+    _vsetpts = f"setpts=PTS-STARTPTS+{av_delay:.3f}/TB" if av_delay > 0 else "setpts=PTS-STARTPTS"
+    base = f"[0:v]{_vsetpts}[vid]"
     chain = _overlay_chain(tmpdir, out_w=out_w, out_h=out_h, **overlay_kwargs)
 
     def _final_frac(frac: float):
@@ -1471,12 +1554,25 @@ def render_clip(source: Path, start_in_source: float, duration: float,
         # hay título de enganche) se antepone después.
         main_path = tmpdir / "main.mp4"
         rendered = False
-        if mode == "auto":
+        # v235 REVERSADO (2026-11-24, Juan: "SIGUE IGUAL" — el delay de
+        # video NO arregla el desfase en follow; el arreglo correcto es
+        # un retraso de AUDIO, no implementado). av_delay queda en 0.0
+        # (comportamiento v234): los trozos usan setpts=PTS-STARTPTS
+        # sin delay. _source_av_delay se conserva por si se retoma.
+        av_delay = 0.0
+        if mode in ("auto", "dual"):
             # Encuadre inteligente para entrevistas (2026-11-12):
             # el analizador (app/framing.py) decide por plano si hay
             # una o dos personas y el render sigue su línea de tiempo.
             # Las palabras de los subtítulos van como señal de habla
             # complementaria (la composición manda, no la boca).
+            # (2026-11-23, petición de Juan: "Doble cámara" también
+            # pasa por aquí, así el modo cambia SOLO entre 1 y 2
+            # cámaras — con una sola persona en pantalla el clip la
+            # enfoca completa (cuerpo entero, centrada) y cuando
+            # aparecen las dos vuelve a una arriba y una abajo. Antes
+            # "dual" usaba dos paneles FIJOS y la misma persona salía
+            # arriba y abajo duplicada.)
             framing = analyze_framing(source, start_in_source, duration,
                                       words=words)
             if not framing["fallback"]:
@@ -1493,7 +1589,8 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                              out_w=out_w, out_h=out_h,
                              tmpdir=tmpdir,
                              overlay_kwargs=overlay_kwargs,
-                             progress_cb=progress_cb)
+                             progress_cb=progress_cb,
+                             av_delay=av_delay)
                 rendered = True
             else:
                 logger.warning(
@@ -1513,13 +1610,21 @@ def render_clip(source: Path, start_in_source: float, duration: float,
                                out_w=out_w, out_h=out_h,
                                tmpdir=tmpdir,
                                overlay_kwargs=overlay_kwargs,
-                               progress_cb=progress_cb)
+                               progress_cb=progress_cb,
+                               av_delay=av_delay)
                 rendered = True
             else:
                 logger.warning("camera %s: no faces found, using center crop",
                                mode)
                 mode = "center"
         if not rendered:
+            # v235: el delay de video (av_delay) NO se aplica aquí: esta
+            # rama usa -ss de ENTRADA en un solo comando con filter_complex
+            # + afade, y con -ss de SALIDA el afade=t=out silencia TODO el
+            # audio (medido: afade=t=out + -ss de salida = audio 0.0).
+            # Por eso esta rama sigue con -ss de entrada (audio OK); el
+            # desfase de video en lives se corrige en follow/auto (que
+            # usan trozos con -ss de salida y el delay sí funciona).
             if mode == "dual":
                 vw, vh = probe_size(source)
                 cw, ch, cy, xl, xr = _dual_crop(vw, vh)

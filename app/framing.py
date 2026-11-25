@@ -83,39 +83,44 @@ def _even(n: float) -> int:
 
 
 def _single_crop(box, W: int, H: int) -> tuple[int, int, int, int]:
-    """9:16 crop on ONE person: head + face + shoulders.
+    """9:16 crop on ONE person: CUERPO COMPLETO centrado (2026-11-23,
+    petición de Juan: 'debe siempre centrar a la persona que se vea
+    completa su cuerpo').
 
-    The crop height is ~3.8x the face height (head is ~1x, shoulders
-    add ~2.8x), floored at 45% of the frame so a small face never
-    forces an extreme zoom, capped at the full frame. The face sits
-    ~30% down from the top of the crop, so the head is never cut.
-    Never zooms OUT: width follows height (9:16), it never widens to
-    fit a second person.
+    The crop height is ~6.0x the face height (head ~1x + torso and
+    legs down to the knees), floored at 45% of the frame so a small
+    face never forces an extreme zoom, capped at the full frame. The
+    face sits ~20% down from the top of the crop, so the head is never
+    cut and the body extends below it, fully visible. Never zooms OUT:
+    width follows height (9:16), it never widens to fit a second
+    person.
     """
     fx, fy, fw, fh = box
-    Hc = min(max(fh * 3.8, 0.45 * H), float(H))
+    Hc = min(max(fh * 6.0, 0.45 * H), float(H))
     Wc = Hc * 9 / 16
     cx = fx + fw / 2
     cy = fy + fh / 2
     x = min(max(cx - Wc / 2, 0.0), max(0.0, W - Wc))
-    y = min(max(cy - Hc * 0.30, 0.0), max(0.0, H - Hc))
+    y = min(max(cy - Hc * 0.20, 0.0), max(0.0, H - Hc))
     return _even(Wc), _even(Hc), _even(x), _even(y)
 
 
 def _dual_crop(box, W: int, H: int) -> tuple[int, int, int, int]:
     """One 9:8 panel crop on ONE person (top or bottom half of a DUAL).
 
-    Same head+shoulders framing as _single_crop, but the panel aspect
-    is 9:8 (1080x960). Each person gets its own independent crop, so
-    two distant people are never squeezed into one vertical window.
+    Same CUERPO COMPLETO framing as _single_crop (2026-11-23, Juan:
+    'al igual que en 2 camara, debe siempre centrar a la persona que
+    se vea completa su cuerpo'), but the panel aspect is 9:8
+    (1080x960). Each person gets its own independent crop, so two
+    distant people are never squeezed into one vertical window.
     """
     fx, fy, fw, fh = box
-    Hp = min(max(fh * 3.5, 0.50 * H), float(H))
+    Hp = min(max(fh * 5.5, 0.50 * H), float(H))
     Wp = Hp * 9 / 8
     cx = fx + fw / 2
     cy = fy + fh / 2
     x = min(max(cx - Wp / 2, 0.0), max(0.0, W - Wp))
-    y = min(max(cy - Hp * 0.30, 0.0), max(0.0, H - Hp))
+    y = min(max(cy - Hp * 0.20, 0.0), max(0.0, H - Hp))
     return _even(Wp), _even(Hp), _even(x), _even(y)
 
 
@@ -159,8 +164,16 @@ class _FaceDetector:
         self.kind = "haar"
         if _model_available():
             try:
+                # (2026-11-23, causa raíz del 'no se divide' de Juan:
+                # FaceDetectorYN_create usa score_threshold=0.9 por
+                # defecto; las caras del plano abierto del debate
+                # Luinny/Santiago puntúan 0.89-0.90 y YuNet las filtraba
+                # ANTES de que nuestro YUNET_SCORE_MIN=0.6 las viera,
+                # así el encuadre nunca veía 2 caras y nunca pasaba a
+                # dual. Se fija el umbral en 0.6 aquí mismo.)
                 self._yunet = cv2.FaceDetectorYN_create(
-                    str(_MODEL_PATH), "", (DETECT_WIDTH, 360))
+                    str(_MODEL_PATH), "", (DETECT_WIDTH, 360),
+                    score_threshold=YUNET_SCORE_MIN)
                 self.kind = "yunet"
             except Exception as e:  # noqa: BLE001 — fall back to Haar
                 logger.warning("framing: YuNet init failed (%s); using Haar", e)

@@ -35,11 +35,25 @@ DEFAULT_SETTINGS = {
     "llm_provider": "gemini",
     "groq_api_key": "",
     "gemini_api_key": "",
+    # YouTube Data API v3 (v225, 2026-11-23, Juan): clave oficial para
+    # leer el borde de un live cuando yt-dlp está bloqueado por el
+    # bot-check. La pone el admin en Panel Admin > Configuración; si
+    # está vacía se usa YOUTUBE_API_KEY del .env. Nunca se devuelve
+    # completa por la API (GET la enmascara, POST ignora la máscara).
+    # La clave está restringida por referer a https://clipziopro.com/,
+    # así que cada llamada manda Referer: https://clipziopro.com/.
+    "youtube_api_key": "",
     # Modo mantenimiento (2026-11-19, Juan): "true" = solo los admins
     # pueden entrar; los usuarios no pueden loguearse y los que están
     # dentro son expulsados (get_current_user devuelve 401). Se activa
     # desde Panel Admin > Configuración.
     "maintenance_mode": "false",
+    # Caché inteligente (v205): "true" = reutilizar descargas y
+    # transcripciones de trabajos anteriores del mismo video y rango.
+    # cache_max_age_days: la limpieza automática borra archivos de
+    # caché con más de N días (por defecto 30).
+    "cache_enabled": "true",
+    "cache_max_age_days": "30",
 }
 
 

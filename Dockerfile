@@ -18,6 +18,20 @@ RUN curl -sL https://github.com/denoland/deno/releases/download/v2.4.0/deno-x86_
  && python3 -c "import zipfile; zipfile.ZipFile('/tmp/deno.zip').extract('deno', '/usr/local/bin')" \
  && chmod +x /usr/local/bin/deno && rm /tmp/deno.zip \
  && deno --version
+# Node.js 22 (v219, 2026-11-23) — runtime del servidor PO Token bgutil.
+# YouTube exige Proof-of-Origin en IPs de datacenter; el servidor
+# bgutil (puerto 4416) genera el token y el plugin de yt-dlp lo usa solo.
+RUN curl -sL https://nodejs.org/dist/v22.23.5/node-v22.23.5-linux-x64.tar.gz -o /tmp/node.tar.gz \
+ && tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 \
+ && rm /tmp/node.tar.gz \
+ && node --version && npm --version
+# Servidor PO Token bgutil 2.0.2 (v219): se compila aquí y el entrypoint
+# lo arranca en 127.0.0.1:4416 antes de uvicorn.
+RUN curl -sL https://github.com/Brainicism/bgutil-ytdlp-pot-provider/archive/refs/tags/2.0.2.tar.gz -o /tmp/bgutil.tar.gz \
+ && mkdir -p /opt/bgutil && tar -xzf /tmp/bgutil.tar.gz -C /opt/bgutil --strip-components=1 \
+ && rm /tmp/bgutil.tar.gz \
+ && cd /opt/bgutil/server && npm ci && npx tsc \
+ && test -f build/main.js && echo "bgutil server built OK"
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

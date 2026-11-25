@@ -30,7 +30,10 @@ ALL_STATUSES = (STATUS_ACTIVE, STATUS_PAUSED, STATUS_STOPPED, STATUS_ENDED)
 # estimate is good to ~30 s, so the window ends 30 s before it —
 # never request content that has not aired yet, and never leave a gap
 # (the next round starts from last_end, which is the window end).
-EDGE_SAFETY_SECONDS = 30.0
+EDGE_SAFETY_SECONDS = 300.0  # v224 (2026-11-23, Juan): antes 30 s — muy
+# pegado al borde del live, el manifiesto aún se desliza y el video
+# sale corrido del audio (clip 754: video 4.65 s atrás). Ahora 5 min:
+# solo se procesa lo ya grabado y estable, nunca el borde en vivo.
 
 
 class LiveSession(Base):
@@ -119,7 +122,7 @@ def live_session_out(session: LiveSession, clip_count: int = 0) -> dict:
         "clips_per_round": session.clips_per_round,
         "min_len": session.min_len,
         "max_len": session.max_len,
-        "camera_mode": session.camera_mode or "follow_speaker",
+        "camera_mode": session.camera_mode or "mirror_black",
         "facecam_corner": session.facecam_corner or "auto",
         "frame_enabled": session.frame_enabled is not False,
         "frame_color": session.frame_color or DEFAULT_FRAME_COLOR,

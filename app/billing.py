@@ -15,7 +15,7 @@ Excepción: el ADMIN (is_admin=True) nunca está bloqueado ni necesita
 plan — has_active_subscription() devuelve True siempre para el admin.
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey,
                         Integer, JSON, String)
@@ -45,6 +45,28 @@ class Plan(Base):
     is_popular = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
     sort_order = Column(Integer, nullable=False, default=0)
+    # Descuento Black Friday (v216): % de descuento y último día válido
+    # ("YYYY-MM-DD"). Si discount_pct > 0 y hoy <= discount_ends, el
+    # precio que paga el usuario es sale_price_usd (ver plan_sale_price).
+    discount_pct = Column(Integer, nullable=False, default=0)
+    discount_ends = Column(String(10), nullable=True)
+
+
+def plan_discount_active(p: Plan) -> bool:
+    """True si el plan tiene un descuento vigente hoy."""
+    if not p or not (p.discount_pct or 0):
+        return False
+    if p.discount_ends:
+        return date.today().isoformat() <= str(p.discount_ends)
+    return True
+
+
+def plan_sale_price(p: Plan) -> float:
+    """Precio que paga el usuario: con descuento si está vigente."""
+    base = float(p.price_usd or 0)
+    if plan_discount_active(p):
+        return round(base * (1 - (p.discount_pct or 0) / 100), 2)
+    return base
 
 
 class PaymentMethod(Base):
@@ -198,6 +220,10 @@ def plan_out(p: Plan) -> dict:
         "duration_days": p.duration_days, "features": p.features or [],
         "is_popular": bool(p.is_popular), "is_active": bool(p.is_active),
         "sort_order": p.sort_order,
+        # Black Friday (v216): precio con descuento y datos de la promo.
+        "sale_price_usd": plan_sale_price(p),
+        "discount_pct": int(p.discount_pct or 0) if plan_discount_active(p) else 0,
+        "discount_ends": p.discount_ends,
     }
 
 
@@ -216,6 +242,7 @@ def request_out(r: PaymentRequest, plan=None, method=None, user=None) -> dict:
         "user_name": user.name if user else None,
         "user_email": user.email if user else None,
         "plan_id": r.plan_id, "plan_name": plan.name if plan else None,
+        "plan_price_usd": plan_sale_price(plan) if plan else None,
         "payment_method_id": r.payment_method_id,
         "payment_method_name": method.name if method else None,
         "receipt_file": r.receipt_file,
